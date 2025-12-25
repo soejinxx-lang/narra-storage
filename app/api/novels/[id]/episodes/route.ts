@@ -11,7 +11,8 @@ export async function GET(
   const { id } = await params;
 
   return NextResponse.json({
-    novelId: id,
-    episodes: [],
+    id,
+    title: "",
+    description: "",
   });
 }
