@@ -1,16 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   {
     params,
   }: {
-    params: { id: string; ep: string };
+    params: Promise<{ id: string; ep: string }>;
   }
 ) {
+  const { id, ep } = await params;
+
   return NextResponse.json({
-    novelId: params.id,
-    ep: Number(params.ep),
+    novelId: id,
+    ep: Number(ep),
     title: "",
     content: "",
   });
