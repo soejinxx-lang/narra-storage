@@ -1,15 +1,55 @@
 import { NextResponse, NextRequest } from "next/server";
+import fs from "fs";
+import path from "path";
 
-export async function GET(
-  _req: NextRequest
-) {
-  return NextResponse.json({
-    novels: [
-      {
-        id: "test-novel",
-        title: "테스트 소설",
-        description: "스토리지 서버에서 내려오는 테스트 소설입니다.",
-      },
-    ],
-  });
+const dataPath = path.join(process.cwd(), "data", "novels.json");
+
+function readNovels() {
+  if (!fs.existsSync(dataPath)) {
+    return [];
+  }
+  const raw = fs.readFileSync(dataPath, "utf-8");
+  return JSON.parse(raw);
+}
+
+function writeNovels(novels: any[]) {
+  fs.mkdirSync(path.dirname(dataPath), { recursive: true });
+  fs.writeFileSync(dataPath, JSON.stringify(novels, null, 2), "utf-8");
+}
+
+export async function GET(_req: NextRequest) {
+  const novels = readNovels();
+  return NextResponse.json({ novels });
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+
+  if (!body?.id || !body?.title) {
+    return NextResponse.json(
+      { error: "INVALID_NOVEL_DATA" },
+      { status: 400 }
+    );
+  }
+
+  const novels = readNovels();
+
+  const exists = novels.find((n: any) => n.id === body.id);
+  if (exists) {
+    return NextResponse.json(
+      { error: "NOVEL_ALREADY_EXISTS" },
+      { status: 409 }
+    );
+  }
+
+  const newNovel = {
+    id: body.id,
+    title: body.title,
+    description: body.description ?? "",
+  };
+
+  novels.push(newNovel);
+  writeNovels(novels);
+
+  return NextResponse.json({ novel: newNovel }, { status: 201 });
 }
