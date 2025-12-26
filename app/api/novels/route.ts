@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  if (!body?.id || !body?.title) {
+  if (!body?.title) {
     return NextResponse.json(
       { error: "INVALID_NOVEL_DATA" },
       { status: 400 }
@@ -34,7 +34,9 @@ export async function POST(req: NextRequest) {
 
   const novels = readNovels();
 
-  const exists = novels.find((n: any) => n.id === body.id);
+  const id = body.id ?? `novel-${Date.now()}`;
+
+  const exists = novels.find((n: any) => n.id === id);
   if (exists) {
     return NextResponse.json(
       { error: "NOVEL_ALREADY_EXISTS" },
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const newNovel = {
-    id: body.id,
+    id,
     title: body.title,
     description: body.description ?? "",
   };
