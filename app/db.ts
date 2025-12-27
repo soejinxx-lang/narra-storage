@@ -11,7 +11,7 @@ if (!fs.existsSync(dataDir)) {
 
 const db = new Database(dbPath);
 
-// ✅ 핵심: WAL 모드 활성화
+// 핵심: WAL 모드 활성화
 db.exec(`PRAGMA journal_mode = WAL;`);
 
 // novels 테이블 보장
