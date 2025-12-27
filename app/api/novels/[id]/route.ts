@@ -38,7 +38,7 @@ export async function GET(
 
   return NextResponse.json(novel);
 }
-
+ 
 export async function DELETE(
   _req: NextRequest,
   {
