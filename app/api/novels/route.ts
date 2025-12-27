@@ -1,24 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const dataPath = path.join(process.cwd(), "data", "novels.json");
-
-function readNovels() {
-  if (!fs.existsSync(dataPath)) {
-    return [];
-  }
-  const raw = fs.readFileSync(dataPath, "utf-8");
-  return JSON.parse(raw);
-}
-
-function writeNovels(novels: any[]) {
-  fs.mkdirSync(path.dirname(dataPath), { recursive: true });
-  fs.writeFileSync(dataPath, JSON.stringify(novels, null, 2), "utf-8");
-}
+import db from "../../db";
 
 export async function GET(_req: NextRequest) {
-  const novels = readNovels();
+  const novels = db.prepare("SELECT * FROM novels").all();
   return NextResponse.json({ novels });
 }
 
@@ -32,11 +16,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const novels = readNovels();
-
   const id = body.id ?? `novel-${Date.now()}`;
 
-  const exists = novels.find((n: any) => n.id === id);
+  const exists = db
+    .prepare("SELECT 1 FROM novels WHERE id = ?")
+    .get(id);
+
   if (exists) {
     return NextResponse.json(
       { error: "NOVEL_ALREADY_EXISTS" },
@@ -44,14 +29,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const newNovel = {
-    id,
-    title: body.title,
-    description: body.description ?? "",
-  };
+  db.prepare(
+    "INSERT INTO novels (id, title, description) VALUES (?, ?, ?)"
+  ).run(id, body.title, body.description ?? "");
 
-  novels.push(newNovel);
-  writeNovels(novels);
-
-  return NextResponse.json({ novel: newNovel }, { status: 201 });
+  return NextResponse.json(
+    {
+      novel: {
+        id,
+        title: body.title,
+        description: body.description ?? "",
+      },
+    },
+    { status: 201 }
+  );
 }
