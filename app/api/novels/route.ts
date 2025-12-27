@@ -2,8 +2,8 @@ import { NextResponse, NextRequest } from "next/server";
 import db from "../../db";
 
 export async function GET(_req: NextRequest) {
-  const novels = db.prepare("SELECT * FROM novels").all();
-  return NextResponse.json({ novels });
+  const result = await db.query("SELECT * FROM novels");
+  return NextResponse.json({ novels: result.rows });
 }
 
 export async function POST(req: NextRequest) {
@@ -18,20 +18,22 @@ export async function POST(req: NextRequest) {
 
   const id = body.id ?? `novel-${Date.now()}`;
 
-  const exists = db
-    .prepare("SELECT 1 FROM novels WHERE id = ?")
-    .get(id);
+  const exists = await db.query(
+    "SELECT 1 FROM novels WHERE id = $1",
+    [id]
+  );
 
-  if (exists) {
+  if (exists.rowCount && exists.rowCount > 0) {
     return NextResponse.json(
       { error: "NOVEL_ALREADY_EXISTS" },
       { status: 409 }
     );
   }
 
-  db.prepare(
-    "INSERT INTO novels (id, title, description) VALUES (?, ?, ?)"
-  ).run(id, body.title, body.description ?? "");
+  await db.query(
+    "INSERT INTO novels (id, title, description) VALUES ($1, $2, $3)",
+    [id, body.title, body.description ?? ""]
+  );
 
   return NextResponse.json(
     {
