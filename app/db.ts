@@ -12,8 +12,12 @@ const pool = new Pool({
     : false,
 });
 
-// 초기 테이블 보장
-async function init() {
+let initialized = false;
+
+// 초기 테이블 보장 (런타임에서만 호출)
+export async function initDb() {
+  if (initialized) return;
+
   const client = await pool.connect();
   try {
     await client.query(`
@@ -34,15 +38,11 @@ async function init() {
         FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
       );
     `);
+
+    initialized = true;
   } finally {
     client.release();
   }
 }
-
-// 서버 시작 시 1회 실행
-init().catch((err) => {
-  console.error("Failed to initialize database", err);
-  process.exit(1);
-});
 
 export default pool;
