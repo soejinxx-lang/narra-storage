@@ -59,6 +59,6 @@ export async function DELETE(
   }
 
   // 3. 작품 자체 삭제 (현재는 mock이므로 성공 응답만 반환)
-  // ⚠️ 실제 DB 도입 전까지는 이게 맞는 동작
+  // ⚠️ 실제 DB 도입 전까지는 이게 맞는 동작임
   return NextResponse.json({ ok: true });
 }
