@@ -1,21 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const dataPath = path.join(process.cwd(), "data", "novels.json");
-
-function readNovels() {
-  if (!fs.existsSync(dataPath)) {
-    return [];
-  }
-  const raw = fs.readFileSync(dataPath, "utf-8");
-  return JSON.parse(raw);
-}
-
-function writeNovels(novels: any[]) {
-  fs.mkdirSync(path.dirname(dataPath), { recursive: true });
-  fs.writeFileSync(dataPath, JSON.stringify(novels, null, 2), "utf-8");
-}
+import db, { initDb } from "../../../db";
 
 export async function GET(
   _req: NextRequest,
@@ -25,20 +9,25 @@ export async function GET(
     params: Promise<{ id: string }>;
   }
 ) {
-  const { id } = await params;
-  const novels = readNovels();
-  const novel = novels.find((n: any) => n.id === id);
+  await initDb();
 
-  if (!novel) {
+  const { id } = await params;
+
+  const result = await db.query(
+    "SELECT id, title, description FROM novels WHERE id = $1",
+    [id]
+  );
+
+  if (result.rowCount === 0) {
     return NextResponse.json(
       { error: "NOVEL_NOT_FOUND" },
       { status: 404 }
     );
   }
 
-  return NextResponse.json(novel);
+  return NextResponse.json(result.rows[0]);
 }
- 
+
 export async function DELETE(
   _req: NextRequest,
   {
@@ -47,13 +36,22 @@ export async function DELETE(
     params: Promise<{ id: string }>;
   }
 ) {
+  await initDb();
+
   const { id } = await params;
 
-  const novels = readNovels();
-  const filtered = novels.filter((n: any) => n.id !== id);
+  const result = await db.query(
+    "DELETE FROM novels WHERE id = $1",
+    [id]
+  );
 
-  writeNovels(filtered);
+  if (result.rowCount === 0) {
+    return NextResponse.json(
+      { error: "NOVEL_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
 
-  // ✅ 작품이 상위 → 하위는 논리적으로 함께 삭제된 것으로 간주
+  // episodes는 FK + ON DELETE CASCADE로 자동 삭제됨
   return NextResponse.json({ ok: true });
 }
