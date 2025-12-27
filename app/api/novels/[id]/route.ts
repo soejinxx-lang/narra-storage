@@ -1,9 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_BASE_URL ||
-  "http://localhost:3000";
-
 export async function GET(
   _req: NextRequest,
   {
@@ -22,7 +18,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
@@ -31,8 +27,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
+  // ✅ 핵심: 요청 들어온 origin 그대로 사용
+  const origin = new URL(req.url).origin;
+
   const episodesRes = await fetch(
-    `${BASE_URL}/api/novels/${id}/episodes`,
+    `${origin}/api/novels/${id}/episodes`,
     { method: "GET" }
   );
 
@@ -48,7 +47,7 @@ export async function DELETE(
 
   for (const ep of episodes) {
     const delEpRes = await fetch(
-      `${BASE_URL}/api/novels/${id}/episodes/${ep.ep}`,
+      `${origin}/api/novels/${id}/episodes/${ep.ep}`,
       { method: "DELETE" }
     );
 
