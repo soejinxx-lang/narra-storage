@@ -27,8 +27,9 @@ export async function DELETE(
 ) {
   const { id } = params;
 
+  // 1. 해당 소설의 에피소드 목록 조회 (내부 API, 상대 경로)
   const episodesRes = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/novels/${id}/episodes`,
+    `/api/novels/${id}/episodes`,
     { method: "GET" }
   );
 
@@ -42,9 +43,10 @@ export async function DELETE(
   const episodesData = await episodesRes.json();
   const episodes = episodesData.episodes ?? [];
 
+  // 2. 모든 에피소드 삭제
   for (const ep of episodes) {
     const delEpRes = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/novels/${id}/episodes/${ep.ep}`,
+      `/api/novels/${id}/episodes/${ep.ep}`,
       { method: "DELETE" }
     );
 
@@ -56,5 +58,7 @@ export async function DELETE(
     }
   }
 
+  // 3. 작품 자체 삭제 (현재는 mock이므로 성공 응답만 반환)
+  // ⚠️ 실제 DB 도입 전까지는 이게 맞는 동작
   return NextResponse.json({ ok: true });
 }
