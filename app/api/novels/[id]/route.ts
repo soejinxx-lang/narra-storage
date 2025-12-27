@@ -6,12 +6,12 @@ export async function GET(
   {
     params,
   }: {
-    params: Promise<{ id: string }>;
+    params: { id: string };
   }
 ) {
   await initDb();
 
-  const { id } = await params;
+  const { id } = params;
 
   const result = await db.query(
     "SELECT id, title, description FROM novels WHERE id = $1",
@@ -33,12 +33,12 @@ export async function DELETE(
   {
     params,
   }: {
-    params: Promise<{ id: string }>;
+    params: { id: string };
   }
 ) {
   await initDb();
 
-  const { id } = await params;
+  const { id } = params;
 
   const result = await db.query(
     "DELETE FROM novels WHERE id = $1",
@@ -52,6 +52,5 @@ export async function DELETE(
     );
   }
 
-  // episodes는 FK + ON DELETE CASCADE로 자동 삭제됨
   return NextResponse.json({ ok: true });
 }
