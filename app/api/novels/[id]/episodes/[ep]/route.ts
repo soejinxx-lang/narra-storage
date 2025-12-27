@@ -5,10 +5,10 @@ export async function GET(
   {
     params,
   }: {
-    params: Promise<{ id: string; ep: string }>;
+    params: { id: string; ep: string };
   }
 ) {
-  const { id, ep } = await params;
+  const { id, ep } = params;
 
   return NextResponse.json({
     novelId: id,
