@@ -3,15 +3,13 @@ import db, { initDb } from "../../../db";
 
 export async function GET(
   _req: NextRequest,
-  {
-    params,
-  }: {
-    params: { id: string };
+  context: {
+    params: Promise<{ id: string }>;
   }
 ) {
   await initDb();
 
-  const { id } = params;
+  const { id } = await context.params;
 
   const result = await db.query(
     "SELECT id, title, description FROM novels WHERE id = $1",
@@ -30,15 +28,13 @@ export async function GET(
 
 export async function DELETE(
   _req: NextRequest,
-  {
-    params,
-  }: {
-    params: { id: string };
+  context: {
+    params: Promise<{ id: string }>;
   }
 ) {
   await initDb();
 
-  const { id } = params;
+  const { id } = await context.params;
 
   const result = await db.query(
     "DELETE FROM novels WHERE id = $1",
@@ -48,7 +44,7 @@ export async function DELETE(
   if (result.rowCount === 0) {
     return NextResponse.json(
       { error: "NOVEL_NOT_FOUND" },
-      { status: 404 }  
+      { status: 404 }
     );
   }
 
