@@ -1,4 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
+import db, { initDb } from "../../../../../db";
 
 export async function GET(
   _req: NextRequest,
@@ -8,12 +9,32 @@ export async function GET(
     params: Promise<{ id: string; ep: string }>;
   }
 ) {
+  await initDb();
+
   const { id, ep } = await params;
 
+  const result = await db.query(
+    `
+    SELECT novel_id, ep, title, content
+    FROM episodes
+    WHERE novel_id = $1 AND ep = $2
+    `,
+    [id, Number(ep)]
+  );
+
+  if (result.rowCount === 0) {
+    return NextResponse.json(
+      { error: "EPISODE_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+
+  const row = result.rows[0];
+
   return NextResponse.json({
-    novelId: id,
-    ep: Number(ep),
-    title: "",
-    content: "",
+    novelId: row.novel_id,
+    ep: row.ep,
+    title: row.title,
+    content: row.content,
   });
 }
