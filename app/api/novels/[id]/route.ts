@@ -1,5 +1,9 @@
 import { NextResponse, NextRequest } from "next/server";
 
+const BASE_URL =
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  "http://localhost:3000";
+
 export async function GET(
   _req: NextRequest,
   {
@@ -28,7 +32,7 @@ export async function DELETE(
   const { id } = await params;
 
   const episodesRes = await fetch(
-    `/api/novels/${id}/episodes`,
+    `${BASE_URL}/api/novels/${id}/episodes`,
     { method: "GET" }
   );
 
@@ -44,7 +48,7 @@ export async function DELETE(
 
   for (const ep of episodes) {
     const delEpRes = await fetch(
-      `/api/novels/${id}/episodes/${ep.ep}`,
+      `${BASE_URL}/api/novels/${id}/episodes/${ep.ep}`,
       { method: "DELETE" }
     );
 
