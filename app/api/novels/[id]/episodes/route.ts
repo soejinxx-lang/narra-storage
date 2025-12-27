@@ -1,6 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-
-const STORAGE_BASE_URL = process.env.NEXT_PUBLIC_STORAGE_BASE_URL;
+import db, { initDb } from "../../../../db";
 
 export async function GET(
   _req: NextRequest,
@@ -10,26 +9,50 @@ export async function GET(
     params: Promise<{ id: string }>;
   }
 ) {
+  await initDb();
+
   const { id } = await params;
 
-  if (!STORAGE_BASE_URL) {
+  const result = await db.query(
+    "SELECT ep, title, content FROM episodes WHERE novel_id = $1 ORDER BY ep ASC",
+    [id]
+  );
+
+  return NextResponse.json({ episodes: result.rows });
+}
+
+export async function POST(
+  req: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  await initDb();
+
+  const { id } = await params;
+  const body = await req.json();
+
+  if (typeof body?.ep !== "number") {
     return NextResponse.json(
-      { error: "STORAGE_BASE_URL not configured" },
-      { status: 500 }
+      { error: "INVALID_EPISODE_DATA" },
+      { status: 400 }
     );
   }
 
-  const res = await fetch(`${STORAGE_BASE_URL}/novels/${id}`, {
-    cache: "no-store",
-  });
+  await db.query(
+    `
+    INSERT INTO episodes (novel_id, ep, title, content)
+    VALUES ($1, $2, $3, $4)
+    `,
+    [
+      id,
+      body.ep,
+      body.title ?? "",
+      body.content ?? "",
+    ]
+  );
 
-  if (!res.ok) {
-    return NextResponse.json(
-      { error: "Novel not found" },
-      { status: res.status }
-    );
-  }
-
-  const data = await res.json();
-  return NextResponse.json(data);
+  return NextResponse.json({ ok: true }, { status: 201 });
 }
