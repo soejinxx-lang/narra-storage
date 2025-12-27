@@ -1,12 +1,16 @@
 import { NextResponse, NextRequest } from "next/server";
-import db from "../../db";
+import db, { initDb } from "../../db";
 
 export async function GET(_req: NextRequest) {
+  await initDb();
+
   const result = await db.query("SELECT * FROM novels");
   return NextResponse.json({ novels: result.rows });
 }
 
 export async function POST(req: NextRequest) {
+  await initDb();
+
   const body = await req.json();
 
   if (!body?.title) {
