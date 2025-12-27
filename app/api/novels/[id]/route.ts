@@ -48,7 +48,7 @@ export async function DELETE(
   if (result.rowCount === 0) {
     return NextResponse.json(
       { error: "NOVEL_NOT_FOUND" },
-      { status: 404 }
+      { status: 404 }  
     );
   }
 
