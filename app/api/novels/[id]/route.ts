@@ -1,4 +1,21 @@
 import { NextResponse, NextRequest } from "next/server";
+import fs from "fs";
+import path from "path";
+
+const dataPath = path.join(process.cwd(), "data", "novels.json");
+
+function readNovels() {
+  if (!fs.existsSync(dataPath)) {
+    return [];
+  }
+  const raw = fs.readFileSync(dataPath, "utf-8");
+  return JSON.parse(raw);
+}
+
+function writeNovels(novels: any[]) {
+  fs.mkdirSync(path.dirname(dataPath), { recursive: true });
+  fs.writeFileSync(dataPath, JSON.stringify(novels, null, 2), "utf-8");
+}
 
 export async function GET(
   _req: NextRequest,
@@ -9,16 +26,21 @@ export async function GET(
   }
 ) {
   const { id } = await params;
+  const novels = readNovels();
+  const novel = novels.find((n: any) => n.id === id);
 
-  return NextResponse.json({
-    id,
-    title: "",
-    description: "",
-  });
+  if (!novel) {
+    return NextResponse.json(
+      { error: "NOVEL_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json(novel);
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   {
     params,
   }: {
@@ -27,37 +49,11 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  // ✅ 핵심: 요청 들어온 origin 그대로 사용
-  const origin = new URL(req.url).origin;
+  const novels = readNovels();
+  const filtered = novels.filter((n: any) => n.id !== id);
 
-  const episodesRes = await fetch(
-    `${origin}/api/novels/${id}/episodes`,
-    { method: "GET" }
-  );
+  writeNovels(filtered);
 
-  if (!episodesRes.ok) {
-    return NextResponse.json(
-      { error: "Failed to load episodes" },
-      { status: episodesRes.status }
-    );
-  }
-
-  const episodesData = await episodesRes.json();
-  const episodes = episodesData.episodes ?? [];
-
-  for (const ep of episodes) {
-    const delEpRes = await fetch(
-      `${origin}/api/novels/${id}/episodes/${ep.ep}`,
-      { method: "DELETE" }
-    );
-
-    if (!delEpRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to delete episode" },
-        { status: delEpRes.status }
-      );
-    }
-  }
-
+  // ✅ 작품이 상위 → 하위는 논리적으로 함께 삭제된 것으로 간주
   return NextResponse.json({ ok: true });
 }
