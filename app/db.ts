@@ -24,7 +24,8 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS novels (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        description TEXT
+        description TEXT,
+        cover_url TEXT
       );
     `);
 
