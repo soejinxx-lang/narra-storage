@@ -29,6 +29,12 @@ export async function initDb() {
       );
     `);
 
+    // ✅ 기존 운영 DB를 위한 보강 (이미 테이블이 있을 경우)
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS cover_url TEXT;
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         novel_id TEXT NOT NULL,
