@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
   }
 
   await db.query(
-    "INSERT INTO novels (id, title, description) VALUES ($1, $2, $3)",
-    [id, body.title, body.description ?? ""]
+    "INSERT INTO novels (id, title, description, cover_url) VALUES ($1, $2, $3, $4)",
+    [id, body.title, body.description ?? "", null]
   );
 
   return NextResponse.json(
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
         id,
         title: body.title,
         description: body.description ?? "",
+        cover_url: null,
       },
     },
     { status: 201 }
