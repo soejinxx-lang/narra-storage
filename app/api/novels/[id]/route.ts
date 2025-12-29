@@ -12,7 +12,7 @@ export async function GET(
   const { id } = await context.params;
 
   const result = await db.query(
-    "SELECT id, title, description FROM novels WHERE id = $1",
+    "SELECT id, title, description, cover_url FROM novels WHERE id = $1",
     [id]
   );
 
