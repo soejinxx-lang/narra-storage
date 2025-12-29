@@ -26,13 +26,14 @@ export async function POST(
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const filename = `covers/${id}-${Date.now()}-${file.name}`;
-  const uploadUrl = `${process.env.R2_PUBLIC_BASE_URL}/${filename}`;
+
+  const uploadUrl = `${process.env.R2_UPLOAD_BASE_URL}/${filename}`;
+  const publicUrl = `${process.env.R2_PUBLIC_BASE_URL}/${filename}`;
 
   const res = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
       "Content-Type": file.type,
-      "Authorization": `Bearer ${process.env.R2_API_TOKEN}`,
     },
     body: buffer,
   });
@@ -46,8 +47,8 @@ export async function POST(
 
   await db.query(
     "UPDATE novels SET cover_url = $1 WHERE id = $2",
-    [uploadUrl, id]
+    [publicUrl, id]
   );
 
-  return NextResponse.json({ cover_url: uploadUrl });
+  return NextResponse.json({ cover_url: publicUrl });
 }
