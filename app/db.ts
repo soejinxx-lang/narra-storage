@@ -4,7 +4,7 @@ let pool: Pool | null = null;
 let initialized = false;
 
 // Postgres connection pool (런타임 지연 초기화)
-function getPool() {
+function getPool(): Pool {
   if (!pool) {
     if (!process.env.DATABASE_URL) {
       throw new Error("DATABASE_URL is not set");
@@ -60,9 +60,11 @@ export async function initDb() {
   }
 }
 
-// ✅ 타입 안전한 query wrapper
-export default {
-  query: (text: string, params?: any[]) => {
+// ✅ spread / rest / any[] 전부 제거
+const db = {
+  query(text: string, params?: any[]) {
     return getPool().query(text, params);
   },
 };
+
+export default db;
