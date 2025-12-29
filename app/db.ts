@@ -38,7 +38,6 @@ export async function initDb() {
       );
     `);
 
-    // 기존 운영 DB 보강
     await client.query(`
       ALTER TABLE novels
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
@@ -61,9 +60,9 @@ export async function initDb() {
   }
 }
 
-// ✅ 기존 코드와 호환되도록 유지
+// ✅ 타입 안전한 query wrapper
 export default {
-  query: (...args: any[]) => {
-    return getPool().query(...args);
+  query: (text: string, params?: any[]) => {
+    return getPool().query(text, params);
   },
 };
