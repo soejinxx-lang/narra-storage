@@ -1,24 +1,33 @@
 import { Pool } from "pg";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is not set");
-}
-
-// Postgres connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes("railway")
-    ? { rejectUnauthorized: false }
-    : false,
-});
-
+let pool: Pool | null = null;
 let initialized = false;
+
+// Postgres connection pool (런타임 지연 초기화)
+function getPool() {
+  if (!pool) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is not set");
+    }
+
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL.includes("railway")
+        ? { rejectUnauthorized: false }
+        : false,
+    });
+  }
+
+  return pool;
+}
 
 // 초기 테이블 보장 (런타임에서만 호출)
 export async function initDb() {
   if (initialized) return;
 
-  const client = await pool.connect();
+  const db = getPool();
+  const client = await db.connect();
+
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS novels (
@@ -29,7 +38,7 @@ export async function initDb() {
       );
     `);
 
-    // ✅ 기존 운영 DB를 위한 보강 (이미 테이블이 있을 경우)
+    // ✅ 기존 운영 DB 보강
     await client.query(`
       ALTER TABLE novels
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
@@ -52,4 +61,4 @@ export async function initDb() {
   }
 }
 
-export default pool;
+export default getPool;
