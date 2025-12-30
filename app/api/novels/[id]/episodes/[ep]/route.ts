@@ -1,6 +1,13 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
 
+type EpisodeRow = {
+  novel_id: string;
+  ep: number;
+  title: string | null;
+  content: string | null;
+};
+
 export async function GET(
   _req: NextRequest,
   {
@@ -29,7 +36,7 @@ export async function GET(
     );
   }
 
-  const row = result.rows[0];
+  const row = result.rows[0] as EpisodeRow;
 
   return NextResponse.json({
     novelId: row.novel_id,
@@ -38,3 +45,4 @@ export async function GET(
     content: row.content,
   });
 }
+
