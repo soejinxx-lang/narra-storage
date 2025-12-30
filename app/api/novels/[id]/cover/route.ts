@@ -95,7 +95,6 @@ export async function POST(
         Key: key,
         Body: buffer,
         ContentType: file.type,
-        ACL: "public-read",
       })
     );
   } catch (e) {
