@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest) {
   const result = await db.query("SELECT * FROM novels");
   return NextResponse.json({ novels: result.rows });
 }
-
+ 
 export async function POST(req: NextRequest) {
   await initDb();
 
