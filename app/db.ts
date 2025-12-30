@@ -60,9 +60,8 @@ export async function initDb() {
   }
 }
 
-// ✅ spread / rest / any[] 전부 제거
 const db = {
-  query(text: string, params?: any[]) {
+  query(text: string, params?: readonly unknown[]) {
     return getPool().query(text, params);
   },
 };
