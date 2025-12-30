@@ -36,7 +36,8 @@ export async function GET(
     );
   }
 
-  const row = result.rows[0] as EpisodeRow;
+  // ✅ TypeScript strict mode 대응
+  const row = result.rows[0] as unknown as EpisodeRow;
 
   return NextResponse.json({
     novelId: row.novel_id,
@@ -45,4 +46,3 @@ export async function GET(
     content: row.content,
   });
 }
-
