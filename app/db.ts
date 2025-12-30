@@ -62,7 +62,12 @@ export async function initDb() {
 
 const db = {
   query(text: string, params?: readonly unknown[]) {
-    return getPool().query(text, params);
+    // 🔴 TypeScript 오버로드 혼동 방지 (동작 동일)
+    if (params === undefined) {
+      return getPool().query(text);
+    }
+
+    return getPool().query(text, params as unknown[]);
   },
 };
 
