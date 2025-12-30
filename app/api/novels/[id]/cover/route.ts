@@ -12,7 +12,7 @@ const s3 = new S3Client({
   },
 });
 
-// [복구] 소설 정보를 가져오는 GET 요청
+// 1. 소설 상세 데이터 복구 (이게 있어야 화면에 소설이 뜹니다)
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -27,7 +27,7 @@ export async function GET(
   }
 }
 
-// [수정] 이미지를 S3에 올리는 POST 요청
+// 2. 표지 업로드 기능 (S3 연결 및 에러 상세 출력)
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -64,7 +64,7 @@ export async function POST(
   } catch (e: any) {
     return NextResponse.json({ 
       error: "STORAGE_UPLOAD_FAILED", 
-      detail: e.message,
+      detail: e.message || "S3 업로드 실패", // 이제 여기에 AccessDenied 등이 찍힙니다.
       code: e.code 
     }, { status: 500 });
   }
