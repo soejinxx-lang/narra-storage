@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
-// AWS 설정 - Railway 환경변수를 참조합니다.
 const s3 = new S3Client({
   region: process.env.AWS_REGION || "ap-northeast-2",
   credentials: {
@@ -13,17 +12,30 @@ const s3 = new S3Client({
   },
 });
 
+// [복구] 소설 정보를 가져오는 GET 요청
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  await initDb();
+  const { id } = await context.params;
+  try {
+    const result = await db.query("SELECT * FROM novels WHERE id = $1", [id]);
+    return NextResponse.json(result.rows[0]);
+  } catch (e: any) {
+    return NextResponse.json({ error: "GET_FAILED", detail: e.message }, { status: 500 });
+  }
+}
+
+// [수정] 이미지를 S3에 올리는 POST 요청
 export async function POST(
   req: NextRequest,
-  context: {
-    params: Promise<{ id: string }>;
-  }
+  context: { params: Promise<{ id: string }> }
 ) {
   await initDb();
   const { id } = await context.params;
 
   try {
-    // Admin이 보낸 FormData(파일)를 읽습니다.
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -35,7 +47,6 @@ export async function POST(
     const filename = `covers/${id}-${Date.now()}-${file.name}`;
     const bucketName = process.env.AWS_S3_BUCKET || "narra-covers";
 
-    // 1. AWS S3에 실제 업로드 시도
     await s3.send(
       new PutObjectCommand({
         Bucket: bucketName,
@@ -45,26 +56,16 @@ export async function POST(
       })
     );
 
-    // 2. 업로드된 S3 URL 생성
     const publicUrl = `https://${bucketName}.s3.${process.env.AWS_REGION || "ap-northeast-2"}.amazonaws.com/${filename}`;
 
-    // 3. DB에 URL 업데이트
-    await db.query(
-      "UPDATE novels SET cover_url = $1 WHERE id = $2",
-      [publicUrl, id]
-    );
+    await db.query("UPDATE novels SET cover_url = $1 WHERE id = $2", [publicUrl, id]);
 
     return NextResponse.json({ cover_url: publicUrl });
   } catch (e: any) {
-    // [중요] 상세 에러를 반환하여 Admin 화면의 detail을 채웁니다.
-    console.error("S3_UPLOAD_ERROR:", e);
-    return NextResponse.json(
-      { 
-        error: "STORAGE_UPLOAD_FAILED", 
-        detail: e.message || "Unknown S3 Error",
-        code: e.code || e.name 
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ 
+      error: "STORAGE_UPLOAD_FAILED", 
+      detail: e.message,
+      code: e.code 
+    }, { status: 500 });
   }
 }
