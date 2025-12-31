@@ -39,28 +39,16 @@ export async function POST(
   await initDb();
 
   const { id } = await context.params;
-  const contentType = req.headers.get("content-type") ?? "";
 
-  // 1) JSON 입력: { coverUrl }
-  if (contentType.includes("application/json")) {
-    const body = await req.json().catch(() => null);
-    const coverUrl = body?.coverUrl;
-
-    if (!coverUrl || typeof coverUrl !== "string") {
-      return NextResponse.json(
-        { error: "INVALID_COVER_URL" },
-        { status: 400 }
-      );
-    }
-
-    return saveCoverUrl(id, coverUrl);
-  }
-
-  // 2) multipart/form-data 입력: file 업로드 후 URL 저장
   const formData = await req.formData();
   const file = formData.get("file");
 
-  if (!file || !(file instanceof File)) {
+  // ❗️중요: instanceof File 검사 제거
+  if (
+    !file ||
+    typeof file !== "object" ||
+    !("arrayBuffer" in file)
+  ) {
     return NextResponse.json(
       { error: "INVALID_FILE" },
       { status: 400 }
@@ -84,9 +72,23 @@ export async function POST(
     );
   }
 
+  const buffer = Buffer.from(
+    await (file as any).arrayBuffer()
+  );
+
+  const filename =
+    typeof (file as any).name === "string"
+      ? (file as any).name
+      : "cover";
+
+  const contentType =
+    typeof (file as any).type === "string"
+      ? (file as any).type
+      : "application/octet-stream";
+
+  const key = `covers/${id}-${Date.now()}-${filename}`;
+
   const s3 = getS3Client();
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const key = `covers/${id}-${Date.now()}-${file.name}`;
 
   try {
     await s3.send(
@@ -94,7 +96,7 @@ export async function POST(
         Bucket: process.env.AWS_S3_BUCKET,
         Key: key,
         Body: buffer,
-        ContentType: file.type,
+        ContentType: contentType,
       })
     );
   } catch (e) {
@@ -106,5 +108,6 @@ export async function POST(
   }
 
   const publicUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
   return saveCoverUrl(id, publicUrl);
 }
