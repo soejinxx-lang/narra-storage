@@ -40,10 +40,31 @@ export async function POST(
 
   const { id } = await context.params;
 
+  console.log("[STORAGE COVER] hit");
+  console.log(
+    "[STORAGE COVER] content-type:",
+    req.headers.get("content-type")
+  );
+
   const formData = await req.formData();
+
+  const keys = Array.from(formData.keys());
+  console.log("[STORAGE COVER] formData keys:", keys);
+
   const file = formData.get("file");
+  console.log(
+    "[STORAGE COVER] file:",
+    file
+      ? {
+          type: typeof file,
+          hasArrayBuffer:
+            typeof (file as any).arrayBuffer === "function",
+        }
+      : null
+  );
 
   if (!file || typeof file !== "object" || !("arrayBuffer" in file)) {
+    console.log("[STORAGE COVER] INVALID_FILE triggered");
     return NextResponse.json(
       { error: "INVALID_FILE" },
       { status: 400 }
@@ -51,6 +72,7 @@ export async function POST(
   }
 
   if (!process.env.AWS_S3_BUCKET) {
+    console.log("[STORAGE COVER] S3_BUCKET_NOT_SET");
     return NextResponse.json(
       { error: "S3_BUCKET_NOT_SET" },
       { status: 500 }
@@ -58,6 +80,7 @@ export async function POST(
   }
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.log("[STORAGE COVER] AWS_CREDENTIALS_NOT_SET");
     return NextResponse.json(
       { error: "AWS_CREDENTIALS_NOT_SET" },
       { status: 500 }
@@ -75,6 +98,7 @@ export async function POST(
       : "application/octet-stream";
 
   const key = `covers/${id}-${Date.now()}-${filename}`;
+  console.log("[STORAGE COVER] upload key:", key);
 
   const s3 = getS3Client();
 
@@ -87,7 +111,8 @@ export async function POST(
         ContentType: contentType,
       })
     );
-  } catch {
+  } catch (e) {
+    console.error("[STORAGE COVER] UPLOAD_FAILED", e);
     return NextResponse.json(
       { error: "UPLOAD_FAILED" },
       { status: 500 }
@@ -95,6 +120,7 @@ export async function POST(
   }
 
   const publicUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  console.log("[STORAGE COVER] uploaded url:", publicUrl);
 
   return saveCoverUrl(id, publicUrl);
 }
