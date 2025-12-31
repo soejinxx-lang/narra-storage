@@ -93,9 +93,10 @@ export async function POST(
     typeof (file as any).name === "string" ? (file as any).name : "cover";
 
   const contentType =
-    typeof (file as any).type === "string"
+    typeof (file as any).type === "string" &&
+    (file as any).type.length > 0
       ? (file as any).type
-      : "application/octet-stream";
+      : "image/jpeg";
 
   const key = `covers/${id}-${Date.now()}-${filename}`;
   console.log("[STORAGE COVER] upload key:", key);
