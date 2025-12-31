@@ -29,12 +29,14 @@ export async function initDb() {
   const client = await db.connect();
 
   try {
+    // novels 테이블 생성 (genre 컬럼 추가)
     await client.query(`
       CREATE TABLE IF NOT EXISTS novels (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT,
-        cover_url TEXT
+        cover_url TEXT,
+        genre TEXT  -- genre 컬럼 추가
       );
     `);
 
@@ -43,6 +45,7 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
+    // episodes 테이블 생성
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         novel_id TEXT NOT NULL,
