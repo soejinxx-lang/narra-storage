@@ -13,6 +13,7 @@ type TranslationRow = {
   status: string | null;
 };
 
+// 🔒 고정 언어 8개 (최종)
 const TARGET_LANGUAGES = [
   "en",
   "ja",
@@ -40,6 +41,7 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const lang = searchParams.get("lang") || "ko";
 
+  // 1️⃣ 원문 조회
   const result = await db.query(
     `
     SELECT novel_id, ep, title, content
@@ -58,6 +60,7 @@ export async function GET(
 
   const row = result.rows[0] as unknown as EpisodeRow;
 
+  // 2️⃣ 원문 요청
   if (lang === "ko") {
     return NextResponse.json({
       novelId: row.novel_id,
@@ -65,9 +68,11 @@ export async function GET(
       title: row.title,
       content: row.content,
       language: "ko",
+      status: "DONE",
     });
   }
 
+  // 3️⃣ 번역 조회
   const translationRes = await db.query(
     `
     SELECT translated_text, status
@@ -79,8 +84,14 @@ export async function GET(
 
   if (translationRes.rowCount === 0) {
     return NextResponse.json(
-      { error: "TRANSLATION_NOT_FOUND", language: lang },
-      { status: 404 }
+      {
+        novelId: id,
+        ep: epNumber,
+        language: lang,
+        status: "PENDING",
+        content: null,
+      },
+      { status: 200 }
     );
   }
 
@@ -130,6 +141,7 @@ export async function POST(
     );
   }
 
+  // 1️⃣ 원문 조회
   const episodeRes = await db.query(
     `
     SELECT content
@@ -148,8 +160,8 @@ export async function POST(
 
   const sourceText = episodeRes.rows[0].content;
 
-  // 🔑 핵심 변경: DONE 아닌 언어만 대상
-  const statusRes = await db.query(
+  // 2️⃣ 기존 번역 상태 조회
+  const existingRes = await db.query(
     `
     SELECT language, status
     FROM episode_translations
@@ -158,17 +170,19 @@ export async function POST(
     [id, epNumber]
   );
 
-  const statusMap = new Map<string, string>();
-  for (const row of statusRes.rows) {
-    statusMap.set(row.language, row.status);
+  const statusMap: Record<string, string> = {};
+  for (const row of existingRes.rows) {
+    statusMap[row.language] = row.status;
   }
 
-  const languagesToTranslate = TARGET_LANGUAGES.filter((lang) => {
-    const status = statusMap.get(lang);
-    return status !== "DONE";
-  });
+  // 3️⃣ 언어별 처리
+  for (const lang of TARGET_LANGUAGES) {
+    // ✅ 이미 DONE이면 스킵
+    if (statusMap[lang] === "DONE") {
+      continue;
+    }
 
-  for (const lang of languagesToTranslate) {
+    // RUNNING 상태로 업서트
     await db.query(
       `
       INSERT INTO episode_translations
@@ -182,6 +196,7 @@ export async function POST(
     );
 
     try {
+      // 4️⃣ 세션 생성
       const sessionRes = await fetch(`${pipelineUrl}/process_text`, {
         method: "POST",
         headers: {
@@ -201,6 +216,7 @@ export async function POST(
       const sessionId = sessionData.session_id;
       if (!sessionId) throw new Error("NO_SESSION_ID");
 
+      // 5️⃣ 번역 실행
       const translateRes = await fetch(
         `${pipelineUrl}/process_translate`,
         {
@@ -218,6 +234,7 @@ export async function POST(
 
       if (!translateRes.ok) throw new Error("TRANSLATE_FAILED");
 
+      // 6️⃣ 결과 다운로드
       const textRes = await fetch(
         `${pipelineUrl}/download/translated/${sessionId}`,
         {
@@ -231,6 +248,7 @@ export async function POST(
 
       const translatedText = await textRes.text();
 
+      // 7️⃣ DONE 처리
       await db.query(
         `
         UPDATE episode_translations
@@ -240,6 +258,7 @@ export async function POST(
         [id, epNumber, lang, translatedText]
       );
     } catch {
+      // ❌ FAILED 처리
       await db.query(
         `
         UPDATE episode_translations
