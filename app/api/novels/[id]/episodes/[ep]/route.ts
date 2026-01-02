@@ -10,7 +10,7 @@ type EpisodeRow = {
 
 type TranslationRow = {
   translated_text: string | null;
-  status: string;
+  status: string | null; // ✅ nullable 대응
 };
 
 const TARGET_LANGUAGES = [
@@ -92,7 +92,7 @@ export async function GET(
       novelId: id,
       ep: epNumber,
       language: lang,
-      status: translation.status,
+      status: translation.status ?? "PENDING",
       content: null,
     });
   }
@@ -148,9 +148,7 @@ export async function POST(
 
   const sourceText = episodeRes.rows[0].content;
 
-  // 🔁 언어별 반복
   for (const lang of TARGET_LANGUAGES) {
-    // 0️⃣ RUNNING 상태로 upsert
     await db.query(
       `
       INSERT INTO episode_translations
@@ -164,7 +162,6 @@ export async function POST(
     );
 
     try {
-      // 1️⃣ 세션 생성
       const sessionRes = await fetch(`${pipelineUrl}/process_text`, {
         method: "POST",
         headers: {
@@ -184,7 +181,6 @@ export async function POST(
       const sessionId = sessionData.session_id;
       if (!sessionId) throw new Error("NO_SESSION_ID");
 
-      // 2️⃣ 번역 실행
       const translateRes = await fetch(
         `${pipelineUrl}/process_translate`,
         {
@@ -202,7 +198,6 @@ export async function POST(
 
       if (!translateRes.ok) throw new Error("TRANSLATE_FAILED");
 
-      // 3️⃣ 결과 다운로드
       const textRes = await fetch(
         `${pipelineUrl}/download/translated/${sessionId}`,
         {
@@ -216,7 +211,6 @@ export async function POST(
 
       const translatedText = await textRes.text();
 
-      // 4️⃣ 성공 → DONE
       await db.query(
         `
         UPDATE episode_translations
@@ -225,8 +219,7 @@ export async function POST(
         `,
         [id, epNumber, lang, translatedText]
       );
-    } catch (e) {
-      // ❌ 실패 → FAILED
+    } catch {
       await db.query(
         `
         UPDATE episode_translations
