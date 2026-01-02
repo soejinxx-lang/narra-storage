@@ -7,7 +7,8 @@ export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("Authorization");
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // 🔒 Cron 보호 (CRON_SECRET 없거나 불일치면 차단)
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -20,6 +21,17 @@ export async function GET(req: Request) {
       { status: 500 }
     );
   }
+
+  // 🧹 오래된 RUNNING 정리 (15분 이상)
+  await db.query(`
+    UPDATE episode_translations
+    SET
+      status = 'FAILED',
+      error_message = 'STALE_RUNNING',
+      updated_at = NOW()
+    WHERE status = 'RUNNING'
+      AND updated_at < NOW() - INTERVAL '15 minutes'
+  `);
 
   const pendingRes = await db.query(
     `
@@ -42,13 +54,13 @@ export async function GET(req: Request) {
   for (const row of pendingRes.rows) {
     const {
       translation_id,
-      episode_id,
       language,
       content,
       novel_id,
     } = row;
 
     try {
+      // 🔐 PENDING → RUNNING 원자적 전환
       const lockRes = await db.query(
         `
         UPDATE episode_translations
