@@ -12,6 +12,17 @@ type TranslationRow = {
   translated_text: string;
 };
 
+const TARGET_LANGUAGES = [
+  "en",
+  "ja",
+  "zh",
+  "es",
+  "fr",
+  "de",
+  "pt",
+  "id",
+];
+
 export async function GET(
   req: NextRequest,
   {
@@ -24,11 +35,9 @@ export async function GET(
 
   const { id, ep } = await params;
 
-  // ✅ 언어 파라미터 (기본: 원문)
   const { searchParams } = new URL(req.url);
   const lang = searchParams.get("lang") || "ko";
 
-  // 1️⃣ 기본 에피소드 조회
   const result = await db.query(
     `
     SELECT novel_id, ep, title, content
@@ -47,7 +56,6 @@ export async function GET(
 
   const row = result.rows[0] as unknown as EpisodeRow;
 
-  // 2️⃣ 원문
   if (lang === "ko") {
     return NextResponse.json({
       novelId: row.novel_id,
@@ -58,7 +66,6 @@ export async function GET(
     });
   }
 
-  // 3️⃣ 번역본
   const translationRes = await db.query(
     `
     SELECT translated_text
@@ -109,7 +116,6 @@ export async function POST(
     );
   }
 
-  // 1️⃣ 원문 조회
   const episodeRes = await db.query(
     `
     SELECT content
@@ -128,90 +134,73 @@ export async function POST(
 
   const sourceText = episodeRes.rows[0].content;
 
-  // 2️⃣ 세션 생성
-  const sessionRes = await fetch(`${pipelineUrl}/process_text`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Access-Pin": pipelinePin,
-    },
-    body: JSON.stringify({
-      novel_title: id,
-      text: sourceText,
-    }),
-  });
-
-  if (!sessionRes.ok) {
-    return NextResponse.json(
-      { error: "PIPELINE_SESSION_FAILED" },
-      { status: 500 }
-    );
-  }
-
-  const sessionData = await sessionRes.json();
-  const sessionId = sessionData.session_id;
-
-  if (!sessionId) {
-    return NextResponse.json(
-      { error: "INVALID_SESSION_RESPONSE" },
-      { status: 500 }
-    );
-  }
-
-  // 3️⃣ 번역 실행
-  const translateRes = await fetch(
-    `${pipelineUrl}/process_translate`,
-    {
+  // 🔁 언어별 반복
+  for (const lang of TARGET_LANGUAGES) {
+    // 1️⃣ 세션 생성
+    const sessionRes = await fetch(`${pipelineUrl}/process_text`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Access-Pin": pipelinePin,
       },
       body: JSON.stringify({
-        session_id: sessionId,
         novel_title: id,
+        text: sourceText,
+        target_language: lang,
       }),
-    }
-  );
+    });
 
-  if (!translateRes.ok) {
-    return NextResponse.json(
-      { error: "PIPELINE_TRANSLATE_FAILED" },
-      { status: 500 }
+    if (!sessionRes.ok) continue;
+
+    const sessionData = await sessionRes.json();
+    const sessionId = sessionData.session_id;
+    if (!sessionId) continue;
+
+    // 2️⃣ 번역 실행
+    const translateRes = await fetch(
+      `${pipelineUrl}/process_translate`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Access-Pin": pipelinePin,
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          novel_title: id,
+        }),
+      }
+    );
+
+    if (!translateRes.ok) continue;
+
+    // 3️⃣ 결과 다운로드
+    const textRes = await fetch(
+      `${pipelineUrl}/download/translated/${sessionId}`,
+      {
+        headers: {
+          "X-Access-Pin": pipelinePin,
+        },
+      }
+    );
+
+    if (!textRes.ok) continue;
+
+    const translatedText = await textRes.text();
+
+    // 4️⃣ 저장
+    await db.query(
+      `
+      INSERT INTO episode_translations
+        (novel_id, ep, language, translated_text)
+      VALUES
+        ($1, $2, $3, $4)
+      ON CONFLICT (novel_id, ep, language)
+      DO UPDATE SET translated_text = $4
+      `,
+      [id, Number(ep), lang, translatedText]
     );
   }
-
-  // 4️⃣ 번역 결과 다운로드
-  const textRes = await fetch(
-    `${pipelineUrl}/download/translated/${sessionId}`,
-    {
-      headers: {
-        "X-Access-Pin": pipelinePin,
-      },
-    }
-  );
-
-  if (!textRes.ok) {
-    return NextResponse.json(
-      { error: "PIPELINE_DOWNLOAD_FAILED" },
-      { status: 500 }
-    );
-  }
-
-  const translatedText = await textRes.text();
-
-  // 5️⃣ 영어 번역 저장
-  await db.query(
-    `
-    INSERT INTO episode_translations
-      (novel_id, ep, language, translated_text)
-    VALUES
-      ($1, $2, $3, $4)
-    ON CONFLICT (novel_id, ep, language)
-    DO UPDATE SET translated_text = $4
-    `,
-    [id, Number(ep), "en", translatedText]
-  );
 
   return NextResponse.json({ ok: true });
 }
