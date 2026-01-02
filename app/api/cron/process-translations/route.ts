@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 
-export async function GET() {
+export async function GET(req: Request) {
   await initDb();
+
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get("Authorization");
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const pipelineUrl = process.env.PIPELINE_BASE_URL;
   const pipelinePin = process.env.PIPELINE_ACCESS_PIN;
@@ -28,6 +35,7 @@ export async function GET() {
     WHERE t.status = 'PENDING'
     ORDER BY t.created_at ASC
     LIMIT 5
+    FOR UPDATE SKIP LOCKED
     `
   );
 
@@ -41,14 +49,19 @@ export async function GET() {
     } = row;
 
     try {
-      await db.query(
+      const lockRes = await db.query(
         `
         UPDATE episode_translations
         SET status = 'RUNNING', updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'PENDING'
+        RETURNING id
         `,
         [translation_id]
       );
+
+      if (lockRes.rowCount === 0) {
+        continue;
+      }
 
       const res = await fetch(`${pipelineUrl}/translate_episode`, {
         method: "POST",
