@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
 import { randomUUID } from "crypto";
+import { LANGUAGES } from "../../../../../lib/constants";
 
 type EpisodeRow = {
   id: string;
@@ -15,17 +16,8 @@ type TranslationRow = {
   status: string | null;
 };
 
-// 🔒 고정 언어 8개 (최종)
-const TARGET_LANGUAGES = [
-  "en",
-  "ja",
-  "zh",
-  "es",
-  "fr",
-  "de",
-  "pt",
-  "id",
-];
+// 🔒 번역 대상 언어 (ko 제외)
+const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
 export async function GET(
   req: NextRequest,
@@ -118,7 +110,7 @@ export async function GET(
 }
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
@@ -129,6 +121,8 @@ export async function POST(
 
   const { id, ep } = await params;
   const epNumber = Number(ep);
+
+  const { title, content } = await req.json();
 
   // 1️⃣ 기존 데이터 제거 (동일 작품 / 동일 화수)
   await db.query(
@@ -141,13 +135,13 @@ export async function POST(
 
   const episodeId = randomUUID();
 
-  // 2️⃣ episodes 재생성
+  // 2️⃣ episodes 재생성 (원문 저장)
   await db.query(
     `
-    INSERT INTO episodes (id, novel_id, ep)
-    VALUES ($1, $2, $3)
+    INSERT INTO episodes (id, novel_id, ep, title, content)
+    VALUES ($1, $2, $3, $4, $5)
     `,
-    [episodeId, id, epNumber]
+    [episodeId, id, epNumber, title ?? null, content ?? null]
   );
 
   // 3️⃣ 번역 상태 PENDING 생성
