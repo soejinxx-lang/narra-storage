@@ -9,7 +9,7 @@ type EpisodeRow = {
 };
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
@@ -20,6 +20,11 @@ export async function GET(
 
   const { id, ep } = await params;
 
+  // ✅ 언어 파라미터 (기본: 원문)
+  const { searchParams } = new URL(req.url);
+  const lang = searchParams.get("lang") || "ko";
+
+  // 1️⃣ 기본 에피소드 조회
   const result = await db.query(
     `
     SELECT novel_id, ep, title, content
@@ -36,13 +41,41 @@ export async function GET(
     );
   }
 
-  // ✅ TypeScript strict mode 대응
   const row = result.rows[0] as unknown as EpisodeRow;
+
+  // 2️⃣ 원문 요청이면 그대로 반환
+  if (lang === "ko") {
+    return NextResponse.json({
+      novelId: row.novel_id,
+      ep: row.ep,
+      title: row.title,
+      content: row.content,
+      language: "ko",
+    });
+  }
+
+  // 3️⃣ 번역본 조회
+  const translationRes = await db.query(
+    `
+    SELECT translated_text
+    FROM episode_translations
+    WHERE novel_id = $1 AND ep = $2 AND language = $3
+    `,
+    [id, Number(ep), lang]
+  );
+
+  if (translationRes.rowCount === 0) {
+    return NextResponse.json(
+      { error: "TRANSLATION_NOT_FOUND", language: lang },
+      { status: 404 }
+    );
+  }
 
   return NextResponse.json({
     novelId: row.novel_id,
     ep: row.ep,
     title: row.title,
-    content: row.content,
+    content: translationRes.rows[0].translated_text,
+    language: lang,
   });
 }
