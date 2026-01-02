@@ -45,7 +45,7 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
-    // episodes 테이블 (기존 유지)
+    // episodes 테이블 (기존 유지, content = 원문)
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         novel_id TEXT NOT NULL,
@@ -57,7 +57,7 @@ export async function initDb() {
       );
     `);
 
-    // ✅ 언어별 번역 결과 테이블 (B안 핵심)
+    // ✅ 언어별 번역 결과 테이블 (B안 핵심 추가)
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
         novel_id TEXT NOT NULL,
