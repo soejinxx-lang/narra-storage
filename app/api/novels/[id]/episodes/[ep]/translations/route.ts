@@ -23,9 +23,10 @@ export async function GET(
 
   const result = await db.query(
     `
-    SELECT language, status
-    FROM episode_translations
-    WHERE novel_id = $1 AND ep = $2
+    SELECT t.language, t.status
+    FROM episode_translations t
+    JOIN episodes e ON e.id = t.episode_id
+    WHERE e.novel_id = $1 AND e.ep = $2
     `,
     [id, epNumber]
   );
