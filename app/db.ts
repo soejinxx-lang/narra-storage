@@ -45,7 +45,7 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
-    // episodes 테이블 (기존 유지)
+    // episodes 테이블
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         id TEXT PRIMARY KEY,
@@ -58,7 +58,7 @@ export async function initDb() {
       );
     `);
 
-    // episode_translations 테이블
+    // episode_translations 테이블 (episode_id 기준)
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
         id TEXT PRIMARY KEY,
@@ -75,6 +75,17 @@ export async function initDb() {
           REFERENCES episodes(id)
           ON DELETE CASCADE
       );
+    `);
+
+    // 🔧 구버전 컬럼 정리 (존재할 경우만)
+    await client.query(`
+      ALTER TABLE episode_translations
+      DROP COLUMN IF EXISTS novel_id;
+    `);
+
+    await client.query(`
+      ALTER TABLE episode_translations
+      DROP COLUMN IF EXISTS ep;
     `);
 
     // 기존 컬럼 보정
