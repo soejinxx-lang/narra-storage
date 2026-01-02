@@ -8,6 +8,10 @@ type EpisodeRow = {
   content: string | null;
 };
 
+type TranslationRow = {
+  translated_text: string;
+};
+
 export async function GET(
   req: NextRequest,
   {
@@ -71,11 +75,14 @@ export async function GET(
     );
   }
 
+  const translation =
+    translationRes.rows[0] as unknown as TranslationRow;
+
   return NextResponse.json({
     novelId: row.novel_id,
     ep: row.ep,
     title: row.title,
-    content: translationRes.rows[0].translated_text,
+    content: translation.translated_text,
     language: lang,
   });
 }
