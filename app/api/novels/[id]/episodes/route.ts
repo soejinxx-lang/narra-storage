@@ -1,6 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../db";
-import { randomUUID } from "crypto";
 
 export async function GET(
   _req: NextRequest,
@@ -51,7 +50,6 @@ export async function POST(
   const title = body.title ?? "";
   const content = body.content ?? "";
 
-  // 1️⃣ 기존 에피소드 제거 (동일 작품 / 동일 화수)
   await db.query(
     `
     DELETE FROM episodes
@@ -60,27 +58,26 @@ export async function POST(
     [id, ep]
   );
 
-  const episodeId = randomUUID();
-
-  // 2️⃣ 원문 에피소드 저장
-  await db.query(
+  const insertResult = await db.query(
     `
-    INSERT INTO episodes (id, novel_id, ep, title, content)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO episodes (novel_id, ep, title, content)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id
     `,
-    [episodeId, id, ep, title, content]
+    [id, ep, title, content]
   );
 
-  // 3️⃣ 번역 상태 PENDING 생성 (Cron이 처리)
+  const episodeId = insertResult.rows[0].id;
+
   const LANGUAGES = ["en", "ja", "zh", "es", "fr", "de", "pt", "id"];
 
   for (const language of LANGUAGES) {
     await db.query(
       `
-      INSERT INTO episode_translations (id, episode_id, language, status)
-      VALUES ($1, $2, $3, 'PENDING')
+      INSERT INTO episode_translations (episode_id, language, status)
+      VALUES ($1, $2, 'PENDING')
       `,
-      [randomUUID(), episodeId, language]
+      [episodeId, language]
     );
   }
 
