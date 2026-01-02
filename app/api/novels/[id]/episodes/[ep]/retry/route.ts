@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../../../../../db";
+import db, { initDb } from "../../../../../db";
 
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
@@ -31,17 +31,15 @@ export async function POST(
     );
   }
 
-  const body = await req.json();
-  const { language } = body;
+  const { language } = await req.json();
 
-  if (!language || typeof language !== "string") {
+  if (!language) {
     return NextResponse.json(
       { error: "LANGUAGE_REQUIRED" },
       { status: 400 }
     );
   }
 
-  // 1️⃣ episode 조회
   const episodeRes = await db.query(
     `
     SELECT id, content
@@ -58,12 +56,9 @@ export async function POST(
     );
   }
 
-  const episode = episodeRes.rows[0];
-  const episodeId = episode.id;
-  const content = episode.content;
+  const { id: episodeId, content } = episodeRes.rows[0];
 
   try {
-    // 2️⃣ RUNNING으로 변경
     await db.query(
       `
       UPDATE episode_translations
@@ -75,22 +70,18 @@ export async function POST(
       [episodeId, language]
     );
 
-    // 3️⃣ Pipeline 재호출
-    const res = await fetch(
-      `${PIPELINE_BASE_URL}/translate_episode`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Access-Pin": PIPELINE_ACCESS_PIN,
-        },
-        body: JSON.stringify({
-          novel_title: id,
-          text: content,
-          language,
-        }),
-      }
-    );
+    const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Pin": PIPELINE_ACCESS_PIN,
+      },
+      body: JSON.stringify({
+        novel_title: id,
+        text: content,
+        language,
+      }),
+    });
 
     if (!res.ok) {
       throw new Error(`PIPELINE_${res.status}`);
@@ -98,7 +89,6 @@ export async function POST(
 
     const data = await res.json();
 
-    // 4️⃣ DONE 처리
     await db.query(
       `
       UPDATE episode_translations
@@ -110,12 +100,8 @@ export async function POST(
       [data.translated_text, episodeId, language]
     );
 
-    return NextResponse.json({
-      language,
-      status: "DONE",
-    });
+    return NextResponse.json({ language, status: "DONE" });
   } catch (e: any) {
-    // 5️⃣ FAILED 처리
     await db.query(
       `
       UPDATE episode_translations
