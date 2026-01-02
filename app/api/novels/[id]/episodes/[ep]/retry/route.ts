@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../../../db";
+import db, { initDb } from "../../../../../../db";
 
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
