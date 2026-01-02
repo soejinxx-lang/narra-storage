@@ -10,7 +10,7 @@ type EpisodeRow = {
 
 type TranslationRow = {
   translated_text: string | null;
-  status: string | null; // ✅ nullable 대응
+  status: string | null;
 };
 
 const TARGET_LANGUAGES = [
@@ -148,7 +148,27 @@ export async function POST(
 
   const sourceText = episodeRes.rows[0].content;
 
-  for (const lang of TARGET_LANGUAGES) {
+  // 🔑 핵심 변경: DONE 아닌 언어만 대상
+  const statusRes = await db.query(
+    `
+    SELECT language, status
+    FROM episode_translations
+    WHERE novel_id = $1 AND ep = $2
+    `,
+    [id, epNumber]
+  );
+
+  const statusMap = new Map<string, string>();
+  for (const row of statusRes.rows) {
+    statusMap.set(row.language, row.status);
+  }
+
+  const languagesToTranslate = TARGET_LANGUAGES.filter((lang) => {
+    const status = statusMap.get(lang);
+    return status !== "DONE";
+  });
+
+  for (const lang of languagesToTranslate) {
     await db.query(
       `
       INSERT INTO episode_translations
