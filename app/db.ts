@@ -29,14 +29,14 @@ export async function initDb() {
   const client = await db.connect();
 
   try {
-    // novels 테이블 생성 (genre 컬럼 추가)
+    // novels 테이블
     await client.query(`
       CREATE TABLE IF NOT EXISTS novels (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT,
         cover_url TEXT,
-        genre TEXT  -- genre 컬럼 추가
+        genre TEXT
       );
     `);
 
@@ -45,7 +45,7 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
-    // episodes 테이블 생성
+    // episodes 테이블 (기존 유지)
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         novel_id TEXT NOT NULL,
@@ -54,6 +54,21 @@ export async function initDb() {
         content TEXT,
         PRIMARY KEY (novel_id, ep),
         FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ✅ 언어별 번역 결과 테이블 (B안 핵심)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS episode_translations (
+        novel_id TEXT NOT NULL,
+        ep INTEGER NOT NULL,
+        language TEXT NOT NULL,
+        translated_text TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (novel_id, ep, language),
+        FOREIGN KEY (novel_id, ep)
+          REFERENCES episodes(novel_id, ep)
+          ON DELETE CASCADE
       );
     `);
 
