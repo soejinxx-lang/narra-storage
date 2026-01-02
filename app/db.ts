@@ -45,38 +45,52 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
-    // episodes 테이블 (기존 유지, content = 원문)
+    // episodes 테이블 (기존 유지)
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
+        id TEXT PRIMARY KEY,
         novel_id TEXT NOT NULL,
         ep INTEGER NOT NULL,
         title TEXT,
         content TEXT,
-        PRIMARY KEY (novel_id, ep),
+        UNIQUE (novel_id, ep),
         FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
       );
     `);
 
-    // 언어별 번역 결과 테이블
+    // episode_translations 테이블
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
-        novel_id TEXT NOT NULL,
-        ep INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        episode_id TEXT NOT NULL,
         language TEXT NOT NULL,
         translated_text TEXT,
         status TEXT NOT NULL DEFAULT 'PENDING',
+        error_message TEXT,
+        pipeline_version TEXT DEFAULT 'v1',
         created_at TIMESTAMP DEFAULT NOW(),
-        PRIMARY KEY (novel_id, ep, language),
-        FOREIGN KEY (novel_id, ep)
-          REFERENCES episodes(novel_id, ep)
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (episode_id, language),
+        FOREIGN KEY (episode_id)
+          REFERENCES episodes(id)
           ON DELETE CASCADE
       );
     `);
 
-    // ✅ 기존 테이블에 status 컬럼 없을 경우 대비
+    // 기존 컬럼 보정
     await client.query(`
       ALTER TABLE episode_translations
-      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'PENDING';
+      ADD COLUMN IF NOT EXISTS error_message TEXT;
+    `);
+
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS pipeline_version TEXT DEFAULT 'v1';
+    `);
+
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
     `);
 
     initialized = true;
