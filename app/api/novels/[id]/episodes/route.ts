@@ -1,16 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../db";
-
-// ✅ 고정 번역 언어 (B안)
-const TRANSLATION_LANGUAGES = [
-  "en",
-  "ja",
-  "zh",
-  "es",
-  "pt",
-  "fr",
-  "de",
-];
+import { randomUUID } from "crypto";
 
 export async function GET(
   _req: NextRequest,
@@ -25,7 +15,12 @@ export async function GET(
   const { id } = await params;
 
   const result = await db.query(
-    "SELECT ep, title, content FROM episodes WHERE novel_id = $1 ORDER BY ep ASC",
+    `
+    SELECT ep, title, content
+    FROM episodes
+    WHERE novel_id = $1
+    ORDER BY ep ASC
+    `,
     [id]
   );
 
@@ -56,61 +51,37 @@ export async function POST(
   const title = body.title ?? "";
   const content = body.content ?? "";
 
-  // 1️⃣ 원문 에피소드 저장 (기존 로직 유지)
+  // 1️⃣ 기존 에피소드 제거 (동일 작품 / 동일 화수)
   await db.query(
     `
-    INSERT INTO episodes (novel_id, ep, title, content)
-    VALUES ($1, $2, $3, $4)
+    DELETE FROM episodes
+    WHERE novel_id = $1 AND ep = $2
     `,
-    [id, ep, title, content]
+    [id, ep]
   );
 
-  // 2️⃣ 번역 파이프라인 호출 (언어별, 실패 허용)
-  const pipelineBaseUrl = process.env.PIPELINE_BASE_URL;
-  const pipelinePin = process.env.PIPELINE_PIN;
+  const episodeId = randomUUID();
 
-  if (pipelineBaseUrl && pipelinePin) {
-    for (const language of TRANSLATION_LANGUAGES) {
-      try {
-        const res = await fetch(`${pipelineBaseUrl}/translate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Access-Pin": pipelinePin,
-          },
-          body: JSON.stringify({
-            novel_title: id,
-            text: content,
-            language,
-          }),
-        });
+  // 2️⃣ 원문 에피소드 저장
+  await db.query(
+    `
+    INSERT INTO episodes (id, novel_id, ep, title, content)
+    VALUES ($1, $2, $3, $4, $5)
+    `,
+    [episodeId, id, ep, title, content]
+  );
 
-        if (!res.ok) {
-          continue;
-        }
+  // 3️⃣ 번역 상태 PENDING 생성 (Cron이 처리)
+  const LANGUAGES = ["en", "ja", "zh", "es", "fr", "de", "pt", "id"];
 
-        const data = await res.json();
-        const translatedText = data?.translated_text;
-
-        if (typeof translatedText !== "string") {
-          continue;
-        }
-
-        // 3️⃣ 번역 결과 저장
-        await db.query(
-          `
-          INSERT INTO episode_translations (novel_id, ep, language, translated_text)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (novel_id, ep, language)
-          DO UPDATE SET translated_text = EXCLUDED.translated_text
-          `,
-          [id, ep, language, translatedText]
-        );
-      } catch {
-        // ❗ 번역 실패는 무시 (에피소드 생성은 성공해야 함)
-        continue;
-      }
-    }
+  for (const language of LANGUAGES) {
+    await db.query(
+      `
+      INSERT INTO episode_translations (id, episode_id, language, status)
+      VALUES ($1, $2, $3, 'PENDING')
+      `,
+      [randomUUID(), episodeId, language]
+    );
   }
 
   return NextResponse.json({ ok: true }, { status: 201 });
