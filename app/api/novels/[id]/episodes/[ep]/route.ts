@@ -1,6 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
-import { randomUUID } from "crypto";
 import { LANGUAGES } from "../../../../../lib/constants";
 
 type EpisodeRow = {
@@ -19,6 +18,9 @@ type TranslationRow = {
 // 🔒 번역 대상 언어 (ko 제외)
 const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
+/* =========================
+   GET (변경 없음)
+========================= */
 export async function GET(
   req: NextRequest,
   {
@@ -116,6 +118,9 @@ export async function GET(
   });
 }
 
+/* =========================
+   POST (구조 확정 반영)
+========================= */
 export async function POST(
   req: NextRequest,
   {
@@ -145,39 +150,36 @@ export async function POST(
     );
   }
 
-  // 1️⃣ 기존 데이터 제거 (동일 작품 / 동일 화수)
-  await db.query(
-    `
-    DELETE FROM episodes
-    WHERE novel_id = $1 AND ep = $2
-    `,
-    [id, epNumber]
-  );
+  const episodeId = `${id}_${epNumber}`;
 
-  const episodeId = randomUUID();
-
-  // 2️⃣ episodes 재생성 (원문 저장)
+  // 1️⃣ episodes UPSERT (삭제 ❌)
   await db.query(
     `
     INSERT INTO episodes (id, novel_id, ep, title, content)
     VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (novel_id, ep)
+    DO UPDATE SET
+      title = EXCLUDED.title,
+      content = EXCLUDED.content
     `,
     [episodeId, id, epNumber, title ?? null, content]
   );
 
-  // 3️⃣ 번역 상태 PENDING 생성 (중복 방지)
+  // 2️⃣ 번역 상태 PENDING 생성 (ko 제외)
   for (const lang of TARGET_LANGUAGES) {
     await db.query(
       `
       INSERT INTO episode_translations
-        (id, episode_id, language, status)
+        (episode_id, language, status, updated_at)
       VALUES
-        ($1, $2, $3, 'PENDING')
-      ON CONFLICT (episode_id, language) DO NOTHING
+        ($1, $2, 'PENDING', NOW())
+      ON CONFLICT (episode_id, language)
+      DO NOTHING
       `,
-      [randomUUID(), episodeId, lang]
+      [episodeId, lang]
     );
   }
 
-  return NextResponse.json({ ok: true });
+  // 3️⃣ 즉시 반환 (번역 ❌)
+  return NextResponse.json({ status: "SAVED" });
 }
