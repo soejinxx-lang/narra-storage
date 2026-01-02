@@ -47,7 +47,7 @@ export async function GET(
 
   const row = result.rows[0] as unknown as EpisodeRow;
 
-  // 2️⃣ 원문 요청이면 그대로 반환
+  // 2️⃣ 원문
   if (lang === "ko") {
     return NextResponse.json({
       novelId: row.novel_id,
@@ -58,7 +58,7 @@ export async function GET(
     });
   }
 
-  // 3️⃣ 번역본 조회
+  // 3️⃣ 번역본
   const translationRes = await db.query(
     `
     SELECT translated_text
@@ -99,6 +99,16 @@ export async function POST(
 
   const { id, ep } = await params;
 
+  const pipelineUrl = process.env.PIPELINE_BASE_URL;
+  const pipelinePin = process.env.PIPELINE_PIN;
+
+  if (!pipelineUrl || !pipelinePin) {
+    return NextResponse.json(
+      { error: "PIPELINE_NOT_CONFIGURED" },
+      { status: 500 }
+    );
+  }
+
   // 1️⃣ 원문 조회
   const episodeRes = await db.query(
     `
@@ -118,20 +128,12 @@ export async function POST(
 
   const sourceText = episodeRes.rows[0].content;
 
-  // 2️⃣ 파이프라인 호출
-  const pipelineUrl = process.env.PIPELINE_BASE_URL;
-  if (!pipelineUrl) {
-    return NextResponse.json(
-      { error: "PIPELINE_URL_NOT_SET" },
-      { status: 500 }
-    );
-  }
-
-  const res = await fetch(`${pipelineUrl}/process_translate`, {
+  // 2️⃣ 세션 생성
+  const sessionRes = await fetch(`${pipelineUrl}/process_text`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Access-Pin": process.env.PIPELINE_PIN || "",
+      "X-Access-Pin": pipelinePin,
     },
     body: JSON.stringify({
       novel_title: id,
@@ -139,23 +141,66 @@ export async function POST(
     }),
   });
 
-  if (!res.ok) {
+  if (!sessionRes.ok) {
     return NextResponse.json(
-      { error: "PIPELINE_FAILED" },
+      { error: "PIPELINE_SESSION_FAILED" },
       { status: 500 }
     );
   }
 
-  const data = await res.json();
+  const sessionData = await sessionRes.json();
+  const sessionId = sessionData.session_id;
 
-  if (!data?.translated_text) {
+  if (!sessionId) {
     return NextResponse.json(
-      { error: "INVALID_PIPELINE_RESPONSE" },
+      { error: "INVALID_SESSION_RESPONSE" },
       { status: 500 }
     );
   }
 
-  // 3️⃣ 번역 저장 (영어 기준 – 다음 단계에서 다국어 확장)
+  // 3️⃣ 번역 실행
+  const translateRes = await fetch(
+    `${pipelineUrl}/process_translate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Pin": pipelinePin,
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        novel_title: id,
+      }),
+    }
+  );
+
+  if (!translateRes.ok) {
+    return NextResponse.json(
+      { error: "PIPELINE_TRANSLATE_FAILED" },
+      { status: 500 }
+    );
+  }
+
+  // 4️⃣ 번역 결과 다운로드
+  const textRes = await fetch(
+    `${pipelineUrl}/download/translated/${sessionId}`,
+    {
+      headers: {
+        "X-Access-Pin": pipelinePin,
+      },
+    }
+  );
+
+  if (!textRes.ok) {
+    return NextResponse.json(
+      { error: "PIPELINE_DOWNLOAD_FAILED" },
+      { status: 500 }
+    );
+  }
+
+  const translatedText = await textRes.text();
+
+  // 5️⃣ 영어 번역 저장
   await db.query(
     `
     INSERT INTO episode_translations
@@ -165,7 +210,7 @@ export async function POST(
     ON CONFLICT (novel_id, ep, language)
     DO UPDATE SET translated_text = $4
     `,
-    [id, Number(ep), "en", data.translated_text]
+    [id, Number(ep), "en", translatedText]
   );
 
   return NextResponse.json({ ok: true });
