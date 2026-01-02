@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../../../../../db";
-import { LANGUAGES } from "../../../../../../../lib/constants";
+import db, { initDb } from "../../../../../db";
 
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
 
-// 🔒 번역 대상 언어 (ko 제외)
-const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
-
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
@@ -35,7 +31,15 @@ export async function POST(
     );
   }
 
-  // 1️⃣ episode 조회
+  const { language } = await req.json();
+
+  if (!language) {
+    return NextResponse.json(
+      { error: "LANGUAGE_REQUIRED" },
+      { status: 400 }
+    );
+  }
+
   const episodeRes = await db.query(
     `
     SELECT id, content
@@ -52,90 +56,67 @@ export async function POST(
     );
   }
 
-  const episode = episodeRes.rows[0];
-  const episodeId = episode.id;
-  const content = episode.content;
+  const { id: episodeId, content } = episodeRes.rows[0];
 
-  const results: {
-    language: string;
-    status: string;
-    error?: string;
-  }[] = [];
+  try {
+    await db.query(
+      `
+      UPDATE episode_translations
+      SET status = 'RUNNING',
+          error_message = NULL,
+          updated_at = NOW()
+      WHERE episode_id = $1 AND language = $2
+      `,
+      [episodeId, language]
+    );
 
-  // 2️⃣ 순차 번역
-  for (const language of TARGET_LANGUAGES) {
-    try {
-      // RUNNING
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET status = 'RUNNING',
-            error_message = NULL,
-            updated_at = NOW()
-        WHERE episode_id = $1 AND language = $2
-        `,
-        [episodeId, language]
-      );
-
-      // Pipeline 호출
-      const res = await fetch(
-        `${PIPELINE_BASE_URL}/translate_episode`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Access-Pin": PIPELINE_ACCESS_PIN,
-          },
-          body: JSON.stringify({
-            novel_title: id,
-            text: content,
-            language,
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        throw new Error(`PIPELINE_${res.status}`);
-      }
-
-      const data = await res.json();
-
-      // DONE
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET translated_text = $1,
-            status = 'DONE',
-            updated_at = NOW()
-        WHERE episode_id = $2 AND language = $3
-        `,
-        [data.translated_text, episodeId, language]
-      );
-
-      results.push({
+    const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Pin": PIPELINE_ACCESS_PIN,
+      },
+      body: JSON.stringify({
+        novel_title: id,
+        text: content,
         language,
-        status: "DONE",
-      });
-    } catch (e: any) {
-      // FAILED
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET status = 'FAILED',
-            error_message = $1,
-            updated_at = NOW()
-        WHERE episode_id = $2 AND language = $3
-        `,
-        [e.message, episodeId, language]
-      );
+      }),
+    });
 
-      results.push({
-        language,
-        status: "FAILED",
-        error: e.message,
-      });
+    if (!res.ok) {
+      throw new Error(`PIPELINE_${res.status}`);
     }
-  }
 
-  return NextResponse.json({ results });
+    const data = await res.json();
+
+    await db.query(
+      `
+      UPDATE episode_translations
+      SET translated_text = $1,
+          status = 'DONE',
+          updated_at = NOW()
+      WHERE episode_id = $2 AND language = $3
+      `,
+      [data.translated_text, episodeId, language]
+    );
+
+    return NextResponse.json({ language, status: "DONE" });
+  } catch (e: any) {
+    await db.query(
+      `
+      UPDATE episode_translations
+      SET status = 'FAILED',
+          error_message = $1,
+          updated_at = NOW()
+      WHERE episode_id = $2 AND language = $3
+      `,
+      [e.message, episodeId, language]
+    );
+
+    return NextResponse.json({
+      language,
+      status: "FAILED",
+      error: e.message,
+    });
+  }
 }
