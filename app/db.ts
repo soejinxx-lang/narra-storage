@@ -57,19 +57,26 @@ export async function initDb() {
       );
     `);
 
-    // ✅ 언어별 번역 결과 테이블 (B안 핵심 추가)
+    // 언어별 번역 결과 테이블
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
         novel_id TEXT NOT NULL,
         ep INTEGER NOT NULL,
         language TEXT NOT NULL,
-        translated_text TEXT NOT NULL,
+        translated_text TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
         created_at TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY (novel_id, ep, language),
         FOREIGN KEY (novel_id, ep)
           REFERENCES episodes(novel_id, ep)
           ON DELETE CASCADE
       );
+    `);
+
+    // ✅ 기존 테이블에 status 컬럼 없을 경우 대비
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'PENDING';
     `);
 
     initialized = true;
@@ -80,7 +87,6 @@ export async function initDb() {
 
 const db = {
   query(text: string, params?: readonly unknown[]) {
-    // 🔴 TypeScript 오버로드 혼동 방지 (동작 동일)
     if (params === undefined) {
       return getPool().query(text);
     }
