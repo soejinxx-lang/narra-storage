@@ -32,6 +32,13 @@ export async function GET(
   const { id, ep } = await params;
   const epNumber = Number(ep);
 
+  if (Number.isNaN(epNumber)) {
+    return NextResponse.json(
+      { error: "INVALID_EPISODE_NUMBER" },
+      { status: 400 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const lang = searchParams.get("lang") || "ko";
 
@@ -122,7 +129,21 @@ export async function POST(
   const { id, ep } = await params;
   const epNumber = Number(ep);
 
+  if (Number.isNaN(epNumber)) {
+    return NextResponse.json(
+      { error: "INVALID_EPISODE_NUMBER" },
+      { status: 400 }
+    );
+  }
+
   const { title, content } = await req.json();
+
+  if (!content || typeof content !== "string") {
+    return NextResponse.json(
+      { error: "CONTENT_REQUIRED" },
+      { status: 400 }
+    );
+  }
 
   // 1️⃣ 기존 데이터 제거 (동일 작품 / 동일 화수)
   await db.query(
@@ -141,10 +162,10 @@ export async function POST(
     INSERT INTO episodes (id, novel_id, ep, title, content)
     VALUES ($1, $2, $3, $4, $5)
     `,
-    [episodeId, id, epNumber, title ?? null, content ?? null]
+    [episodeId, id, epNumber, title ?? null, content]
   );
 
-  // 3️⃣ 번역 상태 PENDING 생성
+  // 3️⃣ 번역 상태 PENDING 생성 (중복 방지)
   for (const lang of TARGET_LANGUAGES) {
     await db.query(
       `
@@ -152,6 +173,7 @@ export async function POST(
         (id, episode_id, language, status)
       VALUES
         ($1, $2, $3, 'PENDING')
+      ON CONFLICT (episode_id, language) DO NOTHING
       `,
       [randomUUID(), episodeId, lang]
     );
