@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../../../db";
+import db, { initDb } from "../../../../../../db";
+import { LANGUAGES } from "../../../../../../lib/constants";
 
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
 
+const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
+
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   {
     params,
   }: {
@@ -31,15 +34,6 @@ export async function POST(
     );
   }
 
-  const { language } = await req.json();
-
-  if (!language) {
-    return NextResponse.json(
-      { error: "LANGUAGE_REQUIRED" },
-      { status: 400 }
-    );
-  }
-
   const episodeRes = await db.query(
     `
     SELECT id, content
@@ -58,65 +52,71 @@ export async function POST(
 
   const { id: episodeId, content } = episodeRes.rows[0];
 
-  try {
-    await db.query(
-      `
-      UPDATE episode_translations
-      SET status = 'RUNNING',
-          error_message = NULL,
-          updated_at = NOW()
-      WHERE episode_id = $1 AND language = $2
-      `,
-      [episodeId, language]
-    );
+  const results: { language: string; status: string; error?: string }[] = [];
 
-    const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Access-Pin": PIPELINE_ACCESS_PIN,
-      },
-      body: JSON.stringify({
-        novel_title: id,
-        text: content,
+  for (const language of TARGET_LANGUAGES) {
+    try {
+      await db.query(
+        `
+        UPDATE episode_translations
+        SET status = 'RUNNING',
+            error_message = NULL,
+            updated_at = NOW()
+        WHERE episode_id = $1 AND language = $2
+        `,
+        [episodeId, language]
+      );
+
+      const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Access-Pin": PIPELINE_ACCESS_PIN,
+        },
+        body: JSON.stringify({
+          novel_title: id,
+          text: content,
+          language,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`PIPELINE_${res.status}`);
+      }
+
+      const data = await res.json();
+
+      await db.query(
+        `
+        UPDATE episode_translations
+        SET translated_text = $1,
+            status = 'DONE',
+            updated_at = NOW()
+        WHERE episode_id = $2 AND language = $3
+        `,
+        [data.translated_text, episodeId, language]
+      );
+
+      results.push({ language, status: "DONE" });
+    } catch (e: any) {
+      await db.query(
+        `
+        UPDATE episode_translations
+        SET status = 'FAILED',
+            error_message = $1,
+            updated_at = NOW()
+        WHERE episode_id = $2 AND language = $3
+        `,
+        [e.message, episodeId, language]
+      );
+
+      results.push({
         language,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`PIPELINE_${res.status}`);
+        status: "FAILED",
+        error: e.message,
+      });
     }
-
-    const data = await res.json();
-
-    await db.query(
-      `
-      UPDATE episode_translations
-      SET translated_text = $1,
-          status = 'DONE',
-          updated_at = NOW()
-      WHERE episode_id = $2 AND language = $3
-      `,
-      [data.translated_text, episodeId, language]
-    );
-
-    return NextResponse.json({ language, status: "DONE" });
-  } catch (e: any) {
-    await db.query(
-      `
-      UPDATE episode_translations
-      SET status = 'FAILED',
-          error_message = $1,
-          updated_at = NOW()
-      WHERE episode_id = $2 AND language = $3
-      `,
-      [e.message, episodeId, language]
-    );
-
-    return NextResponse.json({
-      language,
-      status: "FAILED",
-      error: e.message,
-    });
   }
+
+  return NextResponse.json({ results });
 }
