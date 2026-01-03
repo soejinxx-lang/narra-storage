@@ -44,7 +44,6 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const lang = searchParams.get("lang") || "ko";
 
-  // 1️⃣ 원문 조회
   const result = await db.query(
     `
     SELECT id, novel_id, ep, title, content
@@ -61,9 +60,8 @@ export async function GET(
     );
   }
 
-  const row = result.rows[0] as unknown as EpisodeRow;
+  const row = result.rows[0] as EpisodeRow;
 
-  // 2️⃣ 원문 요청
   if (lang === "ko") {
     return NextResponse.json({
       novelId: row.novel_id,
@@ -75,7 +73,6 @@ export async function GET(
     });
   }
 
-  // 3️⃣ 번역 조회
   const translationRes = await db.query(
     `
     SELECT translated_text, status
@@ -95,8 +92,7 @@ export async function GET(
     });
   }
 
-  const translation =
-    translationRes.rows[0] as unknown as TranslationRow;
+  const translation = translationRes.rows[0] as TranslationRow;
 
   if (translation.status !== "DONE") {
     return NextResponse.json({
@@ -152,7 +148,6 @@ export async function POST(
 
   const episodeId = `${id}_${epNumber}`;
 
-  // 1️⃣ episodes UPSERT (삭제 ❌)
   await db.query(
     `
     INSERT INTO episodes (id, novel_id, ep, title, content)
@@ -165,7 +160,6 @@ export async function POST(
     [episodeId, id, epNumber, title ?? null, content]
   );
 
-  // 2️⃣ 번역 상태 PENDING 생성 (ko 제외)
   for (const lang of TARGET_LANGUAGES) {
     await db.query(
       `
@@ -180,6 +174,46 @@ export async function POST(
     );
   }
 
-  // 3️⃣ 즉시 반환 (번역 ❌)
   return NextResponse.json({ status: "SAVED" });
+}
+
+/* =========================
+   DELETE (추가됨)
+========================= */
+export async function DELETE(
+  _req: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; ep: string }>;
+  }
+) {
+  await initDb();
+
+  const { id, ep } = await params;
+  const epNumber = Number(ep);
+
+  if (Number.isNaN(epNumber)) {
+    return NextResponse.json(
+      { error: "INVALID_EPISODE_NUMBER" },
+      { status: 400 }
+    );
+  }
+
+  const result = await db.query(
+    `
+    DELETE FROM episodes
+    WHERE novel_id = $1 AND ep = $2
+    `,
+    [id, epNumber]
+  );
+
+  if (result.rowCount === 0) {
+    return NextResponse.json(
+      { error: "EPISODE_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }
