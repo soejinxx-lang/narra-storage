@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../db";
+import { randomUUID } from "crypto";
 
 export async function GET(
   _req: NextRequest,
@@ -50,6 +51,7 @@ export async function POST(
   const title = body.title ?? "";
   const content = body.content ?? "";
 
+  // 기존 동일 화수 제거
   await db.query(
     `
     DELETE FROM episodes
@@ -58,26 +60,26 @@ export async function POST(
     [id, ep]
   );
 
-  const insertResult = await db.query(
-    `
-    INSERT INTO episodes (novel_id, ep, title, content)
-    VALUES ($1, $2, $3, $4)
-    RETURNING id
-    `,
-    [id, ep, title, content]
-  );
+  // ✅ episodes.id 직접 생성
+  const episodeId = randomUUID();
 
-  const episodeId = insertResult.rows[0].id;
+  await db.query(
+    `
+    INSERT INTO episodes (id, novel_id, ep, title, content)
+    VALUES ($1, $2, $3, $4, $5)
+    `,
+    [episodeId, id, ep, title, content]
+  );
 
   const LANGUAGES = ["en", "ja", "zh", "es", "fr", "de", "pt", "id"];
 
   for (const language of LANGUAGES) {
     await db.query(
       `
-      INSERT INTO episode_translations (episode_id, language, status)
-      VALUES ($1, $2, 'PENDING')
+      INSERT INTO episode_translations (id, episode_id, language, status)
+      VALUES ($1, $2, $3, 'PENDING')
       `,
-      [episodeId, language]
+      [randomUUID(), episodeId, language]
     );
   }
 
