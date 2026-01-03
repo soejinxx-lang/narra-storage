@@ -60,7 +60,7 @@ export async function POST(
     [id, ep]
   );
 
-  // ✅ episodes.id 직접 생성
+  // episodes.id 직접 생성
   const episodeId = randomUUID();
 
   await db.query(
@@ -76,8 +76,14 @@ export async function POST(
   for (const language of LANGUAGES) {
     await db.query(
       `
-      INSERT INTO episode_translations (id, episode_id, language, status)
-      VALUES ($1, $2, $3, 'PENDING')
+      INSERT INTO episode_translations (
+        id,
+        episode_id,
+        language,
+        status,
+        translated_text
+      )
+      VALUES ($1, $2, $3, 'PENDING', '')
       `,
       [randomUUID(), episodeId, language]
     );
