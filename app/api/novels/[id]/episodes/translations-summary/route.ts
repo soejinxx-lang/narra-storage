@@ -29,26 +29,24 @@ export async function GET(
   );
 
   /**
-   * 결과 형태:
+   * EpisodeList가 기대하는 형태:
    * {
-   *   1: { en: "DONE", ja: "PENDING" },
-   *   2: { en: "DONE" }
+   *   1: ["ko", "en"],
+   *   2: ["ko"]
    * }
    */
-  const summary: Record<
-    number,
-    Record<string, "PENDING" | "RUNNING" | "DONE" | "FAILED">
-  > = {};
+  const summary: Record<number, string[]> = {};
 
   for (const row of result.rows) {
     const ep = row.ep;
 
     if (!summary[ep]) {
-      summary[ep] = {};
+      summary[ep] = ["ko"]; // 원문은 항상 존재
     }
 
-    if (row.language) {
-      summary[ep][row.language] = row.status;
+    // DONE 상태만 포함
+    if (row.language && row.status === "DONE") {
+      summary[ep].push(row.language);
     }
   }
 
