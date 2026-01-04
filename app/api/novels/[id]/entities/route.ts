@@ -4,11 +4,11 @@ import db, { initDb } from "../../../../db";
 // GET /api/novels/[id]/entities
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   await initDb();
 
-  const novelId = params.id;
+  const { id: novelId } = await context.params;
 
   try {
     const result = await db.query(
@@ -41,11 +41,11 @@ export async function GET(
 // POST /api/novels/[id]/entities
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   await initDb();
 
-  const novelId = params.id;
+  const { id: novelId } = await context.params;
   const body = await req.json();
 
   const { source_text, translation, category, notes } = body;
@@ -71,7 +71,6 @@ export async function POST(
 
     return NextResponse.json(result.rows[0]);
   } catch (e: any) {
-    // UNIQUE(novel_id, source_text) 충돌
     if (e.code === "23505") {
       return NextResponse.json(
         { error: "ENTITY_ALREADY_EXISTS" },
