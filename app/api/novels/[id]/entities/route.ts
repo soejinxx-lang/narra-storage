@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../../../db"; // ✅ 여기만 수정
+import db, { initDb } from "../../../../db";
 
 // GET /api/novels/[id]/entities
 export async function GET(
