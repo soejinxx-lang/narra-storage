@@ -58,7 +58,7 @@ export async function initDb() {
       );
     `);
 
-    // episode_translations 테이블 (episode_id 기준)
+    // episode_translations 테이블
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
         id TEXT PRIMARY KEY,
@@ -77,7 +77,7 @@ export async function initDb() {
       );
     `);
 
-    // 🔧 구버전 컬럼 정리 (존재할 경우만)
+    // 🔧 구버전 컬럼 정리
     await client.query(`
       ALTER TABLE episode_translations
       DROP COLUMN IF EXISTS novel_id;
@@ -88,7 +88,6 @@ export async function initDb() {
       DROP COLUMN IF EXISTS ep;
     `);
 
-    // 기존 컬럼 보정
     await client.query(`
       ALTER TABLE episode_translations
       ADD COLUMN IF NOT EXISTS error_message TEXT;
@@ -102,6 +101,37 @@ export async function initDb() {
     await client.query(`
       ALTER TABLE episode_translations
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+    `);
+
+    // ===============================
+    // 🆕 entities 테이블 (고유명사)
+    // ===============================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS entities (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        novel_id TEXT NOT NULL,
+        source_text TEXT NOT NULL,
+        translation TEXT NOT NULL,
+        locked BOOLEAN DEFAULT true,
+        category VARCHAR(50),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (novel_id, source_text),
+        FOREIGN KEY (novel_id)
+          REFERENCES novels(id)
+          ON DELETE CASCADE
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_entities_novel
+      ON entities(novel_id);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_entities_source
+      ON entities(source_text);
     `);
 
     initialized = true;
