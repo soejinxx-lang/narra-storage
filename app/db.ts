@@ -103,36 +103,8 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
     `);
 
-    // ===============================
-    // 🆕 entities 테이블 (고유명사)
-    // ===============================
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS entities (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        novel_id TEXT NOT NULL,
-        source_text TEXT NOT NULL,
-        translation TEXT NOT NULL,
-        locked BOOLEAN DEFAULT true,
-        category VARCHAR(50),
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE (novel_id, source_text),
-        FOREIGN KEY (novel_id)
-          REFERENCES novels(id)
-          ON DELETE CASCADE
-      );
-    `);
-
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_entities_novel
-      ON entities(novel_id);
-    `);
-
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_entities_source
-      ON entities(source_text);
-    `);
+    // ⚠️ entities 테이블은 자동 생성하지 않음
+    // (DB 마이그레이션으로 1회 수동 생성 대상)
 
     initialized = true;
   } finally {
