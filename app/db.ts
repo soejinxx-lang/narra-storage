@@ -29,14 +29,13 @@ export async function initDb() {
   const client = await db.connect();
 
   try {
-    // novels 테이블
+    // novels
     await client.query(`
       CREATE TABLE IF NOT EXISTS novels (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT,
-        cover_url TEXT,
-        genre TEXT
+        cover_url TEXT
       );
     `);
 
@@ -45,20 +44,21 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
     `);
 
-    // episodes 테이블
+    // episodes
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
         id TEXT PRIMARY KEY,
         novel_id TEXT NOT NULL,
         ep INTEGER NOT NULL,
-        title TEXT,
-        content TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE (novel_id, ep),
-        FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+        FOREIGN KEY (novel_id)
+          REFERENCES novels(id)
+          ON DELETE CASCADE
       );
     `);
 
-    // episode_translations 테이블
+    // episode_translations
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
         id TEXT PRIMARY KEY,
@@ -117,7 +117,6 @@ const db = {
     if (params === undefined) {
       return getPool().query(text);
     }
-
     return getPool().query(text, params as unknown[]);
   },
 };
