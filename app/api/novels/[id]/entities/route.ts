@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 
-// GET /api/novels/[id]/entities
+// 🔒 Admin 인증 체크 (쓰기 전용)
+const ADMIN_KEY = process.env.ADMIN_API_KEY;
+
+function requireAdmin(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
+    return NextResponse.json(
+      { error: "UNAUTHORIZED" },
+      { status: 401 }
+    );
+  }
+}
+
+// GET /api/novels/[id]/entities (퍼블릭 허용)
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -38,11 +51,15 @@ export async function GET(
   }
 }
 
-// POST /api/novels/[id]/entities
+// POST /api/novels/[id]/entities (Admin only)
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  // 🔒 쓰기 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   const { id: novelId } = await context.params;
