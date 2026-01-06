@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const id = body.id ?? `novel-${Date.now()}`;
+  const sourceLanguage = body.source_language ?? "ko";
 
   const exists = await db.query(
     "SELECT 1 FROM novels WHERE id = $1",
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest) {
   }
 
   await db.query(
-    "INSERT INTO novels (id, title, description, cover_url) VALUES ($1, $2, $3, $4)",
-    [id, body.title, body.description ?? "", null]
+    "INSERT INTO novels (id, title, description, cover_url, source_language) VALUES ($1, $2, $3, $4, $5)",
+    [id, body.title, body.description ?? "", null, sourceLanguage]
   );
 
   return NextResponse.json(
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
         title: body.title,
         description: body.description ?? "",
         cover_url: null,
+        source_language: sourceLanguage,
       },
     },
     { status: 201 }
