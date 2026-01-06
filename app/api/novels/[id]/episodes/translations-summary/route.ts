@@ -22,6 +22,7 @@ export async function GET(
     FROM episodes e
     LEFT JOIN episode_translations t
       ON t.episode_id = e.id
+      AND t.is_public = TRUE
     WHERE e.novel_id = $1
     ORDER BY e.ep ASC
     `,
