@@ -103,7 +103,13 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
     `);
 
-    // ⚠️ entities 테이블은 자동 생성하지 않음
+    // ✅ A안 핵심: 퍼블릭 노출 제어 컬럼
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
+    `);
+
+    //⚠️ entities 테이블은 자동 생성하지 않음
     // (DB 마이그레이션으로 1회 수동 생성 대상)
 
     initialized = true;
