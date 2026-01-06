@@ -4,6 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
+// 🔒 Admin 인증 체크
+const ADMIN_KEY = process.env.ADMIN_API_KEY;
+
+function requireAdmin(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
+    return NextResponse.json(
+      { error: "UNAUTHORIZED" },
+      { status: 401 }
+    );
+  }
+}
+
 async function saveCoverUrl(id: string, url: string) {
   const result = await db.query(
     "UPDATE novels SET cover_url = $1 WHERE id = $2 RETURNING id",
@@ -36,6 +49,10 @@ export async function POST(
     params: Promise<{ id: string }>;
   }
 ) {
+  // 🔒 쓰기 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   const { id } = await context.params;
