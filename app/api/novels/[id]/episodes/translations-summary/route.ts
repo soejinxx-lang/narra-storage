@@ -18,8 +18,11 @@ export async function GET(
     SELECT
       e.ep,
       t.language,
-      t.status
+      t.status,
+      n.source_language
     FROM episodes e
+    JOIN novels n
+      ON n.id = e.novel_id
     LEFT JOIN episode_translations t
       ON t.episode_id = e.id
       AND t.is_public = TRUE
@@ -32,17 +35,18 @@ export async function GET(
   /**
    * EpisodeList가 기대하는 형태:
    * {
-   *   1: ["ko", "en"],
-   *   2: ["ko"]
+   *   1: ["ja", "en"],
+   *   2: ["ja"]
    * }
    */
   const summary: Record<number, string[]> = {};
 
   for (const row of result.rows) {
     const ep = row.ep;
+    const sourceLanguage = row.source_language;
 
     if (!summary[ep]) {
-      summary[ep] = ["ko"]; // 원문은 항상 존재
+      summary[ep] = [sourceLanguage]; // ✅ 원문 언어
     }
 
     // DONE 상태만 포함
