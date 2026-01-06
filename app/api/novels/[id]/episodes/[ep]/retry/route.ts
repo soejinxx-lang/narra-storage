@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../../../db";
 
+// 🔒 Admin 인증 체크 (이 파일 전용)
+const ADMIN_KEY = process.env.ADMIN_API_KEY;
+
+function requireAdmin(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
+    return NextResponse.json(
+      { error: "UNAUTHORIZED" },
+      { status: 401 }
+    );
+  }
+}
+
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
 
@@ -12,6 +25,10 @@ export async function POST(
     params: Promise<{ id: string; ep: string }>;
   }
 ) {
+  // 🔒 쓰기 API 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   if (!PIPELINE_BASE_URL || !PIPELINE_ACCESS_PIN) {
