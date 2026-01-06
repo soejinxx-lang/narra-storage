@@ -8,6 +8,7 @@ type EpisodeRow = {
   ep: number;
   title: string | null;
   content: string | null;
+  source_language: string;
 };
 
 type TranslationRow = {
@@ -15,9 +16,6 @@ type TranslationRow = {
   status: string | null;
   is_public: boolean | null;
 };
-
-// 🔒 번역 대상 언어 (ko 제외)
-const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
 /* =========================
    GET (퍼블릭 노출 필터 반영)
@@ -43,13 +41,20 @@ export async function GET(
   }
 
   const { searchParams } = new URL(req.url);
-  const lang = searchParams.get("lang") || "ko";
+  const lang = searchParams.get("lang");
 
   const result = await db.query(
     `
-    SELECT id, novel_id, ep, title, content
-    FROM episodes
-    WHERE novel_id = $1 AND ep = $2
+    SELECT
+      e.id,
+      e.novel_id,
+      e.ep,
+      e.title,
+      e.content,
+      n.source_language
+    FROM episodes e
+    JOIN novels n ON n.id = e.novel_id
+    WHERE e.novel_id = $1 AND e.ep = $2
     `,
     [id, epNumber]
   );
@@ -62,15 +67,16 @@ export async function GET(
   }
 
   const row = result.rows[0] as EpisodeRow;
+  const sourceLanguage = row.source_language;
 
-  // 원문(ko)은 항상 노출
-  if (lang === "ko") {
+  // 원문 언어는 항상 노출
+  if (!lang || lang === sourceLanguage) {
     return NextResponse.json({
       novelId: row.novel_id,
       ep: row.ep,
       title: row.title,
       content: row.content,
-      language: "ko",
+      language: sourceLanguage,
       status: "DONE",
     });
   }
@@ -96,7 +102,7 @@ export async function GET(
 
   const translation = translationRes.rows[0] as TranslationRow;
 
-  // ❌ 퍼블릭 비노출이면 DONE이어도 숨김
+  // ❌ 퍼블릭 비노출이면 숨김
   if (translation.is_public === false) {
     return NextResponse.json({
       novelId: id,
@@ -159,6 +165,19 @@ export async function POST(
     );
   }
 
+  const novelRes = await db.query(
+    "SELECT source_language FROM novels WHERE id = $1",
+    [id]
+  );
+
+  if (novelRes.rowCount === 0) {
+    return NextResponse.json(
+      { error: "NOVEL_NOT_FOUND" },
+      { status: 404 }
+    );
+  }
+
+  const sourceLanguage = novelRes.rows[0].source_language as string;
   const episodeId = `${id}_${epNumber}`;
 
   await db.query(
@@ -173,7 +192,11 @@ export async function POST(
     [episodeId, id, epNumber, title ?? null, content]
   );
 
-  for (const lang of TARGET_LANGUAGES) {
+  const targetLanguages = LANGUAGES.filter(
+    (l) => l !== sourceLanguage
+  );
+
+  for (const lang of targetLanguages) {
     await db.query(
       `
       INSERT INTO episode_translations
