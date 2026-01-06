@@ -13,13 +13,14 @@ type EpisodeRow = {
 type TranslationRow = {
   translated_text: string | null;
   status: string | null;
+  is_public: boolean | null;
 };
 
 // 🔒 번역 대상 언어 (ko 제외)
 const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
 /* =========================
-   GET (변경 없음)
+   GET (퍼블릭 노출 필터 반영)
 ========================= */
 export async function GET(
   req: NextRequest,
@@ -62,6 +63,7 @@ export async function GET(
 
   const row = result.rows[0] as EpisodeRow;
 
+  // 원문(ko)은 항상 노출
   if (lang === "ko") {
     return NextResponse.json({
       novelId: row.novel_id,
@@ -75,7 +77,7 @@ export async function GET(
 
   const translationRes = await db.query(
     `
-    SELECT translated_text, status
+    SELECT translated_text, status, is_public
     FROM episode_translations
     WHERE episode_id = $1 AND language = $2
     `,
@@ -93,6 +95,17 @@ export async function GET(
   }
 
   const translation = translationRes.rows[0] as TranslationRow;
+
+  // ❌ 퍼블릭 비노출이면 DONE이어도 숨김
+  if (translation.is_public === false) {
+    return NextResponse.json({
+      novelId: id,
+      ep: epNumber,
+      language: lang,
+      status: "PENDING",
+      content: null,
+    });
+  }
 
   if (translation.status !== "DONE") {
     return NextResponse.json({
@@ -178,7 +191,7 @@ export async function POST(
 }
 
 /* =========================
-   DELETE (추가됨)
+   DELETE (변경 없음)
 ========================= */
 export async function DELETE(
   _req: NextRequest,
