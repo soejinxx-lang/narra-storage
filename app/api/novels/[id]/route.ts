@@ -13,7 +13,7 @@ export async function GET(
   const { id } = await context.params;
 
   const result = await db.query(
-    "SELECT id, title, description, cover_url FROM novels WHERE id = $1",
+    "SELECT id, title, description, cover_url, source_language FROM novels WHERE id = $1",
     [id]
   );
 
@@ -67,7 +67,7 @@ export async function PATCH(
   const { description } = await req.json();
 
   const result = await db.query(
-    "UPDATE novels SET description = $1 WHERE id = $2 RETURNING id, title, description, cover_url",
+    "UPDATE novels SET description = $1 WHERE id = $2 RETURNING id, title, description, cover_url, source_language",
     [description, id]
   );
 
