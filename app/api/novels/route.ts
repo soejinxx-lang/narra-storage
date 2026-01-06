@@ -1,14 +1,31 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../db";
 
+// 🔒 Admin 인증 체크 (이 파일 전용, 구조 변경 없음)
+const ADMIN_KEY = process.env.ADMIN_API_KEY;
+
+function requireAdmin(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
+    return NextResponse.json(
+      { error: "UNAUTHORIZED" },
+      { status: 401 }
+    );
+  }
+}
+
 export async function GET(_req: NextRequest) {
   await initDb();
 
   const result = await db.query("SELECT * FROM novels");
   return NextResponse.json({ novels: result.rows });
 }
- 
+
 export async function POST(req: NextRequest) {
+  // 🔒 쓰기 API 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   const body = await req.json();
