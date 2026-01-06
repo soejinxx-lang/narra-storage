@@ -64,6 +64,17 @@ export async function initDb() {
       );
     `);
 
+    // ✅ episodes 컬럼 명시적 보장
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS title TEXT;
+    `);
+
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS content TEXT;
+    `);
+
     // episode_translations
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (
