@@ -126,8 +126,11 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE;
     `);
 
-    // ⚠️ entities 테이블은 자동 생성하지 않음
-    // (DB 마이그레이션으로 1회 수동 생성 대상)
+    // entities (고유명사 다국어 지원)
+    await client.query(`
+      ALTER TABLE entities
+      ADD COLUMN IF NOT EXISTS translations JSONB;
+    `);
 
     initialized = true;
   } finally {
