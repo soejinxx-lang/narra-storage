@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
+import fs from "fs";
+import path from "path";
 
 // 🔒 Admin 인증 체크 (쓰기 전용)
 const ADMIN_KEY = process.env.ADMIN_API_KEY;
+
+// 🔧 Pipeline entities 파일 경로
+const PIPELINE_ENTITIES_DIR =
+  process.env.PIPELINE_ENTITIES_DIR || "/app/data/entities";
 
 function requireAdmin(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -84,6 +90,43 @@ export async function POST(
       RETURNING *
       `,
       [novelId, source_text, translations, category ?? null, notes ?? null]
+    );
+
+    /**
+     * 🔄 DB → Pipeline entities 파일 동기화
+     * - Pipeline은 파일 시스템만 참조함
+     * - 여기서 단일 진실 소스(DB)를 기준으로 덮어씀
+     */
+    const allEntitiesRes = await db.query(
+      `
+      SELECT source_text, translations, locked, category, notes
+      FROM entities
+      WHERE novel_id = $1
+      `,
+      [novelId]
+    );
+
+    const entityMap: Record<string, any> = {};
+    for (const e of allEntitiesRes.rows) {
+      entityMap[e.source_text] = {
+        translations: e.translations,
+        locked: e.locked,
+        category: e.category,
+        notes: e.notes,
+      };
+    }
+
+    fs.mkdirSync(PIPELINE_ENTITIES_DIR, { recursive: true });
+
+    const filePath = path.join(
+      PIPELINE_ENTITIES_DIR,
+      `${novelId}.json`
+    );
+
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(entityMap, null, 2),
+      "utf-8"
     );
 
     return NextResponse.json(result.rows[0]);
