@@ -29,7 +29,7 @@ export async function GET(
       SELECT
         id,
         source_text,
-        translation,
+        translations,
         locked,
         category,
         notes,
@@ -65,9 +65,9 @@ export async function POST(
   const { id: novelId } = await context.params;
   const body = await req.json();
 
-  const { source_text, translation, category, notes } = body;
+  const { source_text, translations, category, notes } = body;
 
-  if (!source_text || !translation) {
+  if (!source_text || !translations) {
     return NextResponse.json(
       { error: "INVALID_BODY" },
       { status: 400 }
@@ -78,12 +78,12 @@ export async function POST(
     const result = await db.query(
       `
       INSERT INTO entities
-        (novel_id, source_text, translation, locked, category, notes)
+        (novel_id, source_text, translations, locked, category, notes)
       VALUES
         ($1, $2, $3, true, $4, $5)
       RETURNING *
       `,
-      [novelId, source_text, translation, category ?? null, notes ?? null]
+      [novelId, source_text, translations, category ?? null, notes ?? null]
     );
 
     return NextResponse.json(result.rows[0]);
