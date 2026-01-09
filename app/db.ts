@@ -132,6 +132,31 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS translations JSONB;
     `);
 
+    // users (인증 시스템)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        name TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // user_sessions (로그인 토큰)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (user_id)
+          REFERENCES users(id)
+          ON DELETE CASCADE
+      );
+    `);
+
     initialized = true;
   } finally {
     client.release();
