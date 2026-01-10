@@ -3,6 +3,17 @@ import db from "@/db";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { username, password } = await req.json();
