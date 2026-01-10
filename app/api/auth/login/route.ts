@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/app/db";
+import db from "@/db";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
