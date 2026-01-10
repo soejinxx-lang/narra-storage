@@ -9,7 +9,12 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY;
 
 function requireAdmin(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
+
+  console.log("=== REQUIRE ADMIN ===");
+  console.log("ADMIN_KEY =", process.env.ADMIN_API_KEY);
+  console.log("AUTH HEADER =", auth);
+
+  if (!process.env.ADMIN_API_KEY || auth !== `Bearer ${process.env.ADMIN_API_KEY}`) {
     return NextResponse.json(
       { error: "UNAUTHORIZED" },
       { status: 401 }
