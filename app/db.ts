@@ -128,6 +128,24 @@ export async function initDb() {
 
     // entities (고유명사 다국어 지원)
     await client.query(`
+      CREATE TABLE IF NOT EXISTS entities (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        novel_id TEXT NOT NULL,
+        source_text TEXT NOT NULL,
+        translations JSONB,
+        locked BOOLEAN DEFAULT TRUE,
+        category TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (novel_id, source_text),
+        FOREIGN KEY (novel_id)
+          REFERENCES novels(id)
+          ON DELETE CASCADE
+      );
+    `);
+
+    await client.query(`
       ALTER TABLE entities
       ADD COLUMN IF NOT EXISTS translations JSONB;
     `);

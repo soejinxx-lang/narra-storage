@@ -48,7 +48,7 @@ export async function GET(
       [novelId]
     );
 
-    return NextResponse.json(result.rows);
+    return NextResponse.json({ entities: result.rows });
   } catch (e: any) {
     return NextResponse.json(
       { error: "FAILED_TO_FETCH_ENTITIES", detail: e.message },
