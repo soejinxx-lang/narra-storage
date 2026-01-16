@@ -15,9 +15,6 @@ function requireAdmin(req: NextRequest) {
   }
 }
 
-const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
-const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
-
 const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
 export async function POST(
@@ -33,13 +30,6 @@ export async function POST(
   if (unauthorized) return unauthorized;
 
   await initDb();
-
-  if (!PIPELINE_BASE_URL || !PIPELINE_ACCESS_PIN) {
-    return NextResponse.json(
-      { error: "PIPELINE_ENV_NOT_SET" },
-      { status: 500 }
-    );
-  }
 
   const { id, ep } = await params;
   const epNumber = Number(ep);
