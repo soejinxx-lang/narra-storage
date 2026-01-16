@@ -65,7 +65,7 @@ export async function POST(
     await db.query(
       `
       INSERT INTO episode_translations (id, episode_id, language, status)
-      VALUES (gen_random_uuid()::text, $1, $2, 'PENDING')
+      VALUES (gen_random_uuid(), $1, $2, 'PENDING')
       ON CONFLICT (episode_id, language)
       DO UPDATE SET
         status = 'PENDING',
