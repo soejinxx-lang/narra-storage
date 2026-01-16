@@ -69,71 +69,27 @@ export async function POST(
 
   const { id: episodeId, content } = episodeRes.rows[0];
 
-  const results: { language: string; status: string; error?: string }[] = [];
-
+  // 🔥 Worker 아키텍처: 번역 실행 안 함, 작업만 등록
+  // Worker가 PENDING 작업을 폴링하여 순차 처리
   for (const language of TARGET_LANGUAGES) {
-    try {
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET status = 'RUNNING',
-            error_message = NULL,
-            updated_at = NOW()
-        WHERE episode_id = $1 AND language = $2
-        `,
-        [episodeId, language]
-      );
-
-      const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Access-Pin": PIPELINE_ACCESS_PIN,
-        },
-        body: JSON.stringify({
-          novel_title: id,
-          text: content,
-          language,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`PIPELINE_${res.status}`);
-      }
-
-      const data = await res.json();
-
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET translated_text = $1,
-            status = 'DONE',
-            updated_at = NOW()
-        WHERE episode_id = $2 AND language = $3
-        `,
-        [data.translated_text, episodeId, language]
-      );
-
-      results.push({ language, status: "DONE" });
-    } catch (e: any) {
-      await db.query(
-        `
-        UPDATE episode_translations
-        SET status = 'FAILED',
-            error_message = $1,
-            updated_at = NOW()
-        WHERE episode_id = $2 AND language = $3
-        `,
-        [e.message, episodeId, language]
-      );
-
-      results.push({
-        language,
-        status: "FAILED",
-        error: e.message,
-      });
-    }
+    await db.query(
+      `
+      INSERT INTO episode_translations (id, episode_id, language, status)
+      VALUES (gen_random_uuid()::text, $1, $2, 'PENDING')
+      ON CONFLICT (episode_id, language)
+      DO UPDATE SET
+        status = 'PENDING',
+        error_message = NULL,
+        updated_at = NOW()
+      `,
+      [episodeId, language]
+    );
   }
 
-  return NextResponse.json({ results });
+  console.log(`[translate-all] Queued ${TARGET_LANGUAGES.length} translations for ${id}/${epNumber}`);
+
+  return NextResponse.json({ 
+    status: "STARTED",
+    message: "Translation jobs queued for worker" 
+  });
 }

@@ -1,0 +1,22 @@
+# Railway 멀티 서비스 배포 설정
+# Storage API + Translation Worker
+
+[[services]]
+name = "storage-api"
+source = "."
+
+[services.build]
+command = "npm run build"
+
+[services.start]
+command = "npm run start"
+
+[[services]]
+name = "translation-worker"
+source = "."
+
+[services.build]
+command = "npm install && npx tsc -p worker/tsconfig.json"
+
+[services.start]
+command = "node worker/dist/index.js"
