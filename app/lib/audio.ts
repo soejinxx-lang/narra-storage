@@ -7,16 +7,11 @@ const AUDIO_ROOT = process.env.AUDIO_ROOT || "/app/audio";
 export interface AudioRecord {
   id: string;
   novel_id: string;
-  episode_number: number;
-  language: string;
-  audio_url: string | null;
-  duration_seconds: number | null;
-  file_size_bytes: number | null;
-  status: "PENDING" | "PROCESSING" | "DONE" | "FAILED";
-  error_message: string | null;
-  voice_name: string | null;
+  episode: number;
+  lang: string;
+  voice: string;
+  file_path: string;
   created_at: Date;
-  updated_at: Date;
 }
 
 export async function saveAudioFile(
@@ -62,78 +57,64 @@ export async function getAudioFileSize(
 
 export async function createAudioRecord(
   novelId: string,
-  episodeNumber: number,
-  language: string,
-  voiceName: string
+  episode: number,
+  lang: string,
+  voice: string,
+  filePath: string
 ): Promise<string> {
   const result = await db.query(
-    `INSERT INTO audio_files (novel_id, episode_number, language, voice_name, status)
-    VALUES ($1, $2, $3, $4, 'PENDING')
-    ON CONFLICT (novel_id, episode_number, language)
-    DO UPDATE SET voice_name = EXCLUDED.voice_name, status = 'PENDING', error_message = NULL, updated_at = NOW()
+    `INSERT INTO audio_files (novel_id, episode, lang, voice, file_path)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (novel_id, episode, lang, voice)
+    DO UPDATE SET file_path = EXCLUDED.file_path, voice = EXCLUDED.voice, created_at = NOW()
     RETURNING id`,
-    [novelId, episodeNumber, language, voiceName]
+    [novelId, episode, lang, voice, filePath]
   );
   return result.rows[0].id;
 }
 
-export async function updateAudioStatus(
+export async function deleteAudioRecord(
   novelId: string,
-  episodeNumber: number,
-  language: string,
-  status: "PROCESSING" | "DONE" | "FAILED",
-  updates?: {
-    audioUrl?: string;
-    durationSeconds?: number;
-    fileSizeBytes?: number;
-    errorMessage?: string;
-  }
+  episode: number,
+  lang: string,
+  voice?: string
 ): Promise<void> {
+  if (voice) {
+    await db.query(
+      `DELETE FROM audio_files WHERE novel_id = $1 AND episode = $2 AND lang = $3 AND voice = $4`,
+      [novelId, episode, lang, voice]
+    );
+    return;
+  }
+
   await db.query(
-    `UPDATE audio_files
-    SET status = $1, audio_url = COALESCE($2, audio_url), duration_seconds = COALESCE($3, duration_seconds),
-        file_size_bytes = COALESCE($4, file_size_bytes), error_message = $5, updated_at = NOW()
-    WHERE novel_id = $6 AND episode_number = $7 AND language = $8`,
-    [
-      status,
-      updates?.audioUrl || null,
-      updates?.durationSeconds || null,
-      updates?.fileSizeBytes || null,
-      updates?.errorMessage || null,
-      novelId,
-      episodeNumber,
-      language,
-    ]
+    `DELETE FROM audio_files WHERE novel_id = $1 AND episode = $2 AND lang = $3`,
+    [novelId, episode, lang]
   );
 }
 
 export async function getAudioRecord(
   novelId: string,
-  episodeNumber: number,
-  language: string
+  episode: number,
+  lang: string
 ): Promise<AudioRecord | null> {
   const result = await db.query(
-    `SELECT * FROM audio_files WHERE novel_id = $1 AND episode_number = $2 AND language = $3`,
-    [novelId, episodeNumber, language]
+    `SELECT * FROM audio_files
+     WHERE novel_id = $1 AND episode = $2 AND lang = $3
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [novelId, episode, lang]
   );
   return result.rows[0] || null;
 }
 
 export async function listEpisodeAudio(
   novelId: string,
-  episodeNumber: number
+  episode: number
 ): Promise<AudioRecord[]> {
   const result = await db.query(
-    `SELECT * FROM audio_files WHERE novel_id = $1 AND episode_number = $2 ORDER BY language`,
-    [novelId, episodeNumber]
-  );
-  return result.rows;
-}
-
-export async function getFailedAudio(limit: number = 100): Promise<AudioRecord[]> {
-  const result = await db.query(
-    `SELECT * FROM audio_files WHERE status = 'FAILED' ORDER BY updated_at DESC LIMIT $1`,
-    [limit]
+    `SELECT * FROM audio_files WHERE novel_id = $1 AND episode = $2 ORDER BY lang`,
+    [novelId, episode]
   );
   return result.rows;
 }

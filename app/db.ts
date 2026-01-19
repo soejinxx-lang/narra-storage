@@ -175,6 +175,20 @@ export async function initDb() {
       );
     `);
 
+    // audio_files (TTS 파생 자산)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS audio_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        novel_id TEXT NOT NULL,
+        episode INTEGER NOT NULL,
+        lang TEXT NOT NULL,
+        voice TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (novel_id, episode, lang, voice)
+      );
+    `);
+
     initialized = true;
   } finally {
     client.release();
