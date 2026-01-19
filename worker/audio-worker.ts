@@ -1,11 +1,73 @@
-﻿import { initDb } from "../app/db";
+﻿import db, { initDb } from "../app/db";
+import { generateAudio, getVoiceName, preprocessText, splitIntoChunks } from "../app/lib/tts";
+import { createAudioRecord, saveAudioFile } from "../app/lib/audio";
 
 async function workerLoop() {
   await initDb();
-  console.log("[AudioWorker] Initialized (disabled: no queue configured)");
+  console.log("[AudioWorker] Initialized (auto-generate mode)");
 
   while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 10000));
+    try {
+      const next = await db.query(
+        `
+        SELECT e.novel_id, e.ep, et.language, et.translated_text
+        FROM episode_translations et
+        JOIN episodes e ON e.id = et.episode_id
+        WHERE et.status = 'DONE'
+          AND et.translated_text IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM audio_files af
+            WHERE af.novel_id = e.novel_id
+              AND af.episode = e.ep
+              AND af.lang = et.language
+          )
+        ORDER BY e.novel_id, e.ep
+        LIMIT 1
+        `
+      );
+
+      const task = next.rows[0];
+      if (!task) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      const { novel_id, ep, language, translated_text } = task as {
+        novel_id: string;
+        ep: number;
+        language: string;
+        translated_text: string;
+      };
+
+      const voiceName = getVoiceName(language);
+      if (!voiceName) {
+        console.warn(`[AudioWorker] Unsupported language: ${language}`);
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      console.log(`[AudioWorker] Generating ${novel_id}/${ep}/${language}`);
+
+      const processedText = preprocessText(translated_text);
+      const chunks = splitIntoChunks(processedText, 4500);
+      let audioData: Buffer;
+      if (chunks.length === 1) {
+        audioData = await generateAudio(chunks[0], language);
+      } else {
+        const audioChunks = await Promise.all(
+          chunks.map((chunk) => generateAudio(chunk, language))
+        );
+        audioData = Buffer.concat(audioChunks);
+      }
+
+      const filePath = await saveAudioFile(novel_id, ep, language, audioData);
+      await createAudioRecord(novel_id, ep, language, voiceName, filePath);
+      console.log(`[AudioWorker] ✓ Stored ${novel_id}/${ep}/${language}`);
+    } catch (error) {
+      console.error("[AudioWorker] Error in worker loop:", error);
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
   }
 }
 

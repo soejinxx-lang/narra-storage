@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
+import { deleteAudioFile, deleteAudioRecord, listEpisodeAudio } from "../../../../../lib/audio";
 import { LANGUAGES } from "../../../../../lib/constants";
 
 type EpisodeRow = {
@@ -234,6 +235,12 @@ export async function DELETE(
       { error: "INVALID_EPISODE_NUMBER" },
       { status: 400 }
     );
+  }
+
+  const audioRecords = await listEpisodeAudio(id, epNumber);
+  for (const record of audioRecords) {
+    await deleteAudioFile(id, epNumber, record.lang);
+    await deleteAudioRecord(id, epNumber, record.lang, record.voice);
   }
 
   const result = await db.query(
