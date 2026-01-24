@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
-import { deleteAudioFile, deleteAudioRecord, listEpisodeAudio } from "../../../../../lib/audio";
+// import { deleteAudioFile, deleteAudioRecord, listEpisodeAudio } from "../../../../../lib/audio"; // TTS 기능 일시 중지
 import { LANGUAGES } from "../../../../../lib/constants";
 
 type EpisodeRow = {
@@ -237,11 +237,12 @@ export async function DELETE(
     );
   }
 
-  const audioRecords = await listEpisodeAudio(id, epNumber);
-  for (const record of audioRecords) {
-    await deleteAudioFile(id, epNumber, record.lang);
-    await deleteAudioRecord(id, epNumber, record.lang, record.voice);
-  }
+  // TTS 기능 일시 중지
+  // const audioRecords = await listEpisodeAudio(id, epNumber);
+  // for (const record of audioRecords) {
+  //   await deleteAudioFile(id, epNumber, record.lang);
+  //   await deleteAudioRecord(id, epNumber, record.lang, record.voice);
+  // }
 
   const result = await db.query(
     `
