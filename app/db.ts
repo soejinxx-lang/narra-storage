@@ -220,6 +220,11 @@ export async function initDb() {
         FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
       );
     `);
+
+    // ✅ Guest Comments Support
+    await client.query(`
+      ALTER TABLE comments ALTER COLUMN user_id DROP NOT NULL;
+    `);
   } finally {
     client.release();
   }

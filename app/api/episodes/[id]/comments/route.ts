@@ -29,16 +29,16 @@ export async function GET(
 ) {
     const { id } = await params;
 
+    // ----------------------------------------------------------------
+    // GET: 댓글 목록
+    // ----------------------------------------------------------------
     try {
-        // 댓글 목록 조회 (유저 정보 포함, 오래된 순)
-        // Parent ID가 있는 대댓글은 프론트에서 재구성하거나 여기서 정렬할 수 있음.
-        // 여기선 일단 시간순으로 다 내려줌.
         const result = await db.query(
             `SELECT 
          c.id, c.content, c.likes, c.created_at, c.parent_id,
          u.username, u.name
        FROM comments c
-       JOIN users u ON c.user_id = u.id
+       LEFT JOIN users u ON c.user_id = u.id
        WHERE c.episode_id = $1 AND c.is_hidden = FALSE
        ORDER BY c.created_at ASC`,
             [id]
@@ -61,11 +61,9 @@ export async function POST(
     const { id } = await params;
 
     try {
-        // 1. 인증 체크
+        // 1. 인증 체크 (Optional)
+        // 토큰이 있으면 유저 ID 가져오고, 없으면 null (Guest)
         const userId = await getUserIdFromToken(request.headers.get("Authorization"));
-        if (!userId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
 
         // 2. Body 파싱
         const body = await request.json();
@@ -83,14 +81,20 @@ export async function POST(
             [id, userId, content, parent_id || null]
         );
 
-        // 유저 정보도 같이 리턴해주면 프론트가 편함
-        const userRes = await db.query(`SELECT username, name FROM users WHERE id = $1`, [userId]);
-        const user = userRes.rows[0];
+        let userInfo = { username: "Guest", name: "Guest" };
+
+        // 4. 유저 정보 조회 (로그인했으면)
+        if (userId) {
+            const userRes = await db.query(`SELECT username, name FROM users WHERE id = $1`, [userId]);
+            if (userRes.rows.length > 0) {
+                userInfo = userRes.rows[0];
+            }
+        }
 
         const newComment = {
             ...result.rows[0],
-            username: user.username,
-            name: user.name
+            username: userInfo.username,
+            name: userInfo.name
         };
 
         return NextResponse.json({ success: true, comment: newComment });
