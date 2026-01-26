@@ -190,6 +190,36 @@ export async function initDb() {
     `);
 
     initialized = true;
+
+    // ✅ Survival Mode: Episode Views & Jackpot Logic
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0;
+    `);
+
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS next_jackpot_at TIMESTAMP DEFAULT NOW();
+    `);
+
+    // ✅ Community: Comments System (Royal Road Style)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS comments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        episode_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        parent_id UUID,
+        content TEXT NOT NULL,
+        likes INTEGER DEFAULT 0,
+        is_hidden BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        
+        FOREIGN KEY (episode_id) REFERENCES episodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
+      );
+    `);
   } finally {
     client.release();
   }
