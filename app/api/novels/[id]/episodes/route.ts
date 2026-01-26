@@ -29,7 +29,7 @@ export async function GET(
 
   const result = await db.query(
     `
-    SELECT ep, title, content
+    SELECT ep, title, content, views, created_at
     FROM episodes
     WHERE novel_id = $1
     ORDER BY ep ASC
