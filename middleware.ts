@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const ip = request.ip || '127.0.0.1';
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
 
   // 1. Rate Limiting (Simple In-Memory)
   // 10초에 20번 이상 요청시 차단 (도배 방지)
