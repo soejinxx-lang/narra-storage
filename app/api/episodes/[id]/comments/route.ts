@@ -36,9 +36,10 @@ export async function GET(
         const result = await db.query(
             `SELECT 
          c.id, c.content, c.likes, c.created_at, c.parent_id,
-         u.username, u.name
+         COALESCE(u.username, 'Guest') as username, 
+         COALESCE(u.name, 'Guest') as name
        FROM comments c
-       LEFT JOIN users u ON c.user_id = u.id
+       LEFT JOIN users u ON c.user_id::text = u.id
        WHERE c.episode_id = $1 AND c.is_hidden = FALSE
        ORDER BY c.created_at ASC`,
             [id]
