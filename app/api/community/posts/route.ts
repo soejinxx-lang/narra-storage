@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import db from "../../../db";
+import db from "../../../db"; // Assuming based on previous file content
+import { getUserIdFromToken } from "../../../../lib/auth";
 
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const topic = searchParams.get("topic");
+
+        const userId = await getUserIdFromToken(request.headers.get("Authorization"));
 
         // Simplified Query: likes is just a column
         let query = `
@@ -12,12 +15,13 @@ export async function GET(request: Request) {
                 p.id, p.title, p.content, p.topic, p.views, p.created_at, p.likes,
                 COALESCE(u.username, 'Unknown') as author, 
                 COALESCE(u.name, 'Unknown') as author_name,
-                (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.id)::int as comment_count
+                (SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.id)::int as comment_count,
+                (EXISTS(SELECT 1 FROM community_post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $1)) as liked_by_me
             FROM community_posts p
             LEFT JOIN users u ON p.user_id = u.id
         `;
 
-        const params: any[] = [];
+        const params: any[] = [userId]; // $1 is userId
 
         if (topic && topic !== "general") {
             query += ` WHERE p.topic = $${params.length + 1}`;

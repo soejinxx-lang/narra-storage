@@ -237,6 +237,9 @@ const db = {
     }
     return getPool().query(text, params as unknown[]);
   },
+  async connect() {
+    return getPool().connect();
+  }
 };
 
 export default db;
