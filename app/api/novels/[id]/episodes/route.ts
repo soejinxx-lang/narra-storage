@@ -28,18 +28,27 @@ export async function GET(
   const { id } = await params;
 
   // 1. (Survival Mode) 목록 조회 시, 시간이 된 잭팟들 일괄 처리!
-  // "다른 사람이 안 눌러도 시간이 지나면 올라가도록" -> 목록 조회할 때 업데이트 치면 됨.
+  // "다른 사람이 안 눌러도 시간이 지나면 올라가도록" -> 목록 조회할 때 업데이트(Lazy Evaluation)
+  // 조건: 누군가 1번이라도 읽은(views > 0) 에피소드만 대상으로 함.
+  // 가중치: +1 오를 확률이 가장 높고(60%), 대박(Jackpot) 확률은 낮음.
   await db.query(`
     UPDATE episodes
     SET 
-      views = views + floor(random() * 10 + 1)::int, -- 1~10 랜덤 증가 (리스트 조회는 빈번하므로 조금만 증가)
-      next_jackpot_at = NOW() + (floor(random() * 50 + 10) || ' hours')::interval -- 10~60시간 뒤 재설정
+      views = views + (
+        CASE 
+          WHEN random() < 0.6 THEN 1                -- 60% 확률로 1 증가
+          WHEN random() < 0.9 THEN floor(random() * 4) + 2  -- 30% 확률로 2~5 증가 (소박)
+          ELSE floor(random() * 50) + 10            -- 10% 확률로 10~60 증가 (대박)
+        END
+      )::int,
+      next_jackpot_at = NOW() + (floor(random() * 50 + 10) || ' hours')::interval -- 다음 잭팟은 10~60시간 뒤
     WHERE novel_id = $1 
       AND next_jackpot_at IS NOT NULL 
       AND next_jackpot_at < NOW()
+      AND views > 0 -- 중요한 조건: 누군가 발견(클릭)한 에피소드만 자라납니다.
   `, [id]);
 
-  // 2. 초기화 안된(NULL) 잭팟 시간 설정
+  // 2. 초기화 안된(NULL) 잭팟 시간 설정 (나중에 클릭되면 작동하도록 예약만)
   await db.query(`
     UPDATE episodes
     SET next_jackpot_at = NOW() + (floor(random() * 50 + 1) || ' hours')::interval
