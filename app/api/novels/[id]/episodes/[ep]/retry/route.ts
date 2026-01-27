@@ -79,7 +79,7 @@ export async function POST(
     await db.query(
       `
       UPDATE episode_translations
-      SET status = 'RUNNING',
+      SET status = 'PENDING',
           error_message = NULL,
           updated_at = NOW()
       WHERE episode_id = $1 AND language = $2
@@ -87,37 +87,11 @@ export async function POST(
       [episodeId, language]
     );
 
-    const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Access-Pin": PIPELINE_ACCESS_PIN,
-      },
-      body: JSON.stringify({
-        novel_title: id,
-        text: content,
-        language,
-      }),
-    });
+    // Worker Migration:
+    // 직접 호출하지 않고 PENDING 상태만 남기고 즉시 리턴
+    // 실제 번역은 Worker가 처리함
+    return NextResponse.json({ language, status: "PENDING" });
 
-    if (!res.ok) {
-      throw new Error(`PIPELINE_${res.status}`);
-    }
-
-    const data = await res.json();
-
-    await db.query(
-      `
-      UPDATE episode_translations
-      SET translated_text = $1,
-          status = 'DONE',
-          updated_at = NOW()
-      WHERE episode_id = $2 AND language = $3
-      `,
-      [data.translated_text, episodeId, language]
-    );
-
-    return NextResponse.json({ language, status: "DONE" });
   } catch (e: any) {
     await db.query(
       `
