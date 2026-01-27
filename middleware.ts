@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+declare global {
+  var rateLimitMap: Map<string, { count: number; startTime: number }>;
+}
+
 export function middleware(request: NextRequest) {
   const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
 
