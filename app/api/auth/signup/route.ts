@@ -53,6 +53,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if nickname already exists
+    if (name) {
+      const existingName = await db.query(
+        "SELECT id FROM users WHERE name = $1",
+        [name]
+      );
+
+      if (existingName.rows.length > 0) {
+        return NextResponse.json(
+          { error: "Nickname already exists" },
+          { status: 409, headers: corsHeaders }
+        );
+      }
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
