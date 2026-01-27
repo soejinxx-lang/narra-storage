@@ -2,6 +2,38 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
+  const ip = request.ip || '127.0.0.1';
+
+  // 1. Rate Limiting (Simple In-Memory)
+  // 10초에 20번 이상 요청시 차단 (도배 방지)
+  if (!globalThis.rateLimitMap) {
+    globalThis.rateLimitMap = new Map();
+  }
+
+  const now = Date.now();
+  const windowMs = 10 * 1000; // 10 seconds
+  const limit = 20;
+
+  const record = globalThis.rateLimitMap.get(ip) || { count: 0, startTime: now };
+
+  if (now - record.startTime > windowMs) {
+    // Reset window
+    record.count = 1;
+    record.startTime = now;
+  } else {
+    record.count++;
+  }
+
+  globalThis.rateLimitMap.set(ip, record);
+
+  if (record.count > limit) {
+    return new NextResponse(
+      JSON.stringify({ error: "Too many requests. Please try again later." }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // 2. CORS Handling
   // Handle preflight OPTIONS request
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, {
