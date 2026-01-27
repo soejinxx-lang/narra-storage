@@ -38,8 +38,15 @@ export async function POST(
         let isJackpot = false;
 
         // 2. 잭팟 체크
-        // next_jackpot_at이 null이면(처음) 바로 잭팟 터뜨리거나 일단 스킵 (여기선 바로 터뜨리진 않고 다음 시간만 설정)
-        if (!next_jackpot_at || now > new Date(next_jackpot_at)) {
+        // next_jackpot_at이 null이면(처음) 바로 잭팟을 터뜨리는 게 아니라, "첫 잭팟 시간"을 미래로 설정만 하고 넘어감.
+        // 이렇게 해야 "바로 랜덤하게 올라가버리는" 현상을 방지하고, 자연스럽게 시간이 지난 뒤에 터짐.
+        if (!next_jackpot_at) {
+            const hoursToAdd = Math.floor(Math.random() * 100) + 1;
+            const nextTime = new Date(now.getTime() + hoursToAdd * 60 * 60 * 1000);
+            newNextJackpot = nextTime.toISOString();
+            // 처음엔 잭팟 없음 (boostAmount = 0)
+        }
+        else if (now > new Date(next_jackpot_at)) {
             isJackpot = true;
             boostAmount = getWeightedBoostAmount();
 
