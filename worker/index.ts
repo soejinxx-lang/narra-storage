@@ -8,6 +8,7 @@
  */
 
 import db, { initDb } from '../app/db';
+import { splitIntoChunks } from './chunker';
 
 const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
 const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
@@ -21,8 +22,8 @@ interface TranslationJob {
 }
 
 /**
- * DB에서 다음 PENDING 작업을 가져오면서 동시에 RUNNING으로 변경 (Atomic)
- * - FOR UPDATE SKIP LOCKED를 사용하여 다중 워커 환경에서도 중복 처리 방지
+ * Fetch and claim the next pending job atomically
+ * Also reclaims jobs stuck in RUNNING for more than 15 minutes (dead worker recovery)
  */
 async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
   const result = await db.query(`
@@ -34,6 +35,7 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
       SELECT id
       FROM episode_translations
       WHERE status = 'PENDING'
+         OR (status = 'RUNNING' AND updated_at < NOW() - INTERVAL '15 minutes')
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -50,7 +52,67 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
 }
 
 /**
- * 번역 작업 처리
+ * Translate a single chunk with retry logic
+ */
+async function translateChunk(
+  chunkText: string,
+  language: string,
+  novelId: string,
+  chunkIndex: number
+): Promise<string> {
+  const MAX_RETRIES = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Access-Pin': PIPELINE_ACCESS_PIN || ''
+        },
+        body: JSON.stringify({
+          novel_title: novelId,
+          text: chunkText,
+          language
+        })
+      });
+
+      // Success
+      if (res.ok) {
+        const data = await res.json();
+        return data.translated_text;
+      }
+
+      // 499 Timeout / 5xx Server Error → Retry
+      if (res.status === 499 || res.status >= 500) {
+        lastError = new Error(`Server error: ${res.status} ${res.statusText}`);
+        if (attempt < MAX_RETRIES - 1) {
+          const backoffMs = 1000 * (attempt + 1); // Exponential backoff: 1s, 2s, 3s
+          console.log(`[Worker] ⚠️  Chunk ${chunkIndex} failed (${res.status}), retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+      }
+
+      // 4xx Client Error → Immediate failure
+      throw new Error(`Client error: ${res.status} ${res.statusText}`);
+
+    } catch (error: any) {
+      lastError = error;
+      if (attempt < MAX_RETRIES - 1) {
+        const backoffMs = 1000 * (attempt + 1);
+        console.log(`[Worker] ⚠️  Chunk ${chunkIndex} error, retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  throw lastError || new Error('Translation failed after retries');
+}
+
+/**
+ * Process a translation job with chunking
  */
 async function processJob(job: TranslationJob): Promise<void> {
   const { id, episode_id, language, novel_id, content } = job;
@@ -58,40 +120,35 @@ async function processJob(job: TranslationJob): Promise<void> {
   try {
     console.log(`[Worker] 📝 Processing ${language} for ${novel_id}/${episode_id}...`);
 
-    // 1. Pipeline API 호출
-    const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Access-Pin': PIPELINE_ACCESS_PIN || ''
-      },
-      body: JSON.stringify({
-        novel_title: novel_id,
-        text: content,
-        language
-      })
-    });
+    // 1. Split text into chunks
+    const chunks = splitIntoChunks(content, 2500);
+    console.log(`[Worker] 📦 Split into ${chunks.length} chunks`);
 
-    if (!res.ok) {
-      throw new Error(`Pipeline error: ${res.status} ${res.statusText}`);
+    // 2. Translate each chunk sequentially (preserves context)
+    const translatedChunks: string[] = [];
+    for (const chunk of chunks) {
+      console.log(`[Worker] 🔄 Translating chunk ${chunk.index + 1}/${chunks.length} (${chunk.charCount} chars)...`);
+      const result = await translateChunk(chunk.text, language, novel_id, chunk.index);
+      translatedChunks.push(result);
     }
 
-    const data = await res.json();
+    // 3. Merge results (preserves original structure)
+    const finalText = translatedChunks.join('');
 
-    // 3. DONE 상태로 변경 + 번역 저장
+    // 4. Save to DB (DONE status)
     await db.query(
       `UPDATE episode_translations 
        SET translated_text = $1, 
            status = 'DONE', 
            updated_at = NOW() 
        WHERE id = $2`,
-      [data.translated_text, id]
+      [finalText, id]
     );
 
     console.log(`[Worker] ✅ ${language} completed for ${novel_id}/${episode_id}`);
 
   } catch (error: any) {
-    // 4. FAILED 상태로 변경
+    // 5. Mark as FAILED
     await db.query(
       `UPDATE episode_translations 
        SET status = 'FAILED', 
