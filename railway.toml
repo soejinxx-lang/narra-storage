@@ -16,7 +16,7 @@ name = "translation-worker"
 source = "."
 
 [services.build]
-command = "npm install && npx tsc -p worker/tsconfig.json"
+command = "npm install && pip install -r worker/requirements.txt && npx tsc -p worker/tsconfig.json"
 
 [services.start]
 command = "node worker/dist/index.js"

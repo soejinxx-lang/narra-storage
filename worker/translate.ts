@@ -31,7 +31,7 @@ export async function translateWithPython(options: TranslateOptions): Promise<st
     return new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, 'translate_cli.py');
 
-        const python = spawn('python3', [
+        const python = spawn('python', [
             scriptPath,
             '--title', novelTitle,
             '--text', text,
