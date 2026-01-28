@@ -21,22 +21,29 @@ interface TranslationJob {
 }
 
 /**
- * DB에서 다음 PENDING 작업 가져오기
+ * DB에서 다음 PENDING 작업을 가져오면서 동시에 RUNNING으로 변경 (Atomic)
+ * - FOR UPDATE SKIP LOCKED를 사용하여 다중 워커 환경에서도 중복 처리 방지
  */
-async function fetchNextJob(): Promise<TranslationJob | null> {
+async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
   const result = await db.query(`
-    SELECT
-      et.id,
-      et.episode_id,
-      et.language,
-      e.novel_id,
-      e.content
-    FROM episode_translations et
-    JOIN episodes e ON e.id = et.episode_id
-    WHERE et.status = 'PENDING'
-    ORDER BY et.created_at ASC
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    UPDATE episode_translations
+    SET 
+      status = 'RUNNING',
+      updated_at = NOW()
+    WHERE id = (
+      SELECT id
+      FROM episode_translations
+      WHERE status = 'PENDING'
+      ORDER BY created_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING 
+      id,
+      episode_id,
+      language,
+      (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id) as novel_id,
+      (SELECT content FROM episodes WHERE id = episode_translations.episode_id) as content
   `);
 
   return result.rows[0] || null;
@@ -49,17 +56,9 @@ async function processJob(job: TranslationJob): Promise<void> {
   const { id, episode_id, language, novel_id, content } = job;
 
   try {
-    // 1. RUNNING 상태로 변경
-    await db.query(
-      `UPDATE episode_translations 
-       SET status = 'RUNNING', updated_at = NOW() 
-       WHERE id = $1`,
-      [id]
-    );
-
     console.log(`[Worker] 📝 Processing ${language} for ${novel_id}/${episode_id}...`);
 
-    // 2. Pipeline API 호출
+    // 1. Pipeline API 호출
     const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
       method: 'POST',
       headers: {
@@ -125,7 +124,8 @@ async function main() {
 
   while (true) {
     try {
-      const job = await fetchNextJob();
+      // Atomic하게 작업 가져오기 + 상태 변경
+      const job = await fetchAndClaimNextJob();
 
       if (!job) {
         // PENDING 작업 없음 - 1초 대기
