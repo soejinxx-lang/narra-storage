@@ -9,9 +9,9 @@
 
 import db, { initDb } from '../app/db';
 import { splitIntoChunks } from './chunker';
+import { translateWithPython } from './translate';
 
-const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
-const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
+// Pipeline merged into Worker - no longer using HTTP
 
 interface TranslationJob {
   id: string;
@@ -65,44 +65,21 @@ async function translateChunk(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const res = await fetch(`${PIPELINE_BASE_URL}/translate_episode`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Access-Pin': PIPELINE_ACCESS_PIN || ''
-        },
-        body: JSON.stringify({
-          novel_title: novelId,
-          text: chunkText,
-          language
-        })
+      // Call Python translation pipeline directly (no HTTP)
+      const translatedText = await translateWithPython({
+        novelTitle: novelId,
+        text: chunkText,
+        sourceLanguage: 'ko',
+        targetLanguage: language
       });
 
-      // Success
-      if (res.ok) {
-        const data = await res.json();
-        return data.translated_text;
-      }
-
-      // 499 Timeout / 5xx Server Error → Retry
-      if (res.status === 499 || res.status >= 500) {
-        lastError = new Error(`Server error: ${res.status} ${res.statusText}`);
-        if (attempt < MAX_RETRIES - 1) {
-          const backoffMs = 1000 * (attempt + 1); // Exponential backoff: 1s, 2s, 3s
-          console.log(`[Worker] ⚠️  Chunk ${chunkIndex} failed (${res.status}), retrying in ${backoffMs}ms...`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-          continue;
-        }
-      }
-
-      // 4xx Client Error → Immediate failure
-      throw new Error(`Client error: ${res.status} ${res.statusText}`);
+      return translatedText;
 
     } catch (error: any) {
       lastError = error;
       if (attempt < MAX_RETRIES - 1) {
-        const backoffMs = 1000 * (attempt + 1);
-        console.log(`[Worker] ⚠️  Chunk ${chunkIndex} error, retrying in ${backoffMs}ms...`);
+        const backoffMs = 1000 * (attempt + 1); // Exponential backoff: 1s, 2s, 3s
+        console.log(`[Worker] ⚠️  Chunk ${chunkIndex} translation error, retrying in ${backoffMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
     }
@@ -167,16 +144,14 @@ async function processJob(job: TranslationJob): Promise<void> {
  */
 async function main() {
   // 환경 변수 확인
-  if (!PIPELINE_BASE_URL || !PIPELINE_ACCESS_PIN) {
-    console.error('[Worker] ❌ Missing environment variables:');
-    if (!PIPELINE_BASE_URL) console.error('  - PIPELINE_BASE_URL');
-    if (!PIPELINE_ACCESS_PIN) console.error('  - PIPELINE_ACCESS_PIN');
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('[Worker] ❌ Missing environment variable: OPENAI_API_KEY');
     process.exit(1);
   }
 
   await initDb();
   console.log('[Worker] 🚀 Translation Worker Started');
-  console.log(`[Worker] 📍 Pipeline: ${PIPELINE_BASE_URL}`);
+  console.log('[Worker] 🐍 Using Python translation_core (Pipeline merged)');
   console.log('[Worker] 👀 Watching for PENDING jobs...\n');
 
   while (true) {
