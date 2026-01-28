@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["nodejs", "python311", "python311Packages.pip"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "pip install -r worker/requirements.txt"
+]
+
+[phases.build]
+cmds = ["npx tsc -p worker/tsconfig.json"]
+
+[start]
+cmd = "npm run worker"
