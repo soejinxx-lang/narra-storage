@@ -111,12 +111,12 @@ def restructure_paragraphs_en(text: str) -> str:
     if not text.strip():
         return text
     
-    print("[EN_EDITOR] START")
+    
     
     try:
         # 1단계: 서사 압력 후보 생성
         text_with_candidates = mark_break_candidates(text)
-        print(f"[EN_EDITOR] Break candidates: {text_with_candidates.count('[[BREAK]]')}")
+        
         
         # 2단계: LLM이 후보를 보고 최종 판단
         response = client.chat.completions.create(
@@ -139,7 +139,7 @@ def restructure_paragraphs_en(text: str) -> str:
         # 혼재 가능한 [[BREAK]] 마커 제거
         result = result.replace("[[BREAK]]", "").replace("[[BREAK]]\n", "")
         
-        print("[EN_EDITOR] END")
+        
         return result
     
     except Exception as e:
