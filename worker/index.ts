@@ -98,6 +98,7 @@ async function processJob(job: TranslationJob): Promise<void> {
     console.log(`[Worker] 📝 Processing ${language} for ${novel_id}/${episode_id}...`);
 
     // 0. Mark as PROCESSING
+    console.log(`[Worker] 🔄 Updating status to PROCESSING for job ${id}...`);
     await db.query(
       `UPDATE episode_translations 
        SET status = 'PROCESSING', 
@@ -105,6 +106,7 @@ async function processJob(job: TranslationJob): Promise<void> {
        WHERE id = $1`,
       [id]
     );
+    console.log(`[Worker] ✅ Status updated to PROCESSING`);
 
     // 1. Split text into chunks
     const chunks = splitIntoChunks(content, 2500);
