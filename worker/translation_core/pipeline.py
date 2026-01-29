@@ -470,7 +470,7 @@ def translate_text(
             edited = _edit_block(translated, target_lang_name)
             edited = _advanced_editor(edited, target_language)
 
-            restored = restore_placeholders(edited, mapping, entities)
+            restored = restore_placeholders(edited, mapping, entities, target_language)
             translated_paragraphs.append(restored)
         else:
             # 긴 문단: 내부 청크 분할 → 번역 → 단일 문단으로 복원
@@ -490,7 +490,7 @@ def translate_text(
                 edited = _edit_block(translated, target_lang_name)
                 edited = _advanced_editor(edited, target_language)
 
-                restored = restore_placeholders(edited, mapping, entities)
+                restored = restore_placeholders(edited, mapping, entities, target_language)
                 chunk_results.append(restored)
 
             # 🔒 중요: \n으로만 연결 (문단 내부이므로 \n\n 아님)

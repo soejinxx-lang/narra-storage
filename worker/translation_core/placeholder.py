@@ -30,7 +30,7 @@ def apply_placeholders(text: str, entities: dict):
     return text, mapping
 
 
-def restore_placeholders(text: str, mapping: dict, entities: dict):
+def restore_placeholders(text: str, mapping: dict, entities: dict, target_language: str = "en"):
     """
     Restore placeholders using stored entity translations.
     """
@@ -38,8 +38,13 @@ def restore_placeholders(text: str, mapping: dict, entities: dict):
     for token, source_name in mapping.items():
         ent = entities.get(source_name)
 
-        if ent and ent.get("translation"):
-            replacement = ent["translation"]
+        if ent and isinstance(ent, dict):
+            # 새로운 구조: {"locked": True, "translations": {"en": "...", "ja": "..."}}
+            translations = ent.get("translations", {})
+            if isinstance(translations, dict) and target_language in translations:
+                replacement = translations[target_language]
+            else:
+                replacement = source_name  # fallback: 원문 유지
         else:
             replacement = source_name  # fallback: 원문 유지
 
