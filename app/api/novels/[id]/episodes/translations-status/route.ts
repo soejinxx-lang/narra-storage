@@ -32,7 +32,7 @@ export async function GET(
 
   const statuses: Record<
     number,
-    Record<string, "PENDING" | "RUNNING" | "DONE" | "FAILED">
+    Record<string, "PENDING" | "PROCESSING" | "DONE" | "FAILED">
   > = {};
 
   for (const row of result.rows) {
