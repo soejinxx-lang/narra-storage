@@ -116,7 +116,7 @@ export async function POST(
     [episodeId, id, ep, title, content]
   );
 
-  const LANGUAGES = ["en", "ja", "zh", "es", "fr", "de", "pt", "id"];
+  const LANGUAGES = ["ko", "en", "ja", "zh", "es", "fr", "de", "pt", "id"];
 
   for (const language of LANGUAGES) {
     await db.query(
