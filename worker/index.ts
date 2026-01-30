@@ -100,6 +100,21 @@ async function processJob(job: TranslationJob): Promise<void> {
   try {
     console.log(`[Worker] 📝 Processing ${language} for ${novel_id}/${episode_id}...`);
 
+    // Skip if target language is same as source language
+    if (language === source_language) {
+      console.log(`[Worker] ⏭️  Skipping ${language} (source language)`);
+      await db.query(
+        `UPDATE episode_translations 
+         SET status = 'DONE', 
+             translated_text = $1,
+             updated_at = NOW() 
+         WHERE id = $2`,
+        [content, id]
+      );
+      console.log(`[Worker] ✅ ${language} marked as DONE (source language)`);
+      return;
+    }
+
     // 0. Mark as PROCESSING
     console.log(`[Worker] 🔄 Updating status to PROCESSING for job ${id}...`);
     await db.query(
