@@ -35,23 +35,24 @@ export async function GET(
   /**
    * EpisodeList가 기대하는 형태:
    * {
-   *   1: ["ja", "en"],
-   *   2: ["ja"]
+   *   1: { "ja": "DONE", "en": "DONE", "ko": "FAILED" },
+   *   2: { "ja": "DONE", "en": "PROCESSING" }
    * }
    */
-  const summary: Record<number, string[]> = {};
+  const summary: Record<number, Record<string, string>> = {};
 
   for (const row of result.rows) {
     const ep = row.ep;
     const sourceLanguage = row.source_language;
 
     if (!summary[ep]) {
-      summary[ep] = [sourceLanguage]; // ✅ 원문 언어
+      summary[ep] = {};
+      summary[ep][sourceLanguage] = "DONE"; // ✅ 원문 언어는 항상 DONE
     }
 
-    // DONE 상태만 포함
-    if (row.language && row.status === "DONE") {
-      summary[ep].push(row.language);
+    // 모든 번역 상태 포함
+    if (row.language && row.status) {
+      summary[ep][row.language] = row.status;
     }
   }
 
