@@ -19,6 +19,7 @@ interface TranslationJob {
   language: string;
   novel_id: string;
   content: string;
+  source_language: string;
 }
 
 /**
@@ -45,7 +46,8 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
       episode_id,
       language,
       (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id) as novel_id,
-      (SELECT content FROM episodes WHERE id = episode_translations.episode_id) as content
+      (SELECT content FROM episodes WHERE id = episode_translations.episode_id) as content,
+      (SELECT source_language FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as source_language
   `);
 
   return result.rows[0] || null;
@@ -58,7 +60,8 @@ async function translateChunk(
   chunkText: string,
   language: string,
   novelId: string,
-  chunkIndex: number
+  chunkIndex: number,
+  sourceLanguage: string
 ): Promise<string> {
   const MAX_RETRIES = 3;
   let lastError: Error | null = null;
@@ -69,7 +72,7 @@ async function translateChunk(
       const translatedText = await translateWithPython({
         novelTitle: novelId,
         text: chunkText,
-        sourceLanguage: 'ko',
+        sourceLanguage: sourceLanguage,
         targetLanguage: language
       });
 
@@ -92,7 +95,7 @@ async function translateChunk(
  * Process a translation job with chunking
  */
 async function processJob(job: TranslationJob): Promise<void> {
-  const { id, episode_id, language, novel_id, content } = job;
+  const { id, episode_id, language, novel_id, content, source_language } = job;
 
   try {
     console.log(`[Worker] 📝 Processing ${language} for ${novel_id}/${episode_id}...`);
@@ -116,7 +119,7 @@ async function processJob(job: TranslationJob): Promise<void> {
     const translatedChunks: string[] = [];
     for (const chunk of chunks) {
       console.log(`[Worker] 🔄 Translating chunk ${chunk.index + 1}/${chunks.length} (${chunk.charCount} chars)...`);
-      const result = await translateChunk(chunk.text, language, novel_id, chunk.index);
+      const result = await translateChunk(chunk.text, language, novel_id, chunk.index, source_language);
       translatedChunks.push(result);
     }
 
