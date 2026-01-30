@@ -5,11 +5,16 @@ from openai import OpenAI
 from translation_core.entity_store import load_entities
 from translation_core.placeholder import apply_placeholders, restore_placeholders
 
-# 🔗 영어 문단 리듬 에디터 (영어 전용 - LLM 기반)
+# 🔗 언어별 문단 리듬 에디터 (LLM 기반)
+from translation_core.paragraph_editor_ko import restructure_paragraphs_ko
 from translation_core.paragraph_editor_en import restructure_paragraphs_en
-
-# 🔗 일본어 문단 리듬 에디터 (일본어 전용 - LLM 기반)
 from translation_core.paragraph_editor_ja import restructure_paragraphs_ja
+from translation_core.paragraph_editor_zh import restructure_paragraphs_zh
+from translation_core.paragraph_editor_es import restructure_paragraphs_es
+from translation_core.paragraph_editor_fr import restructure_paragraphs_fr
+from translation_core.paragraph_editor_de import restructure_paragraphs_de
+from translation_core.paragraph_editor_pt import restructure_paragraphs_pt
+from translation_core.paragraph_editor_id import restructure_paragraphs_id
 
 # 🔗 일본어 문단 안전 분할 (일본어 전용 - 규칙 기반, 레거시)
 from translation_core.paragraph_splitter_ja import split_long_paragraphs_ja
@@ -504,13 +509,44 @@ def translate_text(
     structured_text = _process_structure(final_text)
     
     # 언어별 후처리 (GPT 설계 - 2단계 문단 리듬 시스템)
-    # 영어: LLM 기반 문단 리듬 조정 (후보 생성 + LLM 판단)
-    if target_language == "en":
+    # 각 언어별 웹소설 플랫폼 표준에 맞춰 문단 리듬 조정
+    
+    if target_language == "ko":
+        # 한국어: Naver Series, Kakao Page 스타일
+        structured_text = restructure_paragraphs_ko(structured_text)
+    
+    elif target_language == "en":
+        # 영어: Wattpad, WebNovel 스타일
         structured_text = restructure_paragraphs_en(structured_text)
     
-    # 일본어: LLM 기반 문단 리듬 조정 (나로우/카쿠요무 스타일)
     elif target_language == "ja":
+        # 일본어: Narou, Kakuyomu 스타일
         structured_text = restructure_paragraphs_ja(structured_text)
-    # 한국어/중국어/기타: 기존 파이프라인 유지
+    
+    elif target_language == "zh":
+        # 중국어: Qidian, Zongheng 스타일 (매우 짧은 문단)
+        structured_text = restructure_paragraphs_zh(structured_text)
+    
+    elif target_language == "es":
+        # 스페인어: Wattpad Spanish 스타일
+        structured_text = restructure_paragraphs_es(structured_text)
+    
+    elif target_language == "fr":
+        # 프랑스어: Wattpad French 스타일
+        structured_text = restructure_paragraphs_fr(structured_text)
+    
+    elif target_language == "de":
+        # 독일어: Wattpad German 스타일 (긴 문장 보상)
+        structured_text = restructure_paragraphs_de(structured_text)
+    
+    elif target_language == "pt":
+        # 포르투갈어: Wattpad Portuguese, Spirit Fanfics 스타일
+        structured_text = restructure_paragraphs_pt(structured_text)
+    
+    elif target_language == "id":
+        # 인도네시아어: Wattpad Indonesia, Cabaca 스타일
+        structured_text = restructure_paragraphs_id(structured_text)
+    
+    # 기타 언어: 기본 구조 처리만 적용
     
     return structured_text
