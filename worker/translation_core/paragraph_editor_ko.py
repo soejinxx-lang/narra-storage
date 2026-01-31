@@ -1,4 +1,5 @@
 import os
+import sys
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
