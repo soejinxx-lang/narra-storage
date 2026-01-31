@@ -9,7 +9,7 @@
 
 import db, { initDb } from '../app/db';
 import { splitIntoChunks } from './chunker';
-import { translateWithPython } from './translate';
+import { translateWithPython, restructureParagraphsWithPython } from './translate';
 
 // Pipeline merged into Worker - no longer using HTTP
 
@@ -139,9 +139,14 @@ async function processJob(job: TranslationJob): Promise<void> {
     }
 
     // 3. Merge results (preserves original structure)
-    const finalText = translatedChunks.join('');
+    const mergedText = translatedChunks.join('');
 
-    // 4. Save to DB (DONE status)
+    // 4. Restructure paragraphs (language-specific rhythm adjustment)
+    console.log(`[Worker] 📝 Restructuring paragraphs for ${language}...`);
+    const finalText = await restructureParagraphsWithPython(mergedText, language);
+    console.log(`[Worker] ✅ Paragraph restructuring complete`);
+
+    // 5. Save to DB (DONE status)
     await db.query(
       `UPDATE episode_translations 
        SET translated_text = $1, 
@@ -154,7 +159,7 @@ async function processJob(job: TranslationJob): Promise<void> {
     console.log(`[Worker] ✅ ${language} completed for ${novel_id}/${episode_id}`);
 
   } catch (error: any) {
-    // 5. Mark as FAILED
+    // 6. Mark as FAILED
     await db.query(
       `UPDATE episode_translations 
        SET status = 'FAILED', 
