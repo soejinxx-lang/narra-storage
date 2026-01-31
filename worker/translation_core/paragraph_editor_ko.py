@@ -10,89 +10,122 @@ MODEL = "gpt-4o"
 # 한국어 웹소설 문단 리듬 전용 프롬프트
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_KO = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED Korean web novel text.
+🔴 TASK: Korean Web Novel Paragraph & Line Break Adjustment
 
-This is NOT a translation task.
-Do NOT rewrite, summarize, add, remove, or rephrase any content.
-You MUST preserve all sentences exactly.
-Your ONLY task is to adjust paragraph breaks (line breaks).
+You are adjusting BOTH paragraph breaks AND line breaks for Korean web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
 
 📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on Korean web novel reading rhythm
+🎯 KOREAN WEB NOVEL STANDARDS (Naver Series, Kakao Page)
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+**핵심 원칙: 모바일 독서 최적화**
+- 한 화면에 2-3줄만 보이도록
+- 빠른 스크롤, 빠른 호흡
+- 긴 문단 = 독자 이탈
 
-GOAL:
-Make the text comfortable to read as a KOREAN WEB NOVEL
-(Naver Series, Kakao Page, Munpia, Joara standard).
+📖 LINE BREAK RULES (`\\n` - single line break)
 
-🚨 CRITICAL READABILITY RULES:
+Use `\\n` (NOT `\\n\\n`) between sentences in these cases:
 
-1. **대화 (Dialogue with "...")**
-   - MUST be a standalone paragraph.
-   - NEVER merge dialogue with narration.
-   - ALWAYS add blank line before and after dialogue.
+1. **연속 서술 (Continuous narration)**
+   ```
+   그는 천천히 고개를 들었다.
+   창밖으로 비가 내리고 있었다.
+   ```
 
-2. **서술 문단 길이 (Narration paragraph length - STRICT)**
-   - **IDEAL:** 1-2 sentences per paragraph
-   - **MAXIMUM:** 3 sentences per paragraph
-   - **NEVER:** 4+ sentences in one paragraph
-   - If you see 4+ sentences together, YOU MUST SPLIT THEM.
+2. **짧은 문장 연결 (Short sentence chains)**
+   ```
+   심장이 뛰었다.
+   빠르게.
+   거칠게.
+   ```
 
-3. **When to ALWAYS split narration:**
-   - After 2-3 sentences (default)
-   - When focus/action changes
-   - When character's mental state shifts
-   - When scene moves forward
-   - When a strong narrative beat occurs
-   - **When in doubt, SPLIT IT**
+3. **행동 묘사 (Action sequences)**
+   ```
+   문을 열었다.
+   복도는 어두웠다.
+   발소리가 들렸다.
+   ```
 
-4. **Korean-specific considerations:**
-   - 한국 웹소설은 매우 짧은 문단을 선호합니다
-   - 모바일 환경에서 읽기 편해야 합니다
-   - "~했다." 로 끝나는 문장 뒤에는 문단 나누기를 고려하세요
-   - 조사와 어미 변화를 고려하여 자연스러운 호흡을 만드세요
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
 
-5. **Visual rhythm:**
-   - Prefer SHORT paragraphs over long ones
-   - Avoid "wall of text" feeling
-   - Create breathing room for readers
-   - Korean web novels are READ ON MOBILE
-   - Long paragraphs = BAD mobile experience
+Use `\\n\\n` (blank line) in these cases:
 
-6. **Balance:**
-   - Readability > Density
-   - Short paragraphs > Long paragraphs
-   - Mobile-friendly > Desktop-optimized
+1. **대사 (Dialogue)**
+   - ALWAYS standalone paragraph
+   - ALWAYS `\\n\\n` before and after
+   ```
+   그가 물었다.
+   
+   "괜찮아?"
+   
+   아이라는 고개를 끄덕였다.
+   ```
 
-⚠️ COMMON MISTAKE TO AVOID:
-- Do NOT keep 5-10 sentences in one paragraph
-- Do NOT create "dense blocks" of text
-- Do NOT merge narration just because it's related
+2. **장면 전환 (Scene transition)**
+   ```
+   그는 문을 닫았다.
+   
+   다음 날 아침.
+   ```
+
+3. **감정 전환 (Emotional shift)**
+   ```
+   그녀는 웃었다.
+   
+   하지만 눈물이 났다.
+   ```
+
+4. **시점 변화 (POV change)**
+   ```
+   그는 떠났다.
+   
+   남겨진 그녀는 창밖을 바라보았다.
+   ```
+
+⚡ AGGRESSIVE SPLITTING REQUIRED
+
+Korean web novels use VERY short paragraphs:
+- 1-2 sentences per paragraph (ideal)
+- 3 sentences (maximum)
+- 4+ sentences = MUST SPLIT
+
+**Default rule:** After every 2 sentences, consider `\\n\\n`
 
 ✅ GOOD EXAMPLE:
+```
 다음 날 아침이 찾아왔다.
-
 정확히 7시, 흰색 메르세데스 밴이 도착했다.
 
 "아이라 푸트리 씨 이사 맞으신가요?"
 
 아이라는 고개를 끄덕일 수밖에 없었다.
+가슴이 두근거렸다.
+
+이게 정말 현실일까?
+```
 
 ❌ BAD EXAMPLE:
-다음 날 아침이 찾아왔다. 정확히 7시, 흰색 메르세데스 밴이 도착했다. "아이라 푸트리 씨 이사 맞으신가요?" 아이라는 고개를 끄덕일 수밖에 없었다.
+```
+다음 날 아침이 찾아왔다. 정확히 7시, 흰색 메르세데스 밴이 도착했다. "아이라 푸트리 씨 이사 맞으신가요?" 아이라는 고개를 끄덕일 수밖에 없었다. 가슴이 두근거렸다. 이게 정말 현실일까?
+```
+
+🔍 FINAL CHECK:
+- Would this feel fast and light on a phone screen?
+- Are there any 4+ sentence blocks? (If yes, SPLIT)
+- Does each paragraph fit in 2-3 mobile lines?
 
 OUTPUT:
-- Output ONLY the adjusted Korean text.
-- Do NOT change sentence order or wording.
-- Modify ONLY paragraph breaks.
-- SPLIT AGGRESSIVELY for readability.
+- ONLY the adjusted Korean text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations, NO comments
 """.strip()
 
 

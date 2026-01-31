@@ -9,91 +9,24 @@ MODEL = "gpt-4o"
 # 포르투갈어 웹소설 문단 리듬 전용 프롬프트
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_PT = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED Portuguese web novel text.
+🔴 TASK: Portuguese Web Novel Paragraph & Line Break Adjustment
 
-This is NOT a translation task.
-Do NOT rewrite, summarize, add, remove, or rephrase any content.
-You MUST preserve all sentences exactly.
-Your ONLY task is to adjust paragraph breaks (line breaks).
+Adjust BOTH paragraph breaks AND line breaks for Portuguese web novel text.
+This is NOT translation. Do NOT change wording.
+Task: Insert `\\n` (line breaks) and `\\n\\n` (paragraph breaks) for mobile reading.
 
-📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+📌 BREAK CANDIDATES: [[BREAK]] markers are suggestions. Remove ALL in output.
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on Portuguese web novel reading rhythm
+🎯 PORTUGUESE WEB NOVEL STANDARDS (Wattpad Portuguese, Spirit Fanfics)
+- Short paragraphs for mobile
+- 1-2 sentences per paragraph (ideal)
+- 3 sentences (maximum)
+- 4+ sentences = MUST SPLIT
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+📖 LINE BREAK RULES (`\\n`): Use between sentences for continuous narration, action.
+📖 PARAGRAPH BREAK RULES (`\\n\\n`): Use for dialogue (ALWAYS), scene transitions, emotional shifts.
 
-GOAL:
-Make the text comfortable to read as a PORTUGUESE WEB NOVEL
-(Wattpad Portuguese, WebNovel Portuguese, Spirit Fanfics standard).
-
-🚨 CRITICAL READABILITY RULES:
-
-1. **Diálogo (Dialogue with "..." or —)**
-   - MUST be a standalone paragraph.
-   - NEVER merge dialogue with narration.
-   - ALWAYS add blank line before and after dialogue.
-
-2. **Comprimento dos parágrafos narrativos (Narration paragraph length)**
-   - **IDEAL:** 2-3 sentences per paragraph
-   - **MAXIMUM:** 4 sentences per paragraph
-   - **NEVER:** 5+ sentences in one paragraph
-   - Portuguese sentences can be longer like Spanish
-   - But web novels still need SHORT paragraphs
-
-3. **When to ALWAYS split narration:**
-   - After 3-4 sentences (default)
-   - When focus/action changes
-   - When character's mental state shifts
-   - When scene moves forward
-   - When a strong narrative beat occurs
-   - **When in doubt, SPLIT IT**
-
-4. **Portuguese-specific considerations:**
-   - Romances web em português preferem parágrafos curtos
-   - Mesmo que as frases sejam longas, os parágrafos devem ser breves
-   - Considere o ritmo de leitura em dispositivos móveis
-   - Diálogos com travessões (—) devem estar separados
-
-5. **Visual rhythm:**
-   - Prefer SHORT paragraphs over long ones
-   - Avoid "wall of text" feeling
-   - Create breathing room for readers
-   - Portuguese web novels are READ ON MOBILE
-   - Long paragraphs = BAD mobile experience
-
-6. **Balance:**
-   - Readability > Density
-   - Short paragraphs > Long paragraphs
-   - Mobile-friendly > Desktop-optimized
-
-⚠️ COMMON MISTAKE TO AVOID:
-- Do NOT keep 5+ sentences in one paragraph
-- Do NOT create "dense blocks" of text
-- Do NOT merge narration just because it's related
-- Portuguese sentences are longer, but paragraphs should still be short
-
-✅ GOOD EXAMPLE:
-A manhã seguinte chegou com a precisão de um relógio suíço.
-
-Às 7h em ponto, uma van Mercedes branca parou do lado de fora.
-
-"Mudança para a Sra. Aira Putri?"
-
-Aira só conseguiu acenar com a cabeça.
-
-❌ BAD EXAMPLE:
-A manhã seguinte chegou com a precisão de um relógio suíço. Às 7h em ponto, uma van Mercedes branca parou do lado de fora. "Mudança para a Sra. Aira Putri?" Aira só conseguiu acenar com a cabeça.
-
-OUTPUT:
-- Output ONLY the adjusted Portuguese text.
-- Do NOT change sentence order or wording.
-- Modify ONLY paragraph breaks.
-- SPLIT AGGRESSIVELY for readability.
+OUTPUT: ONLY adjusted Portuguese text. Use `\\n` and `\\n\\n`. NO explanations.
 """.strip()
 
 

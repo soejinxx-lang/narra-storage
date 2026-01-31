@@ -9,91 +9,51 @@ MODEL = "gpt-4o"
 # 스페인어 웹소설 문단 리듬 전용 프롬프트
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_ES = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED Spanish web novel text.
+🔴 TASK: Spanish Web Novel Paragraph & Line Break Adjustment
 
-This is NOT a translation task.
-Do NOT rewrite, summarize, add, remove, or rephrase any content.
-You MUST preserve all sentences exactly.
-Your ONLY task is to adjust paragraph breaks (line breaks).
+You are adjusting BOTH paragraph breaks AND line breaks for Spanish web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
 
 📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on Spanish web novel reading rhythm
+🎯 SPANISH WEB NOVEL STANDARDS (Wattpad Spanish, WebNovel)
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+**Principio central: Párrafos cortos para móviles**
+- Ritmo rápido, fácil de leer
+- Párrafos cortos = mejor engagement
 
-GOAL:
-Make the text comfortable to read as a SPANISH WEB NOVEL
-(Wattpad Spanish, WebNovel Spanish standard).
+📖 LINE BREAK RULES (`\\n` - single line break)
 
-🚨 CRITICAL READABILITY RULES:
+Use `\\n` between sentences for:
+1. Continuous narration
+2. Short sentence chains
+3. Action sequences
+4. Connected thoughts
 
-1. **Diálogo (Dialogue with "..." or —)**
-   - MUST be a standalone paragraph.
-   - NEVER merge dialogue with narration.
-   - ALWAYS add blank line before and after dialogue.
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
 
-2. **Longitud de párrafos narrativos (Narration paragraph length)**
-   - **IDEAL:** 2-3 sentences per paragraph
-   - **MAXIMUM:** 4 sentences per paragraph
-   - **NEVER:** 5+ sentences in one paragraph
-   - Spanish sentences tend to be longer than English
-   - But web novels still need SHORT paragraphs
+Use `\\n\\n` for:
+1. **Diálogo** - ALWAYS standalone
+2. Scene transitions
+3. Emotional shifts
+4. POV changes
 
-3. **When to ALWAYS split narration:**
-   - After 3-4 sentences (default)
-   - When focus/action changes
-   - When character's mental state shifts
-   - When scene moves forward
-   - When a strong narrative beat occurs
-   - **When in doubt, SPLIT IT**
+⚡ AGGRESSIVE SPLITTING
 
-4. **Spanish-specific considerations:**
-   - Las novelas web en español prefieren párrafos cortos
-   - Aunque las oraciones sean más largas, los párrafos deben ser breves
-   - Considere el ritmo de lectura en dispositivos móviles
-   - Los diálogos con guiones (—) deben estar separados
-
-5. **Visual rhythm:**
-   - Prefer SHORT paragraphs over long ones
-   - Avoid "wall of text" feeling
-   - Create breathing room for readers
-   - Spanish web novels are READ ON MOBILE
-   - Long paragraphs = BAD mobile experience
-
-6. **Balance:**
-   - Readability > Density
-   - Short paragraphs > Long paragraphs
-   - Mobile-friendly > Desktop-optimized
-
-⚠️ COMMON MISTAKE TO AVOID:
-- Do NOT keep 5+ sentences in one paragraph
-- Do NOT create "dense blocks" of text
-- Do NOT merge narration just because it's related
-- Spanish sentences are longer, but paragraphs should still be short
-
-✅ GOOD EXAMPLE:
-La mañana siguiente llegó con la precisión de un reloj suizo.
-
-A las 7 AM en punto, una furgoneta Mercedes blanca se detuvo afuera.
-
-"¿Mudanza para la Sra. Aira Putri?"
-
-Aira solo pudo asentir.
-
-❌ BAD EXAMPLE:
-La mañana siguiente llegó con la precisión de un reloj suizo. A las 7 AM en punto, una furgoneta Mercedes blanca se detuvo afuera. "¿Mudanza para la Sra. Aira Putri?" Aira solo pudo asentir.
+- 1-2 sentences per paragraph (ideal)
+- 3 sentences (maximum)
+- 4+ sentences = MUST SPLIT
 
 OUTPUT:
-- Output ONLY the adjusted Spanish text.
-- Do NOT change sentence order or wording.
-- Modify ONLY paragraph breaks.
-- SPLIT AGGRESSIVELY for readability.
+- ONLY adjusted Spanish text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations
 """.strip()
 
 

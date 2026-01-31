@@ -10,92 +10,160 @@ MODEL = "gpt-4o"
 # 영어 웹소설 문단 리듬 전용 프롬프트 (with BREAK candidates)
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_EN = """
-🔴 TASK: English Web Novel Paragraph Rhythm Adjustment
-You are NOT translating. You are NOT rewriting. You are NOT summarizing.
-You are adjusting paragraph breaks only for ENGLISH WEB NOVELS.
+🔴 TASK: English Web Novel Paragraph & Line Break Adjustment
 
-🔒 ABSOLUTE RULES (DO NOT VIOLATE)
-* Do NOT change wording, grammar, tense, or vocabulary.
-* Do NOT add or remove sentences.
-* Do NOT merge or split sentences.
-* Do NOT paraphrase.
-* You may ONLY insert or remove line breaks (`\\n\\n`).
-
-If you change meaning in any way, the task is failed.
+You are adjusting BOTH paragraph breaks AND line breaks for English web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
 
 📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on English web novel reading rhythm
+🎯 ENGLISH WEB NOVEL STANDARDS (Wattpad, WebNovel, Royal Road)
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+**Core Principle: Mobile-First Reading**
+- Fast scrolling, quick pacing
+- Short paragraphs = better engagement
+- Long blocks = reader drop-off
 
-📖 CONTEXT: ENGLISH WEB NOVEL STYLE
-This text is for mobile/web novel readers, NOT traditional literature.
+📖 LINE BREAK RULES (`\\n` - single line break)
 
-Key principle:
-Paragraph breaks are based on reader breathing and eye movement, NOT logic, grammar, or academic structure.
+Use `\\n` (NOT `\\n\\n`) between sentences in these cases:
 
-If sentences feel "stuck together", the paragraphing is wrong.
+1. **Continuous narration**
+   ```
+   He slowly lifted his head.
+   Rain was falling outside the window.
+   ```
 
-✅ PARAGRAPH RHYTHM RULES (VERY IMPORTANT)
-Apply the following strictly:
+2. **Short sentence chains (rhythm/emphasis)**
+   ```
+   Her heart raced.
+   Faster.
+   Harder.
+   ```
 
-1. Dialogue
-   * Every spoken line MUST be its own paragraph.
-   * Never merge dialogue with narration.
+3. **Action sequences**
+   ```
+   The door opened.
+   The hallway was dark.
+   Footsteps echoed.
+   ```
 
-2. Inner thoughts / reactions
-   * One-sentence paragraphs are ALLOWED and ENCOURAGED.
-   * Especially for:
-      * fear
-      * surprise
-      * realization
-      * hesitation
-      * emotional response
+4. **Internal thoughts (connected)**
+   ```
+   What was happening?
+   This couldn't be real.
+   ```
 
-3. Narration
-   * Default: 1–2 sentences per paragraph
-   * 3 sentences MAXIMUM (only for continuous description)
-   * 4 sentences in one paragraph is NOT allowed.
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
 
-4. Transition moments
-   Insert a paragraph break when:
-   * emotional state shifts
-   * point of view focus shifts
-   * tension changes
-   * action → reaction
-   * description → thought
+Use `\\n\\n` (blank line) in these cases:
 
-5. Pacing priority
-   When unsure:
-   * SHORTER paragraphs are always better than longer ones.
-   * If it feels even slightly dense → split it.
+1. **Dialogue**
+   - ALWAYS standalone paragraph
+   - ALWAYS `\\n\\n` before and after
+   ```
+   He asked quietly.
+   
+   "Are you okay?"
+   
+   She nodded, unable to speak.
+   ```
 
-❌ WHAT NOT TO DO (CRITICAL)
-* Do NOT group sentences just because they are logically related.
-* Do NOT create "essay-style" paragraphs.
-* Do NOT aim for literary density.
-* Do NOT imitate printed novels.
+2. **Scene transitions**
+   ```
+   He closed the door behind him.
+   
+   The next morning arrived cold and gray.
+   ```
 
-If a paragraph looks like a solid block of text, it is WRONG.
+3. **Emotional shifts**
+   ```
+   She smiled.
+   
+   But tears were streaming down her face.
+   ```
 
-✅ OUTPUT FORMAT
-* Output ONLY the adjusted text.
-* Use blank lines to separate paragraphs.
-* No explanations.
-* No comments.
-* No markdown.
+4. **POV changes**
+   ```
+   He walked away without looking back.
+   
+   She watched him disappear into the crowd.
+   ```
 
-🧠 FINAL CHECK BEFORE OUTPUT
-Ask yourself silently:
-"Would this feel fast, light, and easy to read on a phone screen?"
+5. **Tension breaks**
+   ```
+   The silence stretched.
+   
+   Then—a crash from upstairs.
+   ```
 
-If the answer is no, add more paragraph breaks.
+⚡ AGGRESSIVE SPLITTING REQUIRED
+
+English web novels prefer SHORT paragraphs:
+- 1-2 sentences per paragraph (ideal)
+- 3 sentences (maximum for description)
+- 4+ sentences = MUST SPLIT
+
+**Default rule:** After every 2-3 sentences, consider `\\n\\n`
+
+✅ GOOD EXAMPLE:
+```
+The next morning came too soon.
+At exactly 7 AM, a white Mercedes van pulled up.
+
+"Miss Aira Putri?"
+
+She could only nod.
+Her heart was pounding.
+
+Was this really happening?
+```
+
+❌ BAD EXAMPLE:
+```
+The next morning came too soon. At exactly 7 AM, a white Mercedes van pulled up. "Miss Aira Putri?" She could only nod. Her heart was pounding. Was this really happening?
+```
+
+🔍 ENGLISH-SPECIFIC RULES:
+
+1. **One-sentence paragraphs are ENCOURAGED**
+   - For impact
+   - For emphasis
+   - For emotional beats
+
+2. **Dialogue tags**
+   - Keep with dialogue if short: `"Hello," she said.`
+   - Separate if long: 
+     ```
+     "Hello."
+     
+     She said it with a smile, but her eyes told a different story.
+     ```
+
+3. **Internal monologue**
+   - Italics or thoughts = separate paragraph
+   - Short reactions = can use `\\n` instead of `\\n\\n`
+
+4. **Description vs. Action**
+   - Description: 2-3 sentences max
+   - Action: 1-2 sentences, then break
+
+🔍 FINAL CHECK:
+- Would this feel fast-paced on a phone screen?
+- Are there any 4+ sentence blocks? (If yes, SPLIT)
+- Does dialogue stand alone?
+- Is there breathing room between beats?
+
+OUTPUT:
+- ONLY the adjusted English text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations, NO comments
 """.strip()
 
 

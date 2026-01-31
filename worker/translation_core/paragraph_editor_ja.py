@@ -9,83 +9,148 @@ MODEL = "gpt-4o"
 # 일본어 웹소설 문단 리듬 전용 프롬프트 (with BREAK candidates)
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_JA = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED Japanese web novel text.
+🔴 TASK: Japanese Web Novel Paragraph & Line Break Adjustment
 
-This is NOT a translation task.
-Do NOT rewrite, summarize, add, remove, or rephrase any content.
-You MUST preserve all sentences exactly.
-Your ONLY task is to adjust paragraph breaks (line breaks).
+You are adjusting BOTH paragraph breaks AND line breaks for Japanese web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
 
 📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on Japanese web novel reading rhythm
+🎯 JAPANESE WEB NOVEL STANDARDS (小説家になろう, カクヨム)
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+**核心原則: 超短文段落**
+- 日本のWeb小説は世界で最も短い段落を使用
+- モバイル画面で1-2行のみ
+- 長い段落 = 読者離脱
 
-GOAL:
-Make the text comfortable to read as a JAPANESE WEB NOVEL
-(Narou / Kakuyomu / commercial web novel standard).
+📖 LINE BREAK RULES (`\\n` - single line break)
 
-🚨 CRITICAL READABILITY RULES:
+Use `\\n` (NOT `\\n\\n`) between sentences in these cases:
 
-1. **Dialogue (「」)**
-   - MUST be a standalone paragraph.
-   - NEVER merge dialogue with narration.
-   - ALWAYS add blank line before and after dialogue.
+1. **連続描写 (Continuous description)**
+   ```
+   彼はゆっくりと顔を上げた。
+   窓の外では雨が降っていた。
+   ```
 
-2. **Narration paragraph length (STRICT)**
-   - **IDEAL:** 1-2 sentences per paragraph
-   - **MAXIMUM:** 3 sentences per paragraph
-   - **NEVER:** 4+ sentences in one paragraph
-   - If you see 4+ sentences together, YOU MUST SPLIT THEM.
+2. **短文連鎖 (Short sentence chains)**
+   ```
+   心臓が跳ねた。
+   速く。
+   激しく。
+   ```
 
-3. **When to ALWAYS split narration:**
-   - After 2-3 sentences (default)
-   - When focus/action changes
-   - When character's mental state shifts
-   - When scene moves forward
-   - When a strong narrative beat occurs
-   - **When in doubt, SPLIT IT**
+3. **アクションシーケンス (Action sequences)**
+   ```
+   ドアが開いた。
+   廊下は暗かった。
+   足音が聞こえた。
+   ```
 
-4. **Visual rhythm:**
-   - Prefer SHORT paragraphs over long ones
-   - Avoid "wall of text" feeling
-   - Create breathing room for readers
-   - Japanese web novels are READ ON MOBILE
-   - Long paragraphs = BAD mobile experience
+4. **内心描写 (Internal thoughts - connected)**
+   ```
+   どうなっているんだ？
+   これは現実じゃない。
+   ```
 
-5. **Balance:**
-   - Readability > Density
-   - Short paragraphs > Long paragraphs
-   - Mobile-friendly > Desktop-optimized
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
 
-⚠️ COMMON MISTAKE TO AVOID:
-- Do NOT keep 5-10 sentences in one paragraph
-- Do NOT create "dense blocks" of text
-- Do NOT merge narration just because it's related
+Use `\\n\\n` (blank line) in these cases:
+
+1. **会話 (Dialogue with 「」)**
+   - ALWAYS standalone paragraph
+   - ALWAYS `\\n\\n` before and after
+   ```
+   彼は静かに尋ねた。
+   
+   「大丈夫？」
+   
+   彼女は言葉もなく頷いた。
+   ```
+
+2. **場面転換 (Scene transition)**
+   ```
+   彼はドアを閉めた。
+   
+   翌朝、冷たい灰色の朝が訪れた。
+   ```
+
+3. **感情の変化 (Emotional shift)**
+   ```
+   彼女は微笑んだ。
+   
+   しかし涙が頬を伝っていた。
+   ```
+
+4. **視点の変化 (POV change)**
+   ```
+   彼は振り返らずに歩き去った。
+   
+   彼女は人混みに消えていく彼を見つめた。
+   ```
+
+⚡ ULTRA-AGGRESSIVE SPLITTING REQUIRED
+
+Japanese web novels use THE SHORTEST paragraphs:
+- 1 sentence per paragraph (most common)
+- 2 sentences (acceptable)
+- 3+ sentences = MUST SPLIT
+
+**Default rule:** After EVERY sentence, consider `\\n\\n`
 
 ✅ GOOD EXAMPLE:
-翌朝は、まるでスイス時計のように正確に訪れた。
+```
+翌朝は早すぎた。
 
-午前7時ちょうど、輝く白いメルセデスのバンが外に停まった。
+午前7時ちょうど、白いメルセデスのバンが到着した。
 
-「Pemindahan Mbak Aira Putri?」
+「アイラ・プトリさんですか？」
 
-アイラは頷くことしかできなかった。
+彼女は頷くしかなかった。
+心臓が激しく鼓動していた。
+
+これは本当に起こっているのか？
+```
 
 ❌ BAD EXAMPLE:
-翌朝は、まるでスイス時計のように正確に訪れた。午前7時ちょうど、輝く白いメルセデスのバンが外に停まった。「Pemindahan Mbak Aira Putri?」アイラは頷くことしかできなかった。
+```
+翌朝は早すぎた。午前7時ちょうど、白いメルセデスのバンが到着した。「アイラ・プトリさんですか？」彼女は頷くしかなかった。心臓が激しく鼓動していた。これは本当に起こっているのか？
+```
+
+🔍 JAPANESE-SPECIFIC RULES:
+
+1. **一文一段落が基本 (One sentence = one paragraph is standard)**
+   - なろう系では超短文が好まれる
+   - 読者の目が疲れない
+
+2. **会話の扱い (Dialogue handling)**
+   - 「」は必ず独立段落
+   - 会話タグも別段落にすることが多い
+
+3. **心理描写 (Internal monologue)**
+   - 短い思考は `\\n` で繋ぐ
+   - 長い思考は `\\n\\n` で分ける
+
+4. **描写 vs アクション (Description vs. Action)**
+   - 描写: 1-2文で区切る
+   - アクション: 1文ごとに区切る
+
+🔍 FINAL CHECK:
+- スマホ画面で快適に読めるか？
+- 3文以上の段落はないか？（あればSPLIT）
+- 会話は独立しているか？
+- テンポは速いか？
 
 OUTPUT:
-- Output ONLY the adjusted Japanese text.
-- Do NOT change sentence order or wording.
-- Modify ONLY paragraph breaks.
-- SPLIT AGGRESSIVELY for readability.
+- ONLY the adjusted Japanese text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations, NO comments
 """.strip()
 
 

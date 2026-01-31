@@ -9,94 +9,148 @@ MODEL = "gpt-4o"
 # 중국어 웹소설 문단 리듬 전용 프롬프트
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_ZH = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED Chinese web novel text.
+🔴 TASK: Chinese Web Novel Paragraph & Line Break Adjustment
 
-This is NOT a translation task.
-Do NOT rewrite, summarize, add, remove, or rephrase any content.
-You MUST preserve all sentences exactly.
-Your ONLY task is to adjust paragraph breaks (line breaks).
+You are adjusting BOTH paragraph breaks AND line breaks for Chinese web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
 
 📌 BREAK CANDIDATES
-The text contains [[BREAK]] markers indicating potential paragraph break points.
-These are SUGGESTIONS, not requirements.
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
 
-- You MAY keep [[BREAK]] as a paragraph break (replace with \\n\\n)
-- You MAY ignore [[BREAK]] and keep sentences together
-- Use your judgment based on Chinese web novel reading rhythm
+🎯 CHINESE WEB NOVEL STANDARDS (起点, 纵横, 晋江)
 
-**IMPORTANT:** Remove ALL [[BREAK]] markers in your output.
-Output should contain ONLY the adjusted text with proper paragraph breaks.
+**核心原则: 极短段落**
+- 中文网文段落比其他语言更短
+- 手机屏幕1-2行为佳
+- 长段落 = 读者流失
 
-GOAL:
-Make the text comfortable to read as a CHINESE WEB NOVEL
-(Qidian, Zongheng, 17K standard).
+📖 LINE BREAK RULES (`\\n` - single line break)
 
-🚨 CRITICAL READABILITY RULES:
+Use `\\n` (NOT `\\n\\n`) between sentences in these cases:
+
+1. **连续叙述 (Continuous narration)**
+   ```
+   他缓缓抬起头。
+   窗外正下着雨。
+   ```
+
+2. **短句连接 (Short sentence chains)**
+   ```
+   心跳加速。
+   越来越快。
+   越来越猛。
+   ```
+
+3. **动作描写 (Action sequences)**
+   ```
+   门开了。
+   走廊一片漆黑。
+   传来脚步声。
+   ```
+
+4. **内心活动 (Internal thoughts - connected)**
+   ```
+   这是怎么回事？
+   这不可能是真的。
+   ```
+
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
+
+Use `\\n\\n` (blank line) in these cases:
 
 1. **对话 (Dialogue with "...")**
-   - MUST be a standalone paragraph.
-   - NEVER merge dialogue with narration.
-   - ALWAYS add blank line before and after dialogue.
+   - ALWAYS standalone paragraph
+   - ALWAYS `\\n\\n` before and after
+   ```
+   他轻声问道。
+   
+   "你还好吗？"
+   
+   她无言地点了点头。
+   ```
 
-2. **叙述段落长度 (Narration paragraph length - VERY STRICT)**
-   - **IDEAL:** 1-2 sentences per paragraph
-   - **MAXIMUM:** 2 sentences per paragraph
-   - **NEVER:** 3+ sentences in one paragraph
-   - Chinese web novels prefer VERY SHORT paragraphs
-   - If you see 3+ sentences together, YOU MUST SPLIT THEM.
+2. **场景转换 (Scene transition)**
+   ```
+   他关上了门。
+   
+   第二天清晨，天色阴沉。
+   ```
 
-3. **When to ALWAYS split narration:**
-   - After 1-2 sentences (default - SHORTER than other languages)
-   - When focus/action changes
-   - When character's mental state shifts
-   - When scene moves forward
-   - When a strong narrative beat occurs
-   - **When in doubt, SPLIT IT**
+3. **情绪转变 (Emotional shift)**
+   ```
+   她笑了。
+   
+   但眼泪却流了下来。
+   ```
 
-4. **Chinese-specific considerations:**
-   - 中文网络小说偏好极短的段落
-   - 移动阅读环境下，短段落更易读
-   - 句号（。）后通常应该换段
-   - 避免"文字墙"效果
-   - 中文没有空格，所以段落分隔更重要
+4. **视角变化 (POV change)**
+   ```
+   他头也不回地走了。
+   
+   她望着他消失在人群中。
+   ```
 
-5. **Visual rhythm:**
-   - Prefer VERY SHORT paragraphs
-   - Avoid "wall of text" feeling at all costs
-   - Create maximum breathing room for readers
-   - Chinese web novels are READ ON MOBILE
-   - Long paragraphs = VERY BAD mobile experience
+⚡ ULTRA-AGGRESSIVE SPLITTING REQUIRED
 
-6. **Balance:**
-   - Readability > Density
-   - Very short paragraphs > Short paragraphs
-   - Mobile-friendly > Desktop-optimized
-   - Chinese web novels are SHORTER than English/Japanese
+Chinese web novels use VERY short paragraphs:
+- 1 sentence per paragraph (ideal)
+- 2 sentences (maximum)
+- 3+ sentences = MUST SPLIT
 
-⚠️ COMMON MISTAKE TO AVOID:
-- Do NOT keep 3+ sentences in one paragraph
-- Do NOT create "dense blocks" of text
-- Do NOT merge narration just because it's related
-- Chinese web novels are MORE fragmented than other languages
+**Default rule:** After EVERY sentence, consider `\\n\\n`
 
 ✅ GOOD EXAMPLE:
-第二天早晨准时到来。
+```
+第二天早晨来得太快。
 
 早上七点整，一辆白色奔驰面包车停在了门外。
 
-"艾拉·普特里女士的搬家吗？"
+"艾拉·普特里女士？"
 
-艾拉只能点头。
+她只能点头。
+心跳如鼓。
+
+这真的在发生吗？
+```
 
 ❌ BAD EXAMPLE:
-第二天早晨准时到来。早上七点整，一辆白色奔驰面包车停在了门外。"艾拉·普特里女士的搬家吗？"艾拉只能点头。
+```
+第二天早晨来得太快。早上七点整，一辆白色奔驰面包车停在了门外。"艾拉·普特里女士？"她只能点头。心跳如鼓。这真的在发生吗？
+```
+
+🔍 CHINESE-SPECIFIC RULES:
+
+1. **一句一段为常态 (One sentence = one paragraph is normal)**
+   - 中文网文比日文更短
+   - 句号（。）后通常换段
+
+2. **对话处理 (Dialogue handling)**
+   - 引号内容必须独立成段
+   - 对话标签可独立也可连接
+
+3. **心理描写 (Internal monologue)**
+   - 短思考用 `\\n` 连接
+   - 长思考用 `\\n\\n` 分隔
+
+4. **描写 vs 动作 (Description vs. Action)**
+   - 描写: 1-2句后分段
+   - 动作: 每句分段
+
+🔍 FINAL CHECK:
+- 手机屏幕上是否舒适？
+- 有无3句以上段落？（有则SPLIT）
+- 对话是否独立？
+- 节奏是否够快？
 
 OUTPUT:
-- Output ONLY the adjusted Chinese text.
-- Do NOT change sentence order or wording.
-- Modify ONLY paragraph breaks.
-- SPLIT VERY AGGRESSIVELY for readability.
-- Chinese web novels need SHORTER paragraphs than other languages.
+- ONLY the adjusted Chinese text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations, NO comments
 """.strip()
 
 

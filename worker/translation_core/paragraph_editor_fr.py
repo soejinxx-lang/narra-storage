@@ -9,7 +9,40 @@ MODEL = "gpt-4o"
 # 프랑스어 웹소설 문단 리듬 전용 프롬프트
 # ===============================
 PARAGRAPH_RHYTHM_PROMPT_FR = """
-You are adjusting paragraph breaks for ALREADY TRANSLATED French web novel text.
+🔴 TASK: French Web Novel Paragraph & Line Break Adjustment
+
+You are adjusting BOTH paragraph breaks AND line breaks for French web novel text.
+This is NOT translation. Do NOT change wording, grammar, or content.
+Your task: Insert line breaks (`\\n`) and paragraph breaks (`\\n\\n`) for optimal mobile reading.
+
+📌 BREAK CANDIDATES
+The text contains [[BREAK]] markers as suggestions.
+- You MAY use [[BREAK]] → `\\n\\n` (paragraph break)
+- You MAY ignore [[BREAK]]
+- Remove ALL [[BREAK]] markers in output
+
+🎯 FRENCH WEB NOVEL STANDARDS (Wattpad French, WebNovel)
+
+**Principe central: Paragraphes courts pour mobile**
+- Rythme rapide, facile à lire
+- Paragraphes courts = meilleur engagement
+
+📖 LINE BREAK RULES (`\\n` - single line break)
+Use `\\n` between sentences for continuous narration, action, connected thoughts.
+
+📖 PARAGRAPH BREAK RULES (`\\n\\n` - blank line)
+Use `\\n\\n` for: Dialogue (ALWAYS), scene transitions, emotional shifts, POV changes.
+
+⚡ AGGRESSIVE SPLITTING
+- 1-2 sentences per paragraph (ideal)
+- 3 sentences (maximum)
+- 4+ sentences = MUST SPLIT
+
+OUTPUT:
+- ONLY adjusted French text
+- Use `\\n` for line breaks
+- Use `\\n\\n` for paragraph breaks
+- NO explanations
 
 This is NOT a translation task.
 Do NOT rewrite, summarize, add, remove, or rephrase any content.
