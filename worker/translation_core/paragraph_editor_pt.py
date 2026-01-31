@@ -13,7 +13,7 @@ PARAGRAPH_RHYTHM_PROMPT_PT = """
 
 Adjust BOTH paragraph breaks AND line breaks for Portuguese web novel text.
 This is NOT translation. Do NOT change wording.
-Task: Insert `\\n` (line breaks) and `\\n\\n` (paragraph breaks) for mobile reading.
+Task: Insert `\n` (line breaks) and `\n\n` (paragraph breaks) for mobile reading.
 
 📌 BREAK CANDIDATES: [[BREAK]] markers are suggestions. Remove ALL in output.
 
@@ -23,10 +23,10 @@ Task: Insert `\\n` (line breaks) and `\\n\\n` (paragraph breaks) for mobile read
 - 3 sentences (maximum)
 - 4+ sentences = MUST SPLIT
 
-📖 LINE BREAK RULES (`\\n`): Use between sentences for continuous narration, action.
-📖 PARAGRAPH BREAK RULES (`\\n\\n`): Use for dialogue (ALWAYS), scene transitions, emotional shifts.
+📖 LINE BREAK RULES (`\n`): Use between sentences for continuous narration, action.
+📖 PARAGRAPH BREAK RULES (`\n\n`): Use for dialogue (ALWAYS), scene transitions, emotional shifts.
 
-OUTPUT: ONLY adjusted Portuguese text. Use `\\n` and `\\n\\n`. NO explanations.
+OUTPUT: ONLY adjusted Portuguese text. Use `\n` and `\n\n`. NO explanations.
 """.strip()
 
 
