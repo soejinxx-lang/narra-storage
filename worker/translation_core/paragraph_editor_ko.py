@@ -109,8 +109,13 @@ def restructure_paragraphs_ko(text: str) -> str:
         return text
     
     try:
+        # 디버깅: 입력 확인
+        print(f"[DEBUG-KO] Input length: {len(text)} chars", file=sys.stderr)
+        print(f"[DEBUG-KO] Input paragraphs: {text.count(chr(10) + chr(10)) + 1}", file=sys.stderr)
+        
         # 1단계: 서사 압력 후보 생성
         text_with_candidates = mark_break_candidates(text)
+        print(f"[DEBUG-KO] Break candidates marked: {text_with_candidates.count('[[BREAK]]')}", file=sys.stderr)
         
         # 2단계: LLM이 후보를 보고 최종 판단
         response = client.chat.completions.create(
@@ -133,9 +138,15 @@ def restructure_paragraphs_ko(text: str) -> str:
         # 혼재 가능한 [[BREAK]] 마커 제거
         result = result.replace("[[BREAK]]", "").replace("[[BREAK]]\\n", "")
         
+        # 디버깅: 출력 확인
+        print(f"[DEBUG-KO] Output length: {len(result)} chars", file=sys.stderr)
+        print(f"[DEBUG-KO] Output paragraphs: {result.count(chr(10) + chr(10)) + 1}", file=sys.stderr)
+        print(f"[DEBUG-KO] Text changed: {text != result}", file=sys.stderr)
+        print(f"[DEBUG-KO] First 300 chars changed: {text[:300] != result[:300]}", file=sys.stderr)
+        
         return result
     
     except Exception as e:
         # 에러 발생 시 원본 반환
-        print(f"[paragraph_editor_ko] Error: {e}")
+        print(f"[paragraph_editor_ko] Error: {e}", file=sys.stderr)
         return text
