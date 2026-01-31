@@ -1,4 +1,5 @@
 import os
+import sys
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
@@ -114,8 +115,13 @@ def restructure_paragraphs_en(text: str) -> str:
     
     
     try:
+        # 디버깅: 입력 확인
+        print(f"[DEBUG-EN] Input length: {len(text)} chars", file=sys.stderr)
+        print(f"[DEBUG-EN] Input paragraphs: {text.count(chr(10) + chr(10)) + 1}", file=sys.stderr)
+        
         # 1단계: 서사 압력 후보 생성
         text_with_candidates = mark_break_candidates(text)
+        print(f"[DEBUG-EN] Break candidates marked: {text_with_candidates.count('[[BREAK]]')}", file=sys.stderr)
         
         
         # 2단계: LLM이 후보를 보고 최종 판단
@@ -139,10 +145,15 @@ def restructure_paragraphs_en(text: str) -> str:
         # 혼재 가능한 [[BREAK]] 마커 제거
         result = result.replace("[[BREAK]]", "").replace("[[BREAK]]\n", "")
         
+        # 디버깅: 출력 확인
+        print(f"[DEBUG-EN] Output length: {len(result)} chars", file=sys.stderr)
+        print(f"[DEBUG-EN] Output paragraphs: {result.count(chr(10) + chr(10)) + 1}", file=sys.stderr)
+        print(f"[DEBUG-EN] Text changed: {text != result}", file=sys.stderr)
+        print(f"[DEBUG-EN] First 300 chars changed: {text[:300] != result[:300]}", file=sys.stderr)
         
         return result
     
     except Exception as e:
         # 에러 발생 시 원본 반환
-        print(f"[paragraph_editor_en] Error: {e}")
+        print(f"[paragraph_editor_en] Error: {e}", file=sys.stderr)
         return text
