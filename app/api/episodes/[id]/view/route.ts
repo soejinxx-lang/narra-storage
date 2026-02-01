@@ -1,17 +1,6 @@
 import { NextResponse } from "next/server";
 import db from "../../../../db";
 
-// 1명부터 100명까지 순차적 확률 분포
-function getTieredGhostCount(): number {
-    const roll = Math.random() * 100;
-
-    if (roll < 50) return Math.floor(Math.random() * 10) + 1;    // 0~50% : 1~10명 (일상)
-    if (roll < 80) return Math.floor(Math.random() * 20) + 11;   // 51~80% : 11~30명 (관심)
-    if (roll < 95) return Math.floor(Math.random() * 40) + 31;   // 81~95% : 31~70명 (화제)
-    if (roll < 99) return Math.floor(Math.random() * 20) + 71;   // 96~99% : 71~90명 (인기)
-    return Math.floor(Math.random() * 10) + 91;                  // 99~100%: 91~100명 (대박)
-}
-
 // 다음 유령 도착 시간 간격 (5분 ~ 30분 랜덤)
 function getNextIntervalMs(): number {
     const minutes = Math.floor(Math.random() * 26) + 5; // 5 ~ 30
@@ -61,10 +50,24 @@ export async function POST(
             nextArrivalAt = null;
         }
 
-        // 3. 새로운 유령 모집 (순차적 확률 게임)
-        // 이번 클릭으로 새로운 유령들이 대기열에 추가됩니다.
-        const newGhosts = getTieredGhostCount();
-        ghostPool += newGhosts;
+        // 3. 새로운 유령 모집 (첫 클릭 시에만)
+        // 처음 클릭 시에만 유령을 생성합니다. 이미 유령이 있으면 추가하지 않습니다.
+        let newGhosts = 0;
+        if (currentViews === 0 && ghostPool === 0) {
+            // 1-50명 중 랜덤 선택 (1명 확률 높음, 50명 확률 낮음)
+            // 지수 분포: 작은 수일수록 확률 높음
+            const rand = Math.random();
+            if (rand < 0.4) {
+                newGhosts = Math.floor(Math.random() * 5) + 1; // 1-5명 (40%)
+            } else if (rand < 0.7) {
+                newGhosts = Math.floor(Math.random() * 10) + 6; // 6-15명 (30%)
+            } else if (rand < 0.9) {
+                newGhosts = Math.floor(Math.random() * 15) + 16; // 16-30명 (20%)
+            } else {
+                newGhosts = Math.floor(Math.random() * 20) + 31; // 31-50명 (10%)
+            }
+            ghostPool = newGhosts;
+        }
 
         // 4. 스케줄링 보정
         // 만약 대기 중인 유령은 있는데 스케줄이 없다면(첫 유입 or 다 도착 직후) 새로 잡습니다.
