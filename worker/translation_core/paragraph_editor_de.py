@@ -1,4 +1,4 @@
-import os
+﻿import os
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
@@ -25,6 +25,14 @@ Task: Insert `\n` (line breaks) and `\n\n` (paragraph breaks) for mobile reading
 
 📖 LINE BREAK RULES (`\n`): Use between sentences for continuous narration, action.
 📖 PARAGRAPH BREAK RULES (`\n\n`): Use for dialogue (ALWAYS), scene transitions, emotional shifts.
+
+
+ CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
 
 OUTPUT: ONLY adjusted German text. Use `\n` and `\n\n`. NO explanations.
 """.strip()

@@ -1,4 +1,4 @@
-import os
+﻿import os
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
@@ -145,6 +145,14 @@ Japanese web novels use THE SHORTEST paragraphs:
 - 3文以上の段落はないか？（あればSPLIT）
 - 会話は独立しているか？
 - テンポは速いか？
+
+
+ CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
 
 OUTPUT:
 - ONLY the adjusted Japanese text

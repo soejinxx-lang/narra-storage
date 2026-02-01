@@ -159,6 +159,13 @@ The next morning came too soon. At exactly 7 AM, a white Mercedes van pulled up.
 - Does dialogue stand alone?
 - Is there breathing room between beats?
 
+🚨 CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
+
 OUTPUT:
 - ONLY the adjusted English text
 - Use `\\n` for line breaks

@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
@@ -120,6 +120,14 @@ Korean web novels use VERY short paragraphs:
 - Would this feel fast and light on a phone screen?
 - Are there any 4+ sentence blocks? (If yes, SPLIT)
 - Does each paragraph fit in 2-3 mobile lines?
+
+
+ CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
 
 OUTPUT:
 - ONLY the adjusted Korean text

@@ -1,4 +1,4 @@
-import os
+﻿import os
 from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
@@ -37,6 +37,14 @@ Use `\\n\\n` for: Dialogue (ALWAYS), scene transitions, emotional shifts, POV ch
 - 1-2 sentences per paragraph (ideal)
 - 3 sentences (maximum)
 - 4+ sentences = MUST SPLIT
+
+
+ CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
 
 OUTPUT:
 - ONLY adjusted French text
@@ -123,6 +131,14 @@ Aira ne put que hocher la tête.
 
 ❌ BAD EXAMPLE:
 Le lendemain matin arriva avec la précision d'une horloge suisse. À 7 heures précises, un van Mercedes blanc s'arrêta devant la porte. « Déménagement pour Mme Aira Putri ? » Aira ne put que hocher la tête.
+
+
+ CRITICAL: PLACEHOLDER PROTECTION
+- Text may contain placeholders like __ENTITY_1__, __ENTITY_2__, etc.
+- These represent proper nouns (names, places, items)
+- NEVER remove, modify, translate, or reformat placeholders
+- Keep them EXACTLY as they appear: __ENTITY_X__
+- Do NOT change spacing, capitalization, or underscores
 
 OUTPUT:
 - Output ONLY the adjusted French text.
