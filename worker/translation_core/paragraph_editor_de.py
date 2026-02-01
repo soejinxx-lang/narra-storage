@@ -3,7 +3,7 @@ from openai import OpenAI
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-MODEL = "gpt-4o"
+MODEL = "gpt-4o-mini"  # Cost optimization
 
 # ===============================
 # 독일어 웹소설 문단 리듬 전용 프롬프트

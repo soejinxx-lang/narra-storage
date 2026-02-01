@@ -237,7 +237,7 @@ def _edit_block(text: str, target_language: str) -> str:
         return text
 
     res = client.chat.completions.create(
-        model=MODEL,
+        model="gpt-4o-mini",  # Cost optimization: editing stage uses mini
         messages=[
             {
                 "role": "system",
