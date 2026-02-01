@@ -202,6 +202,11 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS next_jackpot_at TIMESTAMP DEFAULT NOW();
     `);
 
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS ghost_pool INTEGER DEFAULT 0;
+    `);
+
     // ✅ Community: Comments System (Royal Road Style)
     await client.query(`
       CREATE TABLE IF NOT EXISTS comments (
