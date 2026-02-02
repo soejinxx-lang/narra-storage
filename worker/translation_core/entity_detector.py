@@ -1,11 +1,7 @@
 import os
 import json
 import re
-from openai import OpenAI
-
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+from translation_core.openai_client import client
 
 SYSTEM_PROMPT = """
 너는 웹소설 '한국어 원문'에서 고유명사 후보를 최대한 많이 추출하는 역할이다.

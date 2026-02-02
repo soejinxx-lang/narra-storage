@@ -1,7 +1,5 @@
 import os
-from openai import OpenAI
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from translation_core.openai_client import client
 
 MODEL = "gpt-4o"
 

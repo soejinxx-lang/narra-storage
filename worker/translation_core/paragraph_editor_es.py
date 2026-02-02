@@ -1,8 +1,8 @@
 ﻿import os
-from openai import OpenAI
+from translation_core.openai_client import client
 from translation_core.paragraph_rhythm_base import mark_break_candidates
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 MODEL = "gpt-4o-mini"  # Cost optimization
 
 # ===============================

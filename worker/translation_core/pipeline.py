@@ -1,5 +1,5 @@
 import os
-from openai import OpenAI
+from translation_core.openai_client import client
 
 # 🔗 고유명사 파이프라인 연결
 from translation_core.entity_store import load_entities
@@ -19,12 +19,7 @@ from translation_core.paragraph_editor_id import restructure_paragraphs_id
 # 🔗 일본어 문단 안전 분할 (일본어 전용 - 규칙 기반, 레거시)
 from translation_core.paragraph_splitter_ja import split_long_paragraphs_ja
 
-# ===============================
-# OpenAI Client
-# ===============================
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+
 
 MODEL = "gpt-4o"
 
