@@ -47,7 +47,7 @@ def extract_entities(text: str):
 
         for chunk in chunks:
             res = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4omini",  # Azure deployment name
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": chunk},

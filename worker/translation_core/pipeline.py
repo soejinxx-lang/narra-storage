@@ -21,7 +21,7 @@ from translation_core.paragraph_splitter_ja import split_long_paragraphs_ja
 
 
 
-MODEL = "gpt-4o-mini"  # Cost optimization
+MODEL = "gpt-4omini"  # Azure deployment name
 
 # ===============================
 # 🔒 IMMUTABLE RULES (불변 규칙)
@@ -232,7 +232,7 @@ def _edit_block(text: str, target_language: str) -> str:
         return text
 
     res = client.chat.completions.create(
-        model="gpt-4o-mini",  # Cost optimization: editing stage uses mini
+        model="gpt-4omini",  # Azure deployment name
         messages=[
             {
                 "role": "system",
