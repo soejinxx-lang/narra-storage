@@ -461,16 +461,25 @@ def translate_text(
         if len(para) <= 2000:
             # 짧은 문단: 직접 번역
             replaced_text, mapping = apply_placeholders(para, entities)
+            print(f"[DEBUG] Original: {para[:100]}...")
+            print(f"[DEBUG] After placeholder: {replaced_text[:100]}...")
+            print(f"[DEBUG] Mapping: {mapping}")
 
             translated = _translate_block(
                 replaced_text,
                 source_lang_name,
                 target_lang_name,
             )
+            print(f"[DEBUG] After translate: {translated[:100]}...")
+            
             edited = _edit_block(translated, target_lang_name)
+            print(f"[DEBUG] After edit: {edited[:100]}...")
+            
             edited = _advanced_editor(edited, target_language)
+            print(f"[DEBUG] After advanced_editor: {edited[:100]}...")
 
             restored = restore_placeholders(edited, mapping, entities, target_language)
+            print(f"[DEBUG] After restore: {restored[:100]}...")
             translated_paragraphs.append(restored)
         else:
             # 긴 문단: 내부 청크 분할 → 번역 → 단일 문단으로 복원
