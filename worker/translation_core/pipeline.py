@@ -21,7 +21,7 @@ from translation_core.paragraph_splitter_ja import split_long_paragraphs_ja
 
 
 
-MODEL = "gpt-4o"
+MODEL = "gpt-4o-mini"  # Cost optimization
 
 # ===============================
 # 🔒 IMMUTABLE RULES (불변 규칙)

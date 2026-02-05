@@ -1,7 +1,7 @@
 import os
 from translation_core.openai_client import client
 
-MODEL = "gpt-4o"
+MODEL = "gpt-4o-mini"  # Cost optimization
 
 SYSTEM_PROMPT = """
 You are a PROFESSIONAL COMMERCIAL WEB NOVEL TRANSLATOR.
