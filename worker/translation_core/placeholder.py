@@ -33,21 +33,15 @@ def apply_placeholders(text: str, entities: dict):
 def restore_placeholders(text: str, mapping: dict, entities: dict, target_language: str = "en"):
     """
     Restore placeholders using stored entity translations.
+    
+    Note: entities는 이미 pipeline.py에서 필터링되어
+    {source_name: translated_value} 형태의 string 값을 담고 있음.
     """
 
     for token, source_name in mapping.items():
-        ent = entities.get(source_name)
-
-        if ent and isinstance(ent, dict):
-            # 새로운 구조: {"locked": True, "translations": {"en": "...", "ja": "..."}}
-            translations = ent.get("translations", {})
-            if isinstance(translations, dict) and target_language in translations:
-                replacement = translations[target_language]
-            else:
-                replacement = source_name  # fallback: 원문 유지
-        else:
-            replacement = source_name  # fallback: 원문 유지
-
+        # entities[source_name]이 이미 번역된 값(string)
+        # 없으면 원문(source_name) 유지
+        replacement = entities.get(source_name, source_name)
         text = text.replace(token, replacement)
 
     return text
