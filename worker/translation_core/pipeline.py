@@ -488,18 +488,27 @@ def translate_text(
             chunks = _split_text(para)
             chunk_results = []
 
-            for chunk in chunks:
+            for i, chunk in enumerate(chunks):
+                print(f"[DEBUG-CHUNK {i+1}] Original: {chunk[:100]}...")
                 replaced_text, mapping = apply_placeholders(chunk, entities)
+                print(f"[DEBUG-CHUNK {i+1}] After placeholder: {replaced_text[:100]}...")
+                print(f"[DEBUG-CHUNK {i+1}] Mapping: {mapping}")
 
                 translated = _translate_block(
                     replaced_text,
                     source_lang_name,
                     target_lang_name,
                 )
+                print(f"[DEBUG-CHUNK {i+1}] After translate: {translated[:100]}...")
+                
                 edited = _edit_block(translated, target_lang_name)
+                print(f"[DEBUG-CHUNK {i+1}] After edit: {edited[:100]}...")
+                
                 edited = _advanced_editor(edited, target_language)
+                print(f"[DEBUG-CHUNK {i+1}] After advanced_editor: {edited[:100]}...")
 
                 restored = restore_placeholders(edited, mapping, entities, target_language)
+                print(f"[DEBUG-CHUNK {i+1}] After restore: {restored[:100]}...")
                 chunk_results.append(restored)
 
             # 🔒 중요: \n으로만 연결 (문단 내부이므로 \n\n 아님)
