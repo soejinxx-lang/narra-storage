@@ -101,14 +101,17 @@ export async function POST(
   const scheduledAt = body.scheduled_at ?? null;
   const status = scheduledAt ? 'scheduled' : 'published';
 
-  // 기존 동일 화수 제거
-  await db.query(
-    `
-    DELETE FROM episodes
-    WHERE novel_id = $1 AND ep = $2
-    `,
+  // 동일 화수 이미 존재하면 거부
+  const existing = await db.query(
+    `SELECT id FROM episodes WHERE novel_id = $1 AND ep = $2`,
     [id, ep]
   );
+  if (existing.rows.length > 0) {
+    return NextResponse.json(
+      { error: "EPISODE_ALREADY_EXISTS", message: `Episode ${ep} already exists` },
+      { status: 409 }
+    );
+  }
 
   // episodes.id 직접 생성
   const episodeId = randomUUID();
