@@ -13,7 +13,7 @@ export async function GET(
   const { id } = await context.params;
 
   const result = await db.query(
-    "SELECT id, title, description, cover_url, source_language FROM novels WHERE id = $1",
+    "SELECT id, title, description, cover_url, source_language, genre, is_original, serial_status FROM novels WHERE id = $1",
     [id]
   );
 
@@ -53,7 +53,7 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
-// PATCH - 작품 정보 수정 (description만 수정)
+// PATCH - 작품 정보 수정
 export async function PATCH(
   req: NextRequest,
   context: {
@@ -63,12 +63,31 @@ export async function PATCH(
   await initDb();
 
   const { id } = await context.params;
+  const body = await req.json();
 
-  const { description } = await req.json();
+  // 동적으로 업데이트할 필드 구성
+  const allowedFields = ["description", "genre", "is_original", "serial_status"];
+  const updates: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  for (const field of allowedFields) {
+    if (body[field] !== undefined) {
+      updates.push(`${field} = $${paramIndex}`);
+      values.push(body[field]);
+      paramIndex++;
+    }
+  }
+
+  if (updates.length === 0) {
+    return NextResponse.json({ error: "NO_FIELDS_TO_UPDATE" }, { status: 400 });
+  }
+
+  values.push(id);
 
   const result = await db.query(
-    "UPDATE novels SET description = $1 WHERE id = $2 RETURNING id, title, description, cover_url, source_language",
-    [description, id]
+    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, is_original, serial_status`,
+    values
   );
 
   if (result.rowCount === 0) {

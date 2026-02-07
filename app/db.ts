@@ -56,6 +56,22 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS author_id TEXT REFERENCES users(id) ON DELETE SET NULL;
     `);
 
+    // ✅ 소설 메타데이터
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS genre TEXT;
+    `);
+
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS is_original BOOLEAN DEFAULT TRUE;
+    `);
+
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS serial_status TEXT DEFAULT 'ongoing';
+    `);
+
     // episodes
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
