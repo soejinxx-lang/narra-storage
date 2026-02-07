@@ -113,33 +113,36 @@ export async function POST(
     );
   }
 
-  // episodes.id 직접 생성
-  const episodeId = randomUUID();
+  // 트랜잭션으로 에피소드 + 번역 레코드 원자적 생성
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
 
-  await db.query(
-    `
-    INSERT INTO episodes (id, novel_id, ep, title, content, status, scheduled_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `,
-    [episodeId, id, ep, title, content, status, scheduledAt]
-  );
+    // episodes.id 직접 생성
+    const episodeId = randomUUID();
 
-  const LANGUAGES = ["ko", "en", "ja", "zh", "es", "fr", "de", "pt", "id"];
-
-  for (const language of LANGUAGES) {
-    await db.query(
-      `
-      INSERT INTO episode_translations (
-        id,
-        episode_id,
-        language,
-        status,
-        translated_text
-      )
-      VALUES ($1, $2, $3, 'PENDING', '')
-      `,
-      [randomUUID(), episodeId, language]
+    await client.query(
+      `INSERT INTO episodes (id, novel_id, ep, title, content, status, scheduled_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [episodeId, id, ep, title, content, status, scheduledAt]
     );
+
+    const LANGUAGES = ["ko", "en", "ja", "zh", "es", "fr", "de", "pt", "id"];
+
+    for (const language of LANGUAGES) {
+      await client.query(
+        `INSERT INTO episode_translations (id, episode_id, language, status, translated_text)
+         VALUES ($1, $2, $3, 'PENDING', '')`,
+        [randomUUID(), episodeId, language]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (txError) {
+    await client.query('ROLLBACK');
+    throw txError;
+  } finally {
+    client.release();
   }
 
   return NextResponse.json({ ok: true }, { status: 201 });
