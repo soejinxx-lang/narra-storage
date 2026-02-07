@@ -232,7 +232,7 @@ export async function initDb() {
       );
     `);
 
-    initialized = true;
+
 
     // ✅ Survival Mode: Episode Views & Jackpot Logic
     await client.query(`
@@ -273,6 +273,8 @@ export async function initDb() {
     await client.query(`
       ALTER TABLE comments ALTER COLUMN user_id DROP NOT NULL;
     `);
+
+    initialized = true;
   } finally {
     client.release();
   }
