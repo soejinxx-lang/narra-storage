@@ -62,7 +62,7 @@ export async function GET(
     SELECT id, ep, title, content, views, created_at, status, scheduled_at
     FROM episodes
     WHERE novel_id = $1
-      ${includeScheduled ? "" : "AND status = 'published'"}
+      ${includeScheduled ? "" : "AND (status IS NULL OR status = 'published')"}
     ORDER BY ep ASC
     `,
     [id]
