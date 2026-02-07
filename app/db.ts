@@ -81,6 +81,16 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS content TEXT;
     `);
 
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published';
+    `);
+
+    await client.query(`
+      ALTER TABLE episodes
+      ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP;
+    `);
+
     // episode_translations
     await client.query(`
       CREATE TABLE IF NOT EXISTS episode_translations (

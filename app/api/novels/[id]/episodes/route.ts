@@ -55,11 +55,14 @@ export async function GET(
     WHERE novel_id = $1 AND next_jackpot_at IS NULL
   `, [id]);
 
+  const includeScheduled = _req.nextUrl.searchParams.get("include_scheduled") === "true";
+
   const result = await db.query(
     `
-    SELECT id, ep, title, content, views, created_at
+    SELECT id, ep, title, content, views, created_at, status, scheduled_at
     FROM episodes
     WHERE novel_id = $1
+      ${includeScheduled ? "" : "AND status = 'published'"}
     ORDER BY ep ASC
     `,
     [id]
@@ -95,6 +98,8 @@ export async function POST(
   const ep = body.ep;
   const title = body.title ?? "";
   const content = body.content ?? "";
+  const scheduledAt = body.scheduled_at ?? null;
+  const status = scheduledAt ? 'scheduled' : 'published';
 
   // 기존 동일 화수 제거
   await db.query(
@@ -110,10 +115,10 @@ export async function POST(
 
   await db.query(
     `
-    INSERT INTO episodes (id, novel_id, ep, title, content)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO episodes (id, novel_id, ep, title, content, status, scheduled_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     `,
-    [episodeId, id, ep, title, content]
+    [episodeId, id, ep, title, content, status, scheduledAt]
   );
 
   const LANGUAGES = ["ko", "en", "ja", "zh", "es", "fr", "de", "pt", "id"];

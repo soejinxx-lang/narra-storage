@@ -186,11 +186,33 @@ async function main() {
   await initDb();
   console.log('[Worker] 🚀 Translation Worker Started');
   console.log('[Worker] 🐍 Using Python translation_core (Pipeline merged)');
+  console.log('[Worker] ⏰ Scheduler: checking every 60s for scheduled episodes');
   console.log('[Worker] 👀 Watching for PENDING jobs...\n');
+
+  let lastScheduleCheck = 0;
 
   while (true) {
     try {
-      // Atomic하게 작업 가져오기 + 상태 변경
+      // ── 1. 예약 스케줄러 (60초마다) ──
+      if (Date.now() - lastScheduleCheck > 60_000) {
+        try {
+          const published = await db.query(`
+            UPDATE episodes SET status = 'published'
+            WHERE status = 'scheduled' AND scheduled_at <= NOW()
+            RETURNING novel_id, ep
+          `);
+          if (published.rowCount && published.rowCount > 0) {
+            for (const row of published.rows) {
+              console.log(`[Scheduler] 📢 Published: ${row.novel_id} ep${row.ep}`);
+            }
+          }
+        } catch (schedErr) {
+          console.error('[Scheduler] ⚠️ Error:', schedErr);
+        }
+        lastScheduleCheck = Date.now();
+      }
+
+      // ── 2. 번역 작업 폴링 (기존) ──
       const job = await fetchAndClaimNextJob();
 
       if (!job) {
