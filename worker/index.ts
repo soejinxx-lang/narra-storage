@@ -92,6 +92,142 @@ async function translateChunk(
 }
 
 /**
+ * ── 연구 기반 조회수 증가 로직 ──
+ * 
+ * 참고 데이터:
+ * - Royal Road/Wattpad: 1→2화 40~50% 이탈, 이후 회차당 ~5% 감소
+ * - YouTube 연구: 업로드 후 첫 며칠 피크, 이후 급감 → 선형 안정화
+ * - 글로벌 트래픽: 시간대별 sin 파동 (0.7~1.0)
+ * - Wattpad: 정기 업데이트 시 77% 독자 유지
+ */
+
+// 에피소드별 남은 독자 비율 (이탈률 곡선)
+// 1→2화에서 큰 이탈, 이후 완만
+function chapterRetention(ep: number): number {
+  if (ep <= 1) return 1.0;
+  if (ep === 2) return 0.58;   // 42% 이탈 (Royal Road 평균)
+  // 2화 이후: 회차당 약 5% 감소 (95% 유지)
+  return Math.max(0.05, 0.58 * Math.pow(0.95, ep - 2));
+}
+
+// 시간대 가중치 — sin 곡선으로 약한 글로벌 파도
+// 다국적 플랫폼이므로 극단적 차이 없이 0.7~1.0 범위
+function timeWeight(hour: number): number {
+  return 0.85 + 0.15 * Math.sin(hour * Math.PI / 12);
+}
+
+// 신선도 — 업로드 후 경과 시간에 따른 감소
+// YouTube 연구: 첫 며칠 피크 → 급감 → 안정화
+function freshness(hoursAfterCreation: number): number {
+  if (hoursAfterCreation < 6) return 2.0;
+  if (hoursAfterCreation < 24) return 1.5;
+  if (hoursAfterCreation < 72) return 1.0;     // 3일
+  if (hoursAfterCreation < 168) return 0.5;    // 7일
+  if (hoursAfterCreation < 336) return 0.3;    // 14일
+  return 0.15;                                  // Long tail
+}
+
+// 업데이트 부스트 — 소설에 새 에피소드가 올라오면 전체 부스트
+// Wattpad: 정기 업데이트 시 77% 독자 유지 → 신규 유입 반영
+function updateBoost(hoursSinceLastUpdate: number): number {
+  if (hoursSinceLastUpdate < 6) return 1.8;    // 막 업데이트됨
+  if (hoursSinceLastUpdate < 24) return 1.4;
+  if (hoursSinceLastUpdate < 48) return 1.2;
+  return 1.0;                                   // 효과 소멸
+}
+
+/**
+ * 모든 published 에피소드의 조회수를 자연스럽게 증가
+ * 1분마다 Worker에서 호출
+ * 
+ * 이중 시스템:
+ *   1) 이 함수 = 봇 조회수 (백그라운드 자연 증가)
+ *   2) /api/episodes/[id]/view = 실제 클릭 시 +1
+ */
+async function updateViewCounts(): Promise<void> {
+  // 모든 소설과 에피소드 정보 조회
+  const result = await db.query(`
+    SELECT 
+      e.id, e.novel_id, e.ep, e.views, e.created_at,
+      (SELECT MAX(e2.created_at) FROM episodes e2 
+       WHERE e2.novel_id = e.novel_id AND e2.status = 'published') as latest_ep_at
+    FROM episodes e
+    WHERE e.status = 'published' OR e.status IS NULL
+    ORDER BY e.novel_id, e.ep
+  `);
+
+  if (result.rows.length === 0) return;
+
+  const now = new Date();
+  const currentHour = now.getUTCHours();
+  let totalAdded = 0;
+
+  for (const ep of result.rows) {
+
+    // ── 소설별 고유 개성 (novel_id 해시 기반) ──
+    const novelHash = hashCode(ep.novel_id);
+
+    // base 편차: 멱법칙(Power Law) — 대부분 낮고, 소수만 높음
+    // 해시를 0~1로 정규화 후 제곱 → 높은 값일수록 확률 급감
+    const hashRatio = ((novelHash >> 0) & 0xFFFF) / 0xFFFF;  // 0~1 균등
+    const skewed = Math.pow(hashRatio, 2.5);                  // 제곱으로 기울임
+    const base = Math.round(5 + skewed * 55);                 // 5~60 범위
+
+    // 시간 오프셋: 소설마다 sin 곡선의 위상이 다름 (±6시간)
+    const timeOffset = ((novelHash >> 8) & 0xFF) % 12;
+
+    // jitter 범위: 소설마다 변동 폭이 다름 (±20%~±50%)
+    const jitterRange = 0.2 + (((novelHash >> 16) & 0xFF) / 255) * 0.3;
+
+    // 간헐적 quiet/burst: 소설마다 다른 리듬
+    // 현재 시간을 novel_id로 시프트해 일정 주기마다 조용해지거나 활발해짐
+    const cycleHour = (currentHour + ((novelHash >> 24) & 0xF)) % 24;
+    const burstFactor = cycleHour < 4 ? 0.3 : (cycleHour > 20 ? 1.5 : 1.0);
+
+    const hoursAfterCreation = (now.getTime() - new Date(ep.created_at).getTime()) / (1000 * 60 * 60);
+    const hoursSinceLastUpdate = ep.latest_ep_at
+      ? (now.getTime() - new Date(ep.latest_ep_at).getTime()) / (1000 * 60 * 60)
+      : 999;
+
+    // 공식: base × 시간대 × 이탈률 × 신선도 × 업데이트부스트 × 버스트팩터
+    const viewsPerHour = base
+      * timeWeight(currentHour + timeOffset)
+      * chapterRetention(ep.ep)
+      * freshness(hoursAfterCreation)
+      * updateBoost(hoursSinceLastUpdate)
+      * burstFactor;
+
+    // 1분 단위로 변환 (÷60) + 소설별 jitter
+    const viewsPerMin = viewsPerHour / 60;
+    const jitter = (1 - jitterRange) + Math.random() * (jitterRange * 2);
+    const addViews = Math.round(viewsPerMin * jitter);
+
+    if (addViews > 0) {
+      await db.query(
+        `UPDATE episodes SET views = views + $1 WHERE id = $2`,
+        [addViews, ep.id]
+      );
+      totalAdded += addViews;
+    }
+  }
+
+  if (totalAdded > 0) {
+    console.log(`[Views] 📊 +${totalAdded} views across ${result.rows.length} episodes`);
+  }
+}
+
+// novel_id 문자열 → 안정적인 정수 해시
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // 32bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
  * Process a translation job with chunking
  */
 async function processJob(job: TranslationJob): Promise<void> {
@@ -190,6 +326,7 @@ async function main() {
   console.log('[Worker] 👀 Watching for PENDING jobs...\n');
 
   let lastScheduleCheck = 0;
+  let lastViewsUpdate = 0;
 
   while (true) {
     try {
@@ -210,6 +347,16 @@ async function main() {
           console.error('[Scheduler] ⚠️ Error:', schedErr);
         }
         lastScheduleCheck = Date.now();
+      }
+
+      // ── 2. 조회수 스케줄러 (1분마다) ── 연구 기반 자연스러운 조회수 증가
+      if (Date.now() - lastViewsUpdate > 60_000) {
+        try {
+          await updateViewCounts();
+        } catch (viewErr) {
+          console.error('[Views] ⚠️ Error:', viewErr);
+        }
+        lastViewsUpdate = Date.now();
       }
 
       // ── 2. 번역 작업 폴링 (기존) ──
