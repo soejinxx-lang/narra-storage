@@ -50,6 +50,12 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS source_language TEXT NOT NULL DEFAULT 'ko';
     `);
 
+    // ✅ 작가 시스템: 소설 소유자
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS author_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+    `);
+
     // episodes
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
@@ -159,6 +165,17 @@ export async function initDb() {
         name TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+    `);
+
+    // ✅ 작가 시스템: 프로필 확장
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS bio TEXT;
+    `);
+
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS avatar_url TEXT;
     `);
 
     // user_sessions (로그인 토큰)

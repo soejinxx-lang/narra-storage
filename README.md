@@ -1,12 +1,6 @@
 # NARRA Storage - 백엔드 + 번역 파이프라인
 
-## ⚠️ 절대적 규칙 (CRITICAL RULES)
-
-1. **마음대로 좋아보인다고 수정하지 말기**
-2. **수정하기 전 나한테 뭘 수정할지 말하고 허락 받기**
-3. **무슨 일이 있어도 커밋, 배포는 금지**
-4. **문제가 생겼을 때 기초적인 질문 하지 말기**
-5. **객관적으로 냉정하게 말하기**
+> ⚠️ **규칙은 최상위 [narra/README.md](../README.md) 참고**
 
 ---
 
@@ -17,8 +11,38 @@
 **핵심 역할**:
 - Next.js API (작품/에피소드/인증/댓글 등)
 - PostgreSQL 데이터베이스
-- Python 번역 파이프라인 (GPT-4o/GPT-4o-mini)
+- Python 번역 파이프라인 (GPT-4o-mini)
 - TypeScript Worker (번역 작업 큐 처리)
+
+---
+
+## 시스템 전체 흐름
+
+```
+[Admin UI] → 번역 시작 버튼 클릭
+     ↓
+[Storage API] → episode_translations에 status='PENDING' 레코드 생성
+     ↓
+[Worker (index.ts)] → 1초마다 PENDING 작업 폴링
+     ↓
+[Python (pipeline.py)] → 번역 실행 (spawn, HTTP 없음)
+     ↓
+[DB] → status='DONE' + translated_text 저장
+```
+
+### Worker (index.ts) 역할
+- **1초마다** DB에서 PENDING 작업 폴링
+- 작업 발견하면 **RUNNING으로 상태 변경** (다른 Worker랑 충돌 방지)
+- 텍스트를 **2500자 단위**로 청크 분할
+- 각 청크를 **Python 번역 파이프라인**으로 전달
+- 완료 시 **DONE**, 실패 시 **FAILED + 에러 메시지**
+- **15분 이상 RUNNING**인 작업은 죽은 Worker로 판단 → 다시 처리
+
+### Python 브리지 (translate.ts) 역할
+- TypeScript에서 **Python 프로세스 spawn**
+- `translate_cli.py` 스크립트 실행
+- stdout으로 번역 결과 받아옴
+- **HTTP 없음** - 직접 프로세스 호출
 
 ---
 
@@ -31,7 +55,7 @@ narra-storage/
 │   │   ├── auth/               # 로그인/세션
 │   │   ├── novels/             # 작품 CRUD
 │   │   ├── episodes/           # 에피소드 관리
-│   │   ├── audio/              # TTS 오디오 생성
+│   │   ├── audio/              # TTS 오디오 생성 (⚠️ 현재 미작동)
 │   │   └── community/          # 댓글 시스템
 │   ├── db.ts                   # PostgreSQL 연결 + 스키마
 │   └── page.tsx                # 메인 페이지
@@ -40,7 +64,7 @@ narra-storage/
 │   ├── index.ts                # Worker 메인 루프
 │   ├── translate.ts            # Python 브리지
 │   ├── chunker.ts              # 텍스트 분할
-│   ├── audio-worker.ts         # TTS Worker
+│   ├── audio-worker.ts         # TTS Worker (⚠️ 현재 미작동)
 │   └── translation_core/       # Python 번역 파이프라인
 │       ├── pipeline.py         # 3단계 번역 파이프라인
 │       ├── openai_client.py    # Azure/OpenAI 클라이언트
