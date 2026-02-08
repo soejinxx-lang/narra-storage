@@ -145,14 +145,18 @@ function updateBoost(hoursSinceLastUpdate: number): number {
  *   2) /api/episodes/[id]/view = 실제 클릭 시 +1
  */
 async function updateViewCounts(): Promise<void> {
-  // 모든 소설과 에피소드 정보 조회
+  // 모든 published 에피소드 조회
+  // COALESCE(scheduled_at, created_at) = 실제 공개 시점
+  // → 예약 에피소드: scheduled_at (공개 예정 시각)
+  // → 즉시 공개: created_at (업로드 시각)
   const result = await db.query(`
     SELECT 
-      e.id, e.novel_id, e.ep, e.views, e.created_at,
-      (SELECT MAX(e2.created_at) FROM episodes e2 
+      e.id, e.novel_id, e.ep, e.views,
+      COALESCE(e.scheduled_at, e.created_at) as published_at,
+      (SELECT MAX(COALESCE(e2.scheduled_at, e2.created_at)) FROM episodes e2 
        WHERE e2.novel_id = e.novel_id AND e2.status = 'published') as latest_ep_at
     FROM episodes e
-    WHERE e.status = 'published' OR e.status IS NULL
+    WHERE e.status = 'published'
     ORDER BY e.novel_id, e.ep
   `);
 
@@ -184,7 +188,8 @@ async function updateViewCounts(): Promise<void> {
     const cycleHour = (currentHour + ((novelHash >> 24) & 0xF)) % 24;
     const burstFactor = cycleHour < 4 ? 0.3 : (cycleHour > 20 ? 1.5 : 1.0);
 
-    const hoursAfterCreation = (now.getTime() - new Date(ep.created_at).getTime()) / (1000 * 60 * 60);
+    // published_at 기준으로 경과 시간 계산 (예약 에피소드도 공개 시점 기준)
+    const hoursAfterPublish = (now.getTime() - new Date(ep.published_at).getTime()) / (1000 * 60 * 60);
     const hoursSinceLastUpdate = ep.latest_ep_at
       ? (now.getTime() - new Date(ep.latest_ep_at).getTime()) / (1000 * 60 * 60)
       : 999;
@@ -193,7 +198,7 @@ async function updateViewCounts(): Promise<void> {
     const viewsPerHour = base
       * timeWeight(currentHour + timeOffset)
       * chapterRetention(ep.ep)
-      * freshness(hoursAfterCreation)
+      * freshness(hoursAfterPublish)
       * updateBoost(hoursSinceLastUpdate)
       * burstFactor;
 
