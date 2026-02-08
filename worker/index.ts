@@ -200,7 +200,12 @@ async function updateViewCounts(): Promise<void> {
     // 1분 단위로 변환 (÷60) + 소설별 jitter
     const viewsPerMin = viewsPerHour / 60;
     const jitter = (1 - jitterRange) + Math.random() * (jitterRange * 2);
-    const addViews = Math.round(viewsPerMin * jitter);
+    let addViews = Math.round(viewsPerMin * jitter);
+
+    // 최소 보장: 아무리 낮아도 시간당 1회는 올라가도록 (1/60 확률)
+    if (addViews === 0 && Math.random() < 1 / 60) {
+      addViews = 1;
+    }
 
     if (addViews > 0) {
       await db.query(
