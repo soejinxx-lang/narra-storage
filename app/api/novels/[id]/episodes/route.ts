@@ -1,19 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../db";
 import { randomUUID } from "crypto";
+import { requireAdmin } from "../../../../../lib/admin";
 
-// 🔒 Admin 인증 체크 (이 파일 전용)
-const ADMIN_KEY = process.env.ADMIN_API_KEY;
-
-function requireAdmin(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED" },
-      { status: 401 }
-    );
-  }
-}
 
 export async function GET(
   _req: NextRequest,

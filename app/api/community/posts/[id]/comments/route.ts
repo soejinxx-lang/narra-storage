@@ -1,15 +1,7 @@
 import { NextResponse } from "next/server";
 import db from "../../../../../db";
+import { getUserIdFromToken } from "../../../../../../lib/auth";
 
-async function getUserIdFromToken(authHeader: string | null): Promise<string | null> {
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    const res = await db.query(
-        `SELECT user_id FROM user_sessions WHERE token = $1 AND expires_at > NOW()`,
-        [token]
-    );
-    return res.rows.length > 0 ? res.rows[0].user_id : null;
-}
 
 export async function GET(
     request: Request,

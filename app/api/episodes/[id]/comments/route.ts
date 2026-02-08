@@ -1,27 +1,7 @@
 import { NextResponse } from "next/server";
 import db from "../../../../db";
+import { getUserIdFromToken } from "../../../../../lib/auth";
 
-// 간단한 토큰 검증 (Bearer Token -> User ID)
-async function getUserIdFromToken(authHeader: string | null): Promise<string | null> {
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return null;
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    // user_sessions 테이블 조회
-    const res = await db.query(
-        `SELECT user_id FROM user_sessions 
-     WHERE token = $1 AND expires_at > NOW()`,
-        [token]
-    );
-
-    if (res.rows.length > 0) {
-        return res.rows[0].user_id;
-    }
-
-    return null;
-}
 
 export async function GET(
     request: Request,

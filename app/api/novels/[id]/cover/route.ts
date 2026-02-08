@@ -3,24 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { requireAdmin } from "../../../../../lib/admin";
 
-// 🔒 Admin 인증 체크
-const ADMIN_KEY = process.env.ADMIN_API_KEY;
-
-function requireAdmin(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-
-  console.log("=== REQUIRE ADMIN ===");
-  console.log("ADMIN_KEY =", process.env.ADMIN_API_KEY);
-  console.log("AUTH HEADER =", auth);
-
-  if (!process.env.ADMIN_API_KEY || auth !== `Bearer ${process.env.ADMIN_API_KEY}`) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED" },
-      { status: 401 }
-    );
-  }
-}
 
 async function saveCoverUrl(id: string, url: string) {
   const result = await db.query(
@@ -78,10 +62,10 @@ export async function POST(
     "[STORAGE COVER] file:",
     file
       ? {
-          type: typeof file,
-          hasArrayBuffer:
-            typeof (file as any).arrayBuffer === "function",
-        }
+        type: typeof file,
+        hasArrayBuffer:
+          typeof (file as any).arrayBuffer === "function",
+      }
       : null
   );
 
@@ -116,7 +100,7 @@ export async function POST(
 
   const contentType =
     typeof (file as any).type === "string" &&
-    (file as any).type.length > 0
+      (file as any).type.length > 0
       ? (file as any).type
       : "image/jpeg";
 

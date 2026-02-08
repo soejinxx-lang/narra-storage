@@ -2,23 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 import fs from "fs";
 import path from "path";
-
-// 🔒 Admin 인증 체크 (쓰기 전용)
-const ADMIN_KEY = process.env.ADMIN_API_KEY;
+import { requireAdmin } from "../../../../../lib/admin";
 
 // 🔧 Pipeline entities 파일 경로
 const PIPELINE_ENTITIES_DIR =
   process.env.PIPELINE_ENTITIES_DIR || "/app/data/entities";
 
-function requireAdmin(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED" },
-      { status: 401 }
-    );
-  }
-}
 
 // GET /api/novels/[id]/entities (퍼블릭 허용)
 export async function GET(

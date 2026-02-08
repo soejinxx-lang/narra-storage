@@ -41,15 +41,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    // ... kept same logic for creation
-    // But need to import getUserIdFromToken
-    const getUserIdFromToken = async (authHeader: string | null) => {
-        if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-        const token = authHeader.split(" ")[1];
-        const res = await db.query(`SELECT user_id FROM user_sessions WHERE token = $1`, [token]);
-        return res.rows[0]?.user_id;
-    }
-
     try {
         const userId = await getUserIdFromToken(request.headers.get("Authorization"));
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

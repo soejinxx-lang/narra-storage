@@ -2,16 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "@/db";
 import { createAudioRecord } from "@/lib/audio";
 import { getVoiceName } from "@/lib/tts";
+import { requireAdmin } from "../../../../lib/admin";
 
-const ADMIN_KEY = process.env.ADMIN_API_KEY;
-
-function requireAdmin(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   const unauthorized = requireAdmin(req);

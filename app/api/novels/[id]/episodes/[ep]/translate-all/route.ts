@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../../../db";
 import { LANGUAGES } from "../../../../../../lib/constants";
+import { requireAdmin } from "../../../../../../../lib/admin";
 
-// 🔒 Admin 인증 체크 (이 파일 전용)
-const ADMIN_KEY = process.env.ADMIN_API_KEY;
-
-function requireAdmin(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (!ADMIN_KEY || auth !== `Bearer ${ADMIN_KEY}`) {
-    return NextResponse.json(
-      { error: "UNAUTHORIZED" },
-      { status: 401 }
-    );
-  }
-}
 
 const TARGET_LANGUAGES = LANGUAGES.filter((l) => l !== "ko");
 
@@ -78,8 +67,8 @@ export async function POST(
 
   console.log(`[translate-all] Queued ${TARGET_LANGUAGES.length} translations for ${id}/${epNumber}`);
 
-  return NextResponse.json({ 
+  return NextResponse.json({
     status: "STARTED",
-    message: "Translation jobs queued for worker" 
+    message: "Translation jobs queued for worker"
   });
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../db";
+import { requireAdmin } from "../../../../lib/admin";
+
 
 // GET - 작품 조회
 export async function GET(
@@ -29,11 +31,15 @@ export async function GET(
 
 // DELETE - 작품 삭제
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   context: {
     params: Promise<{ id: string }>;
   }
 ) {
+  // 🔒 쓰기 API 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   const { id } = await context.params;
@@ -60,6 +66,10 @@ export async function PATCH(
     params: Promise<{ id: string }>;
   }
 ) {
+  // 🔒 쓰기 API 보호
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   await initDb();
 
   const { id } = await context.params;
