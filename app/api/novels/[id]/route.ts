@@ -15,7 +15,14 @@ export async function GET(
   const { id } = await context.params;
 
   const result = await db.query(
-    "SELECT id, title, description, cover_url, source_language, genre, is_original, serial_status FROM novels WHERE id = $1",
+    `SELECT 
+       n.id, n.title, n.description, n.cover_url, n.source_language, 
+       n.genre, n.is_original, n.serial_status, n.author_id,
+       u.name as author_name, 
+       u.username as author_username
+     FROM novels n
+     LEFT JOIN users u ON n.author_id = u.id
+     WHERE n.id = $1`,
     [id]
   );
 
