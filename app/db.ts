@@ -232,22 +232,35 @@ export async function initDb() {
       );
     `);
 
+    // audio_files FK 보강 (고아 레코드 방지)
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'audio_files_novel_id_fkey'
+        ) THEN
+          ALTER TABLE audio_files
+          ADD CONSTRAINT audio_files_novel_id_fkey
+          FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
 
-
-    // ✅ Survival Mode: Episode Views & Jackpot Logic
+    // ✅ Episode Views (Worker 기반 조회수 시스템)
     await client.query(`
       ALTER TABLE episodes
       ADD COLUMN IF NOT EXISTS views INTEGER DEFAULT 0;
     `);
 
+    // 🧹 레거시 잭팟 컬럼 정리 (v2에서 Worker 시스템으로 대체)
     await client.query(`
       ALTER TABLE episodes
-      ADD COLUMN IF NOT EXISTS next_jackpot_at TIMESTAMP DEFAULT NOW();
+      DROP COLUMN IF EXISTS next_jackpot_at;
     `);
 
     await client.query(`
       ALTER TABLE episodes
-      ADD COLUMN IF NOT EXISTS ghost_pool INTEGER DEFAULT 0;
+      DROP COLUMN IF EXISTS ghost_pool;
     `);
 
     // ✅ Community: Comments System (Royal Road Style)
