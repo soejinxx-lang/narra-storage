@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/db";
+import db, { initDb } from "@/db";
 
 export async function GET(req: NextRequest) {
   try {
+    await initDb();
     // Get token from Authorization header
     const authHeader = req.headers.get("authorization");
-    
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json(
         { error: "Unauthorized" },

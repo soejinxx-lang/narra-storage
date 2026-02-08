@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/db";
+import db, { initDb } from "@/db";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -16,6 +16,7 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    await initDb();
     const { username, password } = await req.json();
 
     // Validation

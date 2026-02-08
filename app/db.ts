@@ -287,6 +287,55 @@ export async function initDb() {
       ALTER TABLE comments ALTER COLUMN user_id DROP NOT NULL;
     `);
 
+    // ✅ Community: Posts System
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS community_posts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        topic TEXT DEFAULT 'general',
+        views INTEGER DEFAULT 0,
+        likes INTEGER DEFAULT 0,
+        is_hidden BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ✅ Community: Post Likes
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS community_post_likes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        post_id UUID NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+
+        UNIQUE (post_id, user_id),
+        FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    // ✅ Community: Post Comments
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS community_comments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        post_id UUID NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        likes INTEGER DEFAULT 0,
+        is_hidden BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+
+        FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
     initialized = true;
   } finally {
     client.release();
