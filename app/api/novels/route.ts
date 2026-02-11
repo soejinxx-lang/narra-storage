@@ -29,7 +29,15 @@ export async function POST(req: NextRequest) {
 
   const id = body.id ?? `novel-${Date.now()}`;
   const sourceLanguage = body.source_language ?? "ko";
-  const authorId = body.author_id ?? null;
+  const authorId = body.author_id;
+
+  // 🔒 author_id 필수 (고아 소설 방지)
+  if (!authorId) {
+    return NextResponse.json(
+      { error: "AUTHOR_ID_REQUIRED" },
+      { status: 400 }
+    );
+  }
 
   const exists = await db.query(
     "SELECT 1 FROM novels WHERE id = $1",

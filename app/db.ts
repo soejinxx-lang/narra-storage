@@ -50,10 +50,41 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS source_language TEXT NOT NULL DEFAULT 'ko';
     `);
 
-    // ✅ 작가 시스템: 소설 소유자
+    // ✅ 작가 시스템: 소설 소유자 (author_id 컬럼 보장)
     await client.query(`
       ALTER TABLE novels
-      ADD COLUMN IF NOT EXISTS author_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+      ADD COLUMN IF NOT EXISTS author_id TEXT;
+    `);
+
+    // 🔒 FK 마이그레이션: SET NULL → RESTRICT + NOT NULL
+    // 트랜잭션으로 무결성 공백 방지
+    await client.query(`
+      DO $$ BEGIN
+        -- Step 1: orphan author_id 정리 (users에 없는 ID → NULL)
+        UPDATE novels SET author_id = NULL
+          WHERE author_id IS NOT NULL
+          AND author_id NOT IN (SELECT id FROM users);
+
+        -- Step 2: 기존 FK 삭제 (있을 때만)
+        IF EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'novels_author_id_fkey'
+        ) THEN
+          ALTER TABLE novels DROP CONSTRAINT novels_author_id_fkey;
+        END IF;
+
+        -- Step 3: RESTRICT FK 생성
+        ALTER TABLE novels ADD CONSTRAINT novels_author_id_fkey
+          FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT;
+
+        -- Step 4: NOT NULL 제약 (author_id NULL인 행이 없을 때만 성공)
+        BEGIN
+          ALTER TABLE novels ALTER COLUMN author_id SET NOT NULL;
+        EXCEPTION WHEN others THEN
+          RAISE NOTICE 'author_id NOT NULL 실패: NULL 데이터 존재. 수동 확인 필요.';
+        END;
+
+      END $$;
     `);
 
     // ✅ 소설 메타데이터
