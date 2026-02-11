@@ -13,9 +13,8 @@ import { translateWithPython, restructureParagraphsWithPython } from './translat
 
 // Pipeline merged into Worker - no longer using HTTP
 
-// ── 동시 처리 설정 ──
-const PARALLEL_ENABLED = process.env.WORKER_PARALLEL_ENABLED === 'true';
-const MAX_CONCURRENCY = Math.max(1, Number(process.env.WORKER_MAX_CONCURRENCY) || 3);
+// 같은 에피소드 내 동시 번역 수 (burst 방지를 위해 3개 제한)
+const MAX_CONCURRENCY = 3;
 
 interface TranslationJob {
   id: string;
@@ -383,7 +382,7 @@ async function main() {
   await initDb();
   console.log('[Worker] 🚀 Translation Worker Started');
   console.log('[Worker] 🐍 Using Python translation_core (Pipeline merged)');
-  console.log(`[Worker] ⚡ Mode: ${PARALLEL_ENABLED ? `PARALLEL (max ${MAX_CONCURRENCY})` : 'SEQUENTIAL'}`);
+  console.log(`[Worker] ⚡ Parallel mode: max ${MAX_CONCURRENCY} per episode`);
   console.log('[Worker] ⏰ Scheduler: checking every 60s for scheduled episodes');
   console.log('[Worker] 👀 Watching for PENDING jobs...\n');
 
@@ -422,28 +421,17 @@ async function main() {
       }
 
       // ── 3. 번역 작업 폴링 ──
-      if (PARALLEL_ENABLED) {
-        // 병렬 모드: 같은 에피소드의 PENDING 작업을 최대 N개씩 동시 처리
-        const jobs = await fetchAndClaimNextJobs(MAX_CONCURRENCY);
+      const jobs = await fetchAndClaimNextJobs(MAX_CONCURRENCY);
 
-        if (jobs.length === 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-
-        console.log(`[Worker] 🚀 Parallel batch: ${jobs.length} jobs (${jobs.map(j => j.language).join(', ')})`);
-        await Promise.allSettled(jobs.map((job, i) => processJobWithStagger(job, i)));
-      } else {
-        // 순차 모드: 1개씩 처리 (기본)
-        const job = await fetchAndClaimNextJob();
-
-        if (!job) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-
-        await processJob(job);
+      if (jobs.length === 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
       }
+
+      if (jobs.length > 1) {
+        console.log(`[Worker] 🚀 Parallel batch: ${jobs.length} jobs (${jobs.map(j => j.language).join(', ')})`);
+      }
+      await Promise.allSettled(jobs.map((job, i) => processJobWithStagger(job, i)));
 
     } catch (error) {
       console.error('[Worker] ⚠️ Unexpected error:', error);
