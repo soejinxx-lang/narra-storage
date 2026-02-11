@@ -51,6 +51,19 @@ export async function DELETE(
 
   const { id } = await context.params;
 
+  // 🗂️ 삭제 전 로그 기록 (복구용)
+  const snapshot = await db.query(
+    `SELECT n.id, n.title, n.author_id, 
+            (SELECT COUNT(*) FROM episodes e WHERE e.novel_id = n.id) as episode_count
+     FROM novels n WHERE n.id = $1`,
+    [id]
+  );
+
+  if (snapshot.rowCount && snapshot.rowCount > 0) {
+    const novel = snapshot.rows[0];
+    console.log(`🗑️ DELETE NOVEL | ${new Date().toISOString()} | id=${novel.id} | title="${novel.title}" | author=${novel.author_id} | episodes=${novel.episode_count}`);
+  }
+
   const result = await db.query(
     "DELETE FROM novels WHERE id = $1",
     [id]
