@@ -6,7 +6,7 @@ export async function GET(_req: NextRequest) {
   await initDb();
 
   const result = await db.query(
-    `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status FROM novels`
+    `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format FROM novels`
   );
   return NextResponse.json({ novels: result.rows });
 }

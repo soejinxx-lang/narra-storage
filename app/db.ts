@@ -72,6 +72,11 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS serial_status TEXT DEFAULT 'ongoing';
     `);
 
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS episode_format TEXT DEFAULT 'number';
+    `);
+
     // episodes
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
