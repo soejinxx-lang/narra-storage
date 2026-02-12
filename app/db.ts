@@ -227,7 +227,7 @@ export async function initDb() {
     // users (인증 시스템)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         name TEXT,
@@ -262,7 +262,7 @@ export async function initDb() {
     // ✅ System Admin 유저 생성 (Admin API Key용)
     await client.query(`
       INSERT INTO users (id, username, password_hash, name, is_admin, is_hidden)
-      VALUES ('system_admin', 'System', '', 'System Administrator', TRUE, TRUE)
+      VALUES ('bb2f8cbe-208a-4807-b542-ad2b8b247a9d', 'System', '', 'System Administrator', TRUE, TRUE)
       ON CONFLICT (id) DO NOTHING;
     `);
 
@@ -270,7 +270,7 @@ export async function initDb() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_sessions (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        user_id TEXT NOT NULL,
+        user_id UUID NOT NULL,
         token TEXT UNIQUE NOT NULL,
         expires_at TIMESTAMP NOT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
@@ -330,7 +330,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS comments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         episode_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
+        user_id UUID,
         parent_id UUID,
         content TEXT NOT NULL,
         likes INTEGER DEFAULT 0,
@@ -353,7 +353,7 @@ export async function initDb() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS community_posts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id TEXT NOT NULL,
+        user_id UUID NOT NULL,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         topic TEXT DEFAULT 'general',
@@ -372,7 +372,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS community_post_likes (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         post_id UUID NOT NULL,
-        user_id TEXT NOT NULL,
+        user_id UUID NOT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
 
         UNIQUE (post_id, user_id),
@@ -386,7 +386,7 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS community_comments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         post_id UUID NOT NULL,
-        user_id TEXT NOT NULL,
+        user_id UUID NOT NULL,
         content TEXT NOT NULL,
         likes INTEGER DEFAULT 0,
         is_hidden BOOLEAN DEFAULT FALSE,
