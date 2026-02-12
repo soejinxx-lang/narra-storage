@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
         // 1. 에피소드 ID 조회
         const episodeResult = await db.query(
-            `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY episode_number ASC LIMIT 1`,
+            `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
             [novelId]
         );
 
