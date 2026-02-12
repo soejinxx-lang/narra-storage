@@ -142,63 +142,279 @@ async function translateChunk(
 }
 
 /**
- * ── 연구 기반 조회수 증가 로직 ──
+ * ── 조회수 시뮬레이션 v3.1 — 행동 기반 모델 ──
+ * 
+ * GPT 2차 검증 반영. 가상 독자가 실제 행동 패턴으로 조회수 생성.
+ * 
+ * 핵심 구조:
+ *   - 가상 독자 풀 (메모리, 100명 초기)
+ *   - 세션 기반 정주행 (70→56→45% 연쇄)
+ *   - 신규/재방문/구독 독자 분리
+ *   - 소설 단위 saturation (ceiling 10,000)
+ *   - deeper long tail (90일+ → 0.01)
  * 
  * 참고 데이터:
- * - Royal Road/Wattpad: 1→2화 40~50% 이탈, 이후 회차당 ~5% 감소
- * - YouTube 연구: 업로드 후 첫 며칠 피크, 이후 급감 → 선형 안정화
- * - 글로벌 트래픽: 시간대별 sin 파동 (0.7~1.0)
- * - Wattpad: 정기 업데이트 시 77% 독자 유지
- */
-
-// 에피소드별 남은 독자 비율 (이탈률 곡선)
-// 1→2화에서 큰 이탈, 이후 완만
-function chapterRetention(ep: number): number {
-  if (ep <= 1) return 1.0;
-  if (ep === 2) return 0.58;   // 42% 이탈 (Royal Road 평균)
-  // 2화 이후: 회차당 약 5% 감소 (95% 유지)
-  return Math.max(0.05, 0.58 * Math.pow(0.95, ep - 2));
-}
-
-// 시간대 가중치 — sin 곡선으로 약한 글로벌 파도
-// 다국적 플랫폼이므로 극단적 차이 없이 0.7~1.0 범위
-function timeWeight(hour: number): number {
-  return 0.85 + 0.15 * Math.sin(hour * Math.PI / 12);
-}
-
-// 신선도 — 업로드 후 경과 시간에 따른 감소
-// YouTube 연구: 첫 며칠 피크 → 급감 → 안정화
-function freshness(hoursAfterCreation: number): number {
-  if (hoursAfterCreation < 6) return 2.0;
-  if (hoursAfterCreation < 24) return 1.5;
-  if (hoursAfterCreation < 72) return 1.0;     // 3일
-  if (hoursAfterCreation < 168) return 0.5;    // 7일
-  if (hoursAfterCreation < 336) return 0.3;    // 14일
-  return 0.15;                                  // Long tail
-}
-
-// 업데이트 부스트 — 소설에 새 에피소드가 올라오면 전체 부스트
-// Wattpad: 정기 업데이트 시 77% 독자 유지 → 신규 유입 반영
-function updateBoost(hoursSinceLastUpdate: number): number {
-  if (hoursSinceLastUpdate < 6) return 1.8;    // 막 업데이트됨
-  if (hoursSinceLastUpdate < 24) return 1.4;
-  if (hoursSinceLastUpdate < 48) return 1.2;
-  return 1.0;                                   // 효과 소멸
-}
-
-/**
- * 모든 published 에피소드의 조회수를 자연스럽게 증가
- * 1분마다 Worker에서 호출
+ *   - Royal Road/Wattpad: 1→2화 42% 이탈, 이후 회차당 ~5% 감소
+ *   - YouTube: 업로드 후 첫 며칠 피크, 이후 급감
+ *   - Wattpad: 정기 업데이트 시 77% 독자 유지
  * 
  * 이중 시스템:
- *   1) 이 함수 = 봇 조회수 (백그라운드 자연 증가)
+ *   1) 이 함수 = 시뮬레이션 조회수 (행동 기반)
  *   2) /api/episodes/[id]/view = 실제 클릭 시 +1
+ * 
+ * 향후 Cron 분리 가능 (현재는 Worker setInterval)
  */
+
+// ── 설정값 (쉽게 조정 가능) ──
+const VIEW_CONFIG = {
+  INITIAL_POOL_SIZE: 100,    // 초기 가상 독자 수
+  MAX_POOL_SIZE: 300,        // 풀 상한
+  NEW_VISITOR_RATE: 0.3,     // 분당 신규 유입 기본값 (× 소설 수)
+  VIEW_CEILING: 10_000,      // 소설 단위 포화 기준
+  SUBSCRIBED_RETURN: 0.6,    // 구독 독자 신화 재방문 확률 (60%)
+};
+
+// ── 가상 독자 타입 ──
+interface VirtualReader {
+  id: string;
+  novelId: string;
+  lastEp: number;
+  lastVisitMin: number;
+  returnRate: number;        // 분당 재방문 확률 (0.002~0.006)
+  bingeDepth: number;        // 최대 연속 읽기 (2~4)
+  status: 'active' | 'subscribed' | 'dormant';
+}
+
+interface NovelInfo {
+  id: string;
+  maxEp: number;
+  totalViews: number;
+  avgViews: number;
+  hoursSinceLastEp: number;
+  bingeRate: number;
+  episodeMap: Map<number, string>;  // ep번호 → episode_id
+}
+
+// ── Worker 수명 동안 유지되는 상태 ──
+let readerPool: Map<string, VirtualReader> | null = null;
+const carryBuffer: Map<string, number> = new Map();
+
+// ── 신선도 — deeper long tail (GPT 검증) ──
+function freshness(hours: number): number {
+  if (hours < 6) return 2.0;       // 방금 올라옴
+  if (hours < 24) return 1.5;      // 당일
+  if (hours < 72) return 1.0;      // 3일
+  if (hours < 168) return 0.5;     // 7일
+  if (hours < 336) return 0.3;     // 14일
+  if (hours < 720) return 0.05;    // 30일
+  if (hours < 2160) return 0.01;   // 90일
+  return 0.003;                     // 거의 정지
+}
+
+// ── 업데이트 부스트 — 새 에피소드 올라오면 유입 증가 ──
+function updateBoost(hours: number): number {
+  if (hours < 6) return 1.8;
+  if (hours < 24) return 1.4;
+  if (hours < 48) return 1.2;
+  return 1.0;
+}
+
+// ── 인기도 팩터 — 사회적 증폭 (log 기반, 폭주 방지) ──
+function popularityFactor(views: number): number {
+  return 1 + Math.log10((views || 0) + 1) * 0.15;
+}
+
+// ── 소설 단위 포화 — ceiling에 가까울수록 성장 둔화 ──
+function saturationFactor(avgViews: number): number {
+  return 1 / (1 + avgViews / VIEW_CONFIG.VIEW_CEILING);
+}
+
+// ── 작품별 정주행 확률 — 인기작일수록 높음 ──
+function calcBingeRate(totalViews: number): number {
+  const popBonus = Math.min(0.1, Math.log10((totalViews || 0) + 1) * 0.03);
+  return Math.min(0.8, 0.6 + popBonus);  // 0.6 ~ 0.8
+}
+
+// ── 소설 선택 가중치 ──
+function novelWeight(novel: NovelInfo): number {
+  const fresh = freshness(novel.hoursSinceLastEp);
+  const popular = popularityFactor(novel.totalViews);
+  const sat = saturationFactor(novel.avgViews);
+  const boost = updateBoost(novel.hoursSinceLastEp);
+  return fresh * popular * sat * boost;
+}
+
+// ── 가중치 기반 소설 선택 ──
+function weightedSelectNovel(novels: NovelInfo[]): NovelInfo {
+  const weights = novels.map(n => novelWeight(n));
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  if (totalWeight === 0) return novels[Math.floor(Math.random() * novels.length)];
+
+  let rand = Math.random() * totalWeight;
+  for (let i = 0; i < novels.length; i++) {
+    rand -= weights[i];
+    if (rand <= 0) return novels[i];
+  }
+  return novels[novels.length - 1];
+}
+
+// ── 정주행 세션 — 핵심 행동 모델 ──
+function simulateBingeSession(
+  reader: VirtualReader,
+  novel: NovelInfo,
+  buffer: Map<string, number>
+): void {
+  let currentEp = reader.lastEp;
+  let continueProb = novel.bingeRate;  // 작품별 (0.6~0.8)
+
+  for (let i = 0; i < reader.bingeDepth; i++) {
+    if (currentEp > novel.maxEp) break;
+
+    const epId = novel.episodeMap.get(currentEp);
+    if (epId) {
+      buffer.set(epId, (buffer.get(epId) || 0) + 1);
+    }
+
+    currentEp++;
+    if (Math.random() > continueProb) break;
+    continueProb *= 0.8;  // 70→56→45→36% 감쇠
+  }
+
+  reader.lastEp = Math.max(reader.lastEp, currentEp - 1);
+
+  if (reader.lastEp >= novel.maxEp) {
+    reader.status = 'subscribed';
+  }
+}
+
+// ── 독자 풀 초기화 ──
+function initReaderPool(novels: NovelInfo[]): Map<string, VirtualReader> {
+  const pool = new Map<string, VirtualReader>();
+  for (let i = 0; i < VIEW_CONFIG.INITIAL_POOL_SIZE; i++) {
+    const novel = weightedSelectNovel(novels);
+    // 기존 독자: 이미 어딘가까지 읽은 상태
+    const lastEp = 1 + Math.floor(Math.random() * novel.maxEp);
+    const isCompleted = lastEp >= novel.maxEp;
+
+    pool.set(`r_init_${i}`, {
+      id: `r_init_${i}`,
+      novelId: novel.id,
+      lastEp: lastEp,
+      lastVisitMin: Date.now(),
+      returnRate: 0.002 + Math.random() * 0.004,  // 0.002~0.006/분
+      bingeDepth: 2 + Math.floor(Math.random() * 3),  // 2~4
+      status: isCompleted ? 'subscribed' : 'active',
+    });
+  }
+  console.log(`[Views] 👥 Reader pool initialized: ${pool.size} readers across ${novels.length} novels`);
+  return pool;
+}
+
+// ── 신규 유입 (Poisson 근사) ──
+function generateNewVisitors(
+  hour: number,
+  novels: NovelInfo[],
+  pool: Map<string, VirtualReader>,
+  buffer: Map<string, number>
+): void {
+  // 시간대 변동 (sin 곡선 0.6~1.4)
+  const timeMul = 1.0 + 0.4 * Math.sin(hour * Math.PI / 12);
+  const lambda = VIEW_CONFIG.NEW_VISITOR_RATE * novels.length * timeMul;
+
+  // Poisson 근사: 정수 부분 + 소수 부분 확률
+  const guaranteed = Math.floor(lambda);
+  const extra = Math.random() < (lambda - guaranteed) ? 1 : 0;
+  const count = guaranteed + extra;
+
+  for (let i = 0; i < count; i++) {
+    const novel = weightedSelectNovel(novels);
+    const reader: VirtualReader = {
+      id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      novelId: novel.id,
+      lastEp: 1,  // 신규는 항상 1화부터
+      lastVisitMin: Date.now(),
+      returnRate: 0.002 + Math.random() * 0.004,
+      bingeDepth: 2 + Math.floor(Math.random() * 3),
+      status: 'active',
+    };
+
+    // 즉시 정주행 (v3 버그수정: Date.now 비교 제거)
+    simulateBingeSession(reader, novel, buffer);
+    pool.set(reader.id, reader);
+  }
+
+  // 풀 관리
+  if (pool.size > VIEW_CONFIG.MAX_POOL_SIZE) {
+    prunePool(pool);
+  }
+}
+
+// ── 기존 독자 재방문 ──
+function processReturningReaders(
+  pool: Map<string, VirtualReader>,
+  novels: Map<string, NovelInfo>,
+  buffer: Map<string, number>
+): void {
+  for (const reader of pool.values()) {
+    if (reader.status === 'dormant') continue;
+
+    const novel = novels.get(reader.novelId);
+    if (!novel) continue;
+
+    // ── subscribed 독자: 신화 나왔으면 확률적 재방문 ──
+    if (reader.status === 'subscribed') {
+      if (reader.lastEp < novel.maxEp) {
+        // 새 화 나왔다! 60% 확률로 재방문 (GPT: 100%는 비현실적)
+        if (Math.random() < VIEW_CONFIG.SUBSCRIBED_RETURN) {
+          reader.lastEp++;
+          reader.status = 'active';
+          simulateBingeSession(reader, novel, buffer);
+        }
+      }
+      continue;
+    }
+
+    // ── active 독자: 확률적 재방문 ──
+    if (reader.lastEp >= novel.maxEp) {
+      reader.status = 'subscribed';
+      continue;
+    }
+
+    if (Math.random() < reader.returnRate) {
+      reader.lastEp++;
+      simulateBingeSession(reader, novel, buffer);
+    }
+  }
+}
+
+// ── 풀 정리 (충성 독자 보호) ──
+function prunePool(pool: Map<string, VirtualReader>): void {
+  // 1. dormant 먼저 삭제
+  for (const [id, reader] of pool) {
+    if (reader.status === 'dormant') pool.delete(id);
+    if (pool.size <= VIEW_CONFIG.MAX_POOL_SIZE * 0.8) return;
+  }
+  // 2. 가장 오래된 active (오래 안 온 = 이탈한 독자)
+  const sortedActive = [...pool.entries()]
+    .filter(([, r]) => r.status === 'active')
+    .sort((a, b) => a[1].lastVisitMin - b[1].lastVisitMin);
+  for (const [id] of sortedActive) {
+    pool.delete(id);
+    if (pool.size <= VIEW_CONFIG.MAX_POOL_SIZE * 0.8) return;
+  }
+  // 3. 마지막 수단: 오래된 subscribed (충성 독자는 최후까지 보존)
+  const sortedSub = [...pool.entries()]
+    .filter(([, r]) => r.status === 'subscribed')
+    .sort((a, b) => a[1].lastVisitMin - b[1].lastVisitMin);
+  for (const [id] of sortedSub) {
+    pool.delete(id);
+    if (pool.size <= VIEW_CONFIG.MAX_POOL_SIZE * 0.8) return;
+  }
+}
+
+// ── 메인: 조회수 업데이트 (1분마다 호출) ──
 async function updateViewCounts(): Promise<void> {
-  // 모든 published 에피소드 조회
-  // COALESCE(scheduled_at, created_at) = 실제 공개 시점
-  // → 예약 에피소드: scheduled_at (공개 예정 시각)
-  // → 즉시 공개: created_at (업로드 시각)
+  // DB에서 모든 published 에피소드 조회
   const result = await db.query(`
     SELECT 
       e.id, e.novel_id, e.ep, e.views,
@@ -214,77 +430,70 @@ async function updateViewCounts(): Promise<void> {
 
   const now = new Date();
   const currentHour = now.getUTCHours();
-  let totalAdded = 0;
 
+  // ── 소설별 그룹핑 ──
+  const novelMap = new Map<string, NovelInfo>();
   for (const ep of result.rows) {
-
-    // ── 소설별 고유 개성 (novel_id 해시 기반) ──
-    const novelHash = hashCode(ep.novel_id);
-
-    // base 편차: 멱법칙(Power Law) — 대부분 낮고, 소수만 높음
-    // 해시를 0~1로 정규화 후 제곱 → 높은 값일수록 확률 급감
-    const hashRatio = ((novelHash >> 0) & 0xFFFF) / 0xFFFF;  // 0~1 균등
-    const skewed = Math.pow(hashRatio, 2.5);                  // 제곱으로 기울임
-    const base = Math.round(5 + skewed * 55);                 // 5~60 범위
-
-    // 시간 오프셋: 소설마다 sin 곡선의 위상이 다름 (±6시간)
-    const timeOffset = ((novelHash >> 8) & 0xFF) % 12;
-
-    // jitter 범위: 소설마다 변동 폭이 다름 (±20%~±50%)
-    const jitterRange = 0.2 + (((novelHash >> 16) & 0xFF) / 255) * 0.3;
-
-    // 간헐적 quiet/burst: 소설마다 다른 리듬
-    // 현재 시간을 novel_id로 시프트해 일정 주기마다 조용해지거나 활발해짐
-    const cycleHour = (currentHour + ((novelHash >> 24) & 0xF)) % 24;
-    const burstFactor = cycleHour < 4 ? 0.3 : (cycleHour > 20 ? 1.5 : 1.0);
-
-    // published_at 기준으로 경과 시간 계산 (예약 에피소드도 공개 시점 기준)
-    const hoursAfterPublish = (now.getTime() - new Date(ep.published_at).getTime()) / (1000 * 60 * 60);
-    const hoursSinceLastUpdate = ep.latest_ep_at
-      ? (now.getTime() - new Date(ep.latest_ep_at).getTime()) / (1000 * 60 * 60)
-      : 999;
-
-    // 공식: base × 시간대 × 이탈률 × 신선도 × 업데이트부스트 × 버스트팩터
-    const viewsPerHour = base
-      * timeWeight(currentHour + timeOffset)
-      * chapterRetention(ep.ep)
-      * freshness(hoursAfterPublish)
-      * updateBoost(hoursSinceLastUpdate)
-      * burstFactor;
-
-    // 1분 단위로 변환 (÷60) + 소설별 jitter
-    const viewsPerMin = viewsPerHour / 60;
-    const jitter = (1 - jitterRange) + Math.random() * (jitterRange * 2);
-    let addViews = Math.round(viewsPerMin * jitter);
-
-    // 최소 보장: 아무리 낮아도 시간당 1회는 올라가도록 (1/60 확률)
-    if (addViews === 0 && Math.random() < 1 / 60) {
-      addViews = 1;
+    if (!novelMap.has(ep.novel_id)) {
+      const hoursSinceLastEp = ep.latest_ep_at
+        ? (now.getTime() - new Date(ep.latest_ep_at).getTime()) / (1000 * 60 * 60)
+        : 999;
+      novelMap.set(ep.novel_id, {
+        id: ep.novel_id,
+        maxEp: 0,
+        totalViews: 0,
+        avgViews: 0,
+        hoursSinceLastEp,
+        bingeRate: 0,
+        episodeMap: new Map(),
+      });
     }
+    const novel = novelMap.get(ep.novel_id)!;
+    novel.episodeMap.set(ep.ep, ep.id);
+    novel.maxEp = Math.max(novel.maxEp, ep.ep);
+    novel.totalViews += (ep.views || 0);
+  }
 
+  // avg, bingeRate 계산
+  for (const novel of novelMap.values()) {
+    novel.avgViews = novel.episodeMap.size > 0
+      ? novel.totalViews / novel.episodeMap.size
+      : 0;
+    novel.bingeRate = calcBingeRate(novel.totalViews);
+  }
+
+  const novels = [...novelMap.values()];
+
+  // ── 독자 풀 초기화 (최초 1회) ──
+  if (!readerPool) {
+    readerPool = initReaderPool(novels);
+  }
+
+  // ── 1. 신규 유입 → 1화부터 정주행 ──
+  generateNewVisitors(currentHour, novels, readerPool, carryBuffer);
+
+  // ── 2. 기존/구독 독자 재방문 ──
+  processReturningReaders(readerPool, novelMap, carryBuffer);
+
+  // ── 3. carryBuffer → DB UPDATE (fractional carry) ──
+  let totalAdded = 0;
+  for (const [epId, carry] of carryBuffer.entries()) {
+    const addViews = Math.floor(carry);
     if (addViews > 0) {
       await db.query(
-        `UPDATE episodes SET views = views + $1 WHERE id = $2`,
-        [addViews, ep.id]
+        'UPDATE episodes SET views = views + $1 WHERE id = $2',
+        [addViews, epId]
       );
+      carryBuffer.set(epId, carry - addViews);
       totalAdded += addViews;
     }
   }
 
   if (totalAdded > 0) {
-    console.log(`[Views] 📊 +${totalAdded} views across ${result.rows.length} episodes`);
+    const activeCount = [...readerPool.values()].filter(r => r.status === 'active').length;
+    const subCount = [...readerPool.values()].filter(r => r.status === 'subscribed').length;
+    console.log(`[Views] 📊 +${totalAdded} views | pool: ${readerPool.size} (active:${activeCount} sub:${subCount})`);
   }
-}
-
-// novel_id 문자열 → 안정적인 정수 해시
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0; // 32bit integer
-  }
-  return Math.abs(hash);
 }
 
 /**
