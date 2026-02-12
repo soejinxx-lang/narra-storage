@@ -1,6 +1,6 @@
 import db from "../app/db";
 
-const SYSTEM_ADMIN_ID = 'system_admin';
+export const SYSTEM_ADMIN_ID = 'bb2f8cbe-208a-4807-b542-ad2b8b247a9d';
 
 /**
  * Get user ID from Authorization header
