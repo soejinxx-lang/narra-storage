@@ -6,7 +6,7 @@
 
 import { Pool } from 'pg';
 
-const EPISODE_ID = 'episode-1770910615941'; // 1화 ID
+const NOVEL_ID = 'novel-1770910615867'; // 테스트 소설 ID
 const BOT_COUNT = 30; // 봇 계정 수
 const COMMENTS_PER_BOT = 2; // 봇당 댓글 수
 
@@ -53,6 +53,21 @@ async function runCommentBot() {
 
     try {
         console.log('🤖 Starting comment bot...\n');
+
+        // 0. Get Episode ID
+        console.log(`🔍 Finding first episode of ${NOVEL_ID}...`);
+        const episodeResult = await pool.query(
+            `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY episode_number ASC LIMIT 1`,
+            [NOVEL_ID]
+        );
+
+        if (episodeResult.rows.length === 0) {
+            console.error(`❌ No episodes found for ${NOVEL_ID}`);
+            return;
+        }
+
+        const EPISODE_ID = episodeResult.rows[0].id;
+        console.log(`✅ Found episode: ${EPISODE_ID}\n`);
 
         // 1. 봇 계정 생성 (is_hidden = TRUE)
         console.log(`📝 Creating ${BOT_COUNT} bot accounts...`);
