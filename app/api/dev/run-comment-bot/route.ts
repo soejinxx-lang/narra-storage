@@ -72,17 +72,17 @@ export async function GET(req: NextRequest) {
         const botUserIds: string[] = [];
 
         for (let i = 0; i < botCount; i++) {
-            const userId = `bot_${Date.now()}_${i}`;
             const username = `reader${String(i + 1).padStart(2, '0')}`;
 
-            await db.query(
-                `INSERT INTO users (id, username, password_hash, name, is_hidden)
-         VALUES ($1, $2, '', $3, TRUE)
-         ON CONFLICT (username) DO UPDATE SET id = EXCLUDED.id
+            const result = await db.query(
+                `INSERT INTO users (username, password_hash, name, is_hidden)
+         VALUES ($1, '', $2, TRUE)
+         ON CONFLICT (username) DO UPDATE SET is_hidden = TRUE
          RETURNING id`,
-                [userId, username, `봇${i + 1}`]
+                [username, `봇${i + 1}`]
             );
 
+            const userId = result.rows[0].id;
             botUserIds.push(userId);
         }
 
