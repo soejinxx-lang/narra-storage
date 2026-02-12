@@ -252,6 +252,13 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
     `);
 
+    // ✅ Test 작가 자동 숨김 (서진 계정만 보임)
+    await client.query(`
+      UPDATE users 
+      SET is_hidden = TRUE 
+      WHERE username = 'Test' AND is_hidden = FALSE;
+    `);
+
     // user_sessions (로그인 토큰)
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_sessions (
