@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        // 봇 댓글 삭제 (is_hidden 유저의 댓글)
-        const result = await db.query(
+        // 1. 봇 댓글 삭제
+        const commentsResult = await db.query(
             `DELETE FROM comments 
        WHERE episode_id IN (
          SELECT id FROM episodes WHERE novel_id = $1
@@ -36,11 +36,18 @@ export async function GET(req: NextRequest) {
             [novelId]
         );
 
-        console.log(`🗑️ Deleted ${result.rowCount} bot comments from ${novelId}`);
+        // 2. 봇 유저 삭제 (댓글 삭제 후)
+        const usersResult = await db.query(
+            `DELETE FROM users WHERE is_hidden = TRUE AND username LIKE 'reader%'`
+        );
+
+        console.log(`🗑️ Deleted ${commentsResult.rowCount} bot comments from ${novelId}`);
+        console.log(`🗑️ Deleted ${usersResult.rowCount} bot users`);
 
         return NextResponse.json({
             success: true,
-            deletedCount: result.rowCount,
+            deletedComments: commentsResult.rowCount,
+            deletedUsers: usersResult.rowCount,
             novel: novelId
         });
     } catch (error) {
