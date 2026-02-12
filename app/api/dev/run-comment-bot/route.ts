@@ -100,9 +100,9 @@ export async function GET(req: NextRequest) {
                 ];
 
                 await db.query(
-                    `INSERT INTO comments (id, episode_id, user_id, content, created_at)
-           VALUES ($1, $2, $3, $4, NOW())`,
-                    [`comment_${Date.now()}_${commentsPosted}`, episodeId, userId, randomComment]
+                    `INSERT INTO comments (episode_id, user_id, content, created_at)
+           VALUES ($1, $2, $3, NOW())`,
+                    [episodeId, userId, randomComment]
                 );
 
                 commentsPosted++;
