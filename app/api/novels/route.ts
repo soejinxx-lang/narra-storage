@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../db";
 import { requireAdmin } from "../../../lib/admin";
-import { isAdmin } from "../../../lib/auth";
+import { isAdmin, getUserIdFromToken } from "../../../lib/auth";
 
 export async function GET(req: NextRequest) {
   await initDb();
@@ -36,13 +36,15 @@ export async function POST(req: NextRequest) {
 
   const id = body.id ?? `novel-${Date.now()}`;
   const sourceLanguage = body.source_language ?? "ko";
-  const authorId = body.author_id;
 
-  // 🔒 author_id 필수 (고아 소설 방지)
+  // ✅ Authorization 헤더에서 작가 ID 자동 추출 (정합성 보장)
+  const authorId = await getUserIdFromToken(req.headers.get("Authorization"));
+
+  // 🔒 author_id 필수 (로그인 필수)
   if (!authorId) {
     return NextResponse.json(
       { error: "AUTHOR_ID_REQUIRED" },
-      { status: 400 }
+      { status: 401 }
     );
   }
 
