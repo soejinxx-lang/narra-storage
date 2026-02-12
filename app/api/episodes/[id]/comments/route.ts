@@ -25,7 +25,7 @@ export async function GET(
          COALESCE(u.username, 'Guest') as username, 
          COALESCE(u.name, 'Guest') as name
        FROM comments c
-       LEFT JOIN users u ON c.user_id::text = u.id
+       LEFT JOIN users u ON c.user_id = u.id
        WHERE c.episode_id = $1 AND c.is_hidden = FALSE ${userWhereClause}
        ORDER BY c.created_at ASC`,
             [id]
