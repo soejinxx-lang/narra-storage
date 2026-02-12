@@ -9,12 +9,21 @@ export async function GET(req: NextRequest) {
   // Check if user is admin
   const userIsAdmin = await isAdmin(req.headers.get("Authorization"));
 
-  // Filter hidden novels for non-admin users
-  const whereClause = userIsAdmin ? "" : "WHERE is_hidden = FALSE";
-
-  const result = await db.query(
-    `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format, is_hidden FROM novels ${whereClause}`
-  );
+  // Admin sees everything, non-admin: hide novels where novel OR author is hidden
+  let result;
+  if (userIsAdmin) {
+    result = await db.query(
+      `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format, is_hidden FROM novels`
+    );
+  } else {
+    result = await db.query(
+      `SELECT n.id, n.title, n.description, n.cover_url, n.source_language, n.author_id, n.genre, n.is_original, n.serial_status, n.episode_format, n.is_hidden
+       FROM novels n
+       LEFT JOIN users u ON n.author_id = u.id
+       WHERE n.is_hidden = FALSE
+         AND (u.is_hidden = FALSE OR u.is_hidden IS NULL)`
+    );
+  }
   return NextResponse.json({ novels: result.rows });
 }
 
