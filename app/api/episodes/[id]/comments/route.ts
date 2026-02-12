@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import db from "../../../../db";
-import { getUserIdFromToken } from "../../../../../lib/auth";
+import { getUserIdFromToken, isAdmin } from "../../../../../lib/auth";
 
 
 export async function GET(
@@ -13,6 +13,12 @@ export async function GET(
     // GET: 댓글 목록
     // ----------------------------------------------------------------
     try {
+        // Check if user is admin
+        const userIsAdmin = await isAdmin(request.headers.get("Authorization"));
+
+        // Filter hidden user comments for non-admin
+        const userWhereClause = userIsAdmin ? "" : "AND (u.is_hidden = FALSE OR u.is_hidden IS NULL)";
+
         const result = await db.query(
             `SELECT 
          c.id, c.content, c.likes, c.created_at, c.parent_id,
@@ -20,7 +26,7 @@ export async function GET(
          COALESCE(u.name, 'Guest') as name
        FROM comments c
        LEFT JOIN users u ON c.user_id::text = u.id
-       WHERE c.episode_id = $1 AND c.is_hidden = FALSE
+       WHERE c.episode_id = $1 AND c.is_hidden = FALSE ${userWhereClause}
        ORDER BY c.created_at ASC`,
             [id]
         );
