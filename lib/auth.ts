@@ -1,5 +1,7 @@
 import db from "../app/db";
 
+const SYSTEM_ADMIN_ID = 'system_admin';
+
 /**
  * Get user ID from Authorization header
  * Returns null for unauthenticated requests
@@ -7,7 +9,11 @@ import db from "../app/db";
 export async function getUserIdFromToken(authHeader: string | null): Promise<string | null> {
     if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
     const token = authHeader.split(" ")[1];
-    if (process.env.ADMIN_API_KEY && token === process.env.ADMIN_API_KEY) return 'ADMIN';
+    // ✅ Admin API Key → system_admin 고정 매핑
+    if (process.env.ADMIN_API_KEY && token === process.env.ADMIN_API_KEY) {
+        console.log('🔑 [Auth] Admin API Key → system_admin');
+        return SYSTEM_ADMIN_ID;
+    }
     try {
         const res = await db.query(
             `SELECT user_id FROM user_sessions WHERE token = $1 AND expires_at > NOW()`,
@@ -28,7 +34,8 @@ export async function isAdmin(authHeader: string | null): Promise<boolean> {
     const userId = await getUserIdFromToken(authHeader);
     if (!userId) return false;
 
-    if (userId === 'ADMIN') return true;
+    // system_admin은 항상 admin
+    if (userId === SYSTEM_ADMIN_ID) return true;
 
     try {
         const res = await db.query(

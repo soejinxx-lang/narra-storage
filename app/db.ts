@@ -259,6 +259,13 @@ export async function initDb() {
       WHERE username = 'Test' AND is_hidden = FALSE;
     `);
 
+    // ✅ System Admin 유저 생성 (Admin API Key용)
+    await client.query(`
+      INSERT INTO users (id, username, password_hash, name, is_admin, is_hidden)
+      VALUES ('system_admin', 'System', '', 'System Administrator', TRUE, TRUE)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
     // user_sessions (로그인 토큰)
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_sessions (
