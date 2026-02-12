@@ -26,8 +26,10 @@ export async function POST(req: NextRequest) {
   await initDb();
 
   const body = await req.json();
+  console.log("📝 [Novel POST] Request body:", JSON.stringify(body));
 
   if (!body?.title) {
+    console.log("❌ [Novel POST] Missing title");
     return NextResponse.json(
       { error: "INVALID_NOVEL_DATA" },
       { status: 400 }
@@ -38,10 +40,15 @@ export async function POST(req: NextRequest) {
   const sourceLanguage = body.source_language ?? "ko";
 
   // ✅ Authorization 헤더에서 작가 ID 자동 추출 (정합성 보장)
-  const authorId = await getUserIdFromToken(req.headers.get("Authorization"));
+  const authHeader = req.headers.get("Authorization");
+  console.log("🔑 [Novel POST] Auth header:", authHeader ? "present" : "missing");
+
+  const authorId = await getUserIdFromToken(authHeader);
+  console.log("👤 [Novel POST] Extracted author_id:", authorId);
 
   // 🔒 author_id 필수 (로그인 필수)
   if (!authorId) {
+    console.log("❌ [Novel POST] No author_id - returning 401");
     return NextResponse.json(
       { error: "AUTHOR_ID_REQUIRED" },
       { status: 401 }
