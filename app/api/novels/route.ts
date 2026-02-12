@@ -1,12 +1,19 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../db";
 import { requireAdmin } from "../../../lib/admin";
+import { isAdmin } from "../../../lib/auth";
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   await initDb();
 
+  // Check if user is admin
+  const userIsAdmin = await isAdmin(req.headers.get("Authorization"));
+
+  // Filter hidden novels for non-admin users
+  const whereClause = userIsAdmin ? "" : "WHERE is_hidden = FALSE";
+
   const result = await db.query(
-    `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format FROM novels`
+    `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format, is_hidden FROM novels ${whereClause}`
   );
   return NextResponse.json({ novels: result.rows });
 }

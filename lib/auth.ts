@@ -1,5 +1,9 @@
 import db from "../app/db";
 
+/**
+ * Get user ID from Authorization header
+ * Returns null for unauthenticated requests
+ */
 export async function getUserIdFromToken(authHeader: string | null): Promise<string | null> {
     if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
     const token = authHeader.split(" ")[1];
@@ -13,5 +17,27 @@ export async function getUserIdFromToken(authHeader: string | null): Promise<str
     } catch (e) {
         console.error("Auth Check Error:", e);
         return null;
+    }
+}
+
+/**
+ * Check if user is admin
+ * Used for filtering hidden content
+ */
+export async function isAdmin(authHeader: string | null): Promise<boolean> {
+    const userId = await getUserIdFromToken(authHeader);
+    if (!userId) return false;
+
+    if (userId === 'ADMIN') return true;
+
+    try {
+        const res = await db.query(
+            `SELECT is_admin FROM users WHERE id = $1`,
+            [userId]
+        );
+        return res.rows[0]?.is_admin === true;
+    } catch (e) {
+        console.error("Admin Check Error:", e);
+        return false;
     }
 }

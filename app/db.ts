@@ -108,6 +108,12 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS episode_format TEXT DEFAULT 'number';
     `);
 
+    // ✅ 테스트 소설 숨김 기능
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
+    `);
+
     // episodes
     await client.query(`
       CREATE TABLE IF NOT EXISTS episodes (
@@ -238,6 +244,12 @@ export async function initDb() {
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    `);
+
+    // ✅ 테스트 작가 숨김 기능
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
     `);
 
     // user_sessions (로그인 토큰)
