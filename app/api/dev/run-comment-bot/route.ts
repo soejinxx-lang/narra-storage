@@ -699,6 +699,140 @@ ${trimmed}`;
     } catch {
         // JSON 파싱 실패 시 줄바꿈 fallback
         const comments = raw.split('\n')
+            .map(l => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
+            .filter(l => l.length > 0 && l.length < 100);
+        console.log(`🧠 Deep context (fallback): ${comments.length} comments, no tags`);
+        return { comments, detectedTags: [] };
+    }
+}
+
+// ============================================================
+// 하위 장르 → 상위 카테고리 매핑 (4-Tier Taxonomy)
+// ============================================================
+
+const GENRE_CATEGORY_MAP: Record<string, string> = {
+    // Fantasy → game-fantasy
+    'GameLit / LitRPG': 'game-fantasy',
+    'Progression': 'game-fantasy',
+    'Cultivation': 'game-fantasy',
+    'Dungeon / Tower': 'game-fantasy',
+
+    // Fantasy → murim
+    'Murim': 'murim',
+    'Martial Arts': 'murim',
+
+    // Romance → romance
+    'Contemporary Romance': 'romance',
+    'Historical Romance': 'romance',
+    'Romantic Fantasy': 'romance',
+    'CEO / Billionaire': 'romance',
+    'Enemies to Lovers': 'romance',
+    'Forbidden Love': 'romance',
+    'Omegaverse': 'romance',
+    'Paranormal Romance': 'romance',
+    'Romantic Comedy': 'romance',
+
+    // Isekai/Regression → regression
+    'Isekai': 'regression',
+    'Regression': 'regression',
+    'Reincarnation': 'regression',
+    'Transmigration': 'regression',
+
+    // Note: LGBTQ+ moved to Tropes (not genre-specific)
+    // Note: Time Travel moved to Narrative Devices (not genre-specific)
+};
+
+// 상위 카테고리별 GPT 힌트
+const GENRE_HINTS: Record<string, string> = {
+    'game-fantasy': '\n\n[장르 특징: 게임판타지]\n스탯/빌드/확률/레벨 같은 수치 반응을 포함해도 좋아. "밸패", "이 빌드 사기" 같은 표현 OK.',
+    'romance': '\n\n[장르 특징: 로맨스]\n감정 표현을 강하게 해. 설렘/키스각/커플링 같은 반응. "둘이 키스각", "남주 후회각" OK.',
+    'murim': '\n\n[장르 특징: 무협]\n경지/체급/초식/내공 같은 무협 표현을 써도 좋아. "화경?", "체급차이" OK.',
+    'regression': '\n\n[장르 특징: 회귀/이세계]\n참교육/사이다/통쾌함 같은 반응. "참교육 가자", "저놈 끝났네" OK.',
+};
+
+/**
+ * 소설 장르에서 상위 카테고리 추출
+ */
+function getGenreCategory(genreData: string | string[] | null): string | null {
+    if (!genreData) return null;
+
+    const genres = Array.isArray(genreData)
+        ? genreData
+        : genreData.split(',').map(g => g.trim());
+
+    for (const genre of genres) {
+        const category = GENRE_CATEGORY_MAP[genre];
+        if (category) return category;
+    }
+
+    return null;
+}
+
+/**
+ * GPT로 에피소드 본문 기반 댓글 사전 생성 (with 장르 힌트)
+ */
+async function generateDeepContextCommentsWithGenre(
+    episodeContent: string,
+    genreCategory: string | null,
+    count: number = 15
+): Promise<{ comments: string[]; detectedTags: string[] }> {
+    const trimmed = episodeContent.length > 2000
+        ? episodeContent.slice(-2000)
+        : episodeContent;
+
+    // 장르별 힌트 추가
+    const genreHint = genreCategory ? (GENRE_HINTS[genreCategory] || '') : '';
+
+    const prompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.${genreHint}
+
+[필수 절차]
+1. 가장 꽂힌 장면 1개를 내부적으로 고른다 (출력 안 함)
+2. 그 장면에서 생긴 감정 1개만 쓴다
+3. 댓글에 장면 단서(행동/대사/수치/상황) 최소 1개를 포함한다
+
+[출력 형식 — 반드시 JSON]
+{
+  "tags": ["이 에피소드의 장면 태그. battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
+  "comments": ["댓글 ${count}개"]
+}
+
+[댓글 규칙]
+- 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
+- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
+- ~다 어미 금지 (미쳤음/ㅁㅊ/미쳐 OK)
+- 작품 전체 평가 금지 ("전개 좋네", "재밌네" 같은 일반 감상 금지)
+- 이모지 쓰지마
+
+[참고 예시 — 이런 느낌으로]
+거기서 칼 빼네
+저 30퍼 터지네ㅋㅋ
+웃다가 우는거 뛰임
+아니 그걸 왜 지금 쒔
+눈물에서 끝내냐
+
+[에피소드 본문]
+${trimmed}`;
+
+    const raw = await callAzureGPT(prompt);
+    if (!raw) return { comments: [], detectedTags: [] };
+
+    // Markdown 코드 블록 제거 (```json ... ```)
+    const cleanedRaw = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+    // JSON 파싱 시도
+    try {
+        const parsed = JSON.parse(cleanedRaw);
+        const comments = (parsed.comments || [])
+            .map((c: string) => c.replace(/^["']|["']$/g, '').trim())  // 따옴표 제거
+            .filter((c: string) => c.length > 0 && c.length < 100);
+        const detectedTags = (parsed.tags || []).filter((t: string) =>
+            ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+        );
+        console.log(`🧠 Deep context: ${comments.length} comments, tags: [${detectedTags.join(', ')}]`);
+        return { comments, detectedTags };
+    } catch {
+        // JSON 파싱 실패 시 줄바꿈 fallback
+        const comments = raw.split('\n')
             .map(l => l.replace(/^\d+[\.)\-]\s*/, '').replace(/^"|"$/g, '').trim())
             .filter(l => l.length > 0 && l.length < 100);
         console.log(`🧠 Deep context (fallback): ${comments.length} comments, no tags`);
@@ -814,7 +948,18 @@ export async function GET(req: NextRequest) {
             reply_count: parseInt(r.reply_count) || 0,
         }));
 
-        // 3. Deep Context GPT 댓글 사전 생성 (deep=true일 때만)
+        // 3. 소설 장르 조회 (장르별 댓글 특징 반영)
+        const novelResult = await db.query(
+            `SELECT genre FROM novels WHERE id = $1`,
+            [novelId]
+        );
+        const genreData = novelResult.rows[0]?.genre;
+        const genreCategory = getGenreCategory(genreData);
+        if (genreCategory) {
+            console.log(`🎭 Genre category: ${genreCategory}`);
+        }
+
+        // 4. Deep Context GPT 댓글 사전 생성 (deep=true일 때만)
         let deepComments: string[] = [];
         let sceneTags: string[] = [];
         if (useDeep) {
@@ -825,17 +970,19 @@ export async function GET(req: NextRequest) {
             );
             const episodeContent = contentResult.rows[0]?.content;
             if (episodeContent && episodeContent.length > 50) {
-                console.log(`📖 Fetched episode content(${episodeContent.length} chars)`);
-                // totalCount만큼 GPT 댓글 확보 (15개씩 배치 호출)
-                const batchSize = 15;
-                const needed = totalCount;
+                console.log(`📖 Fetched episode content (${episodeContent.length} chars)`);
+
                 let calls = 0;
-                while (deepComments.length < needed && calls < 6) { // 최대 6회 호출 제한
-                    const result = await generateDeepContextComments(episodeContent, batchSize);
+                while (deepComments.length < totalCount && calls < 6) {
+                    const result = await generateDeepContextCommentsWithGenre(
+                        episodeContent,
+                        genreCategory,
+                        15
+                    );
                     deepComments.push(...result.comments);
-                    if (calls === 0) sceneTags = result.detectedTags; // 태그는 첫 호출에서만
+                    if (calls === 0) sceneTags = result.detectedTags;
                     calls++;
-                    console.log(`   → 배치 ${calls}: +${result.comments.length} 개(총 ${deepComments.length} / ${needed})`);
+                    console.log(`   → 배치 ${calls}: +${result.comments.length}개 (총 ${deepComments.length}/${totalCount})`);
                 }
             } else {
                 console.log('⚠️ Episode content too short or null, skipping deep context');
