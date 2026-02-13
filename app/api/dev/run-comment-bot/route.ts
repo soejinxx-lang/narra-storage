@@ -583,16 +583,18 @@ async function callAzureGPT(prompt: string): Promise<string> {
     const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-10-01-preview';
     const deployment = 'gpt-4omini';
 
+    console.log(`🔍 Azure config check: endpoint=${endpoint ? 'SET(' + endpoint.substring(0, 30) + '...)' : 'MISSING'}, apiKey=${apiKey ? 'SET' : 'MISSING'}`);
+
     if (!endpoint || !apiKey) {
         console.warn('⚠️ Azure OpenAI not configured, skipping deep context');
         return '';
     }
 
     try {
-        // endpoint에서 base URL만 추출 (/openai/v1/ 같은 suffix 제거)
-        const baseUrl = endpoint!.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
+        const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
         const url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
         console.log(`🔗 Azure GPT URL: ${url}`);
+        console.log(`📨 Prompt length: ${prompt.length} chars`);
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -606,13 +608,18 @@ async function callAzureGPT(prompt: string): Promise<string> {
             }),
         });
 
+        console.log(`📥 Azure response status: ${response.status}`);
+
         if (!response.ok) {
-            console.error(`❌ Azure GPT error: ${response.status}`);
+            const errorBody = await response.text();
+            console.error(`❌ Azure GPT error: ${response.status} — ${errorBody.substring(0, 200)}`);
             return '';
         }
 
         const data = await response.json();
-        return data.choices?.[0]?.message?.content || '';
+        const content = data.choices?.[0]?.message?.content || '';
+        console.log(`✅ Azure GPT response: ${content.substring(0, 100)}...`);
+        return content;
     } catch (err) {
         console.error('❌ Azure GPT call failed:', err);
         return '';
@@ -859,14 +866,23 @@ export async function GET(req: NextRequest) {
             episode: episodeId,
             botAccounts: botCount,
             commentsPosted: totalCommentsPosted,
-            version: 'v2-natural',
-            rules: '15/17 implemented (16=community memes, 17=GPT theorist → future)'
+            deepContextUsed: useDeep,
+            deepCommentsGenerated: useDeep ? totalCount - deepComments.length : 0,
+            deepCommentsRemaining: deepComments.length,
+            detectedTags: sceneTags,
+            azureConfigured: !!(process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY),
+            version: 'v3-deep-context',
         });
 
     } catch (error) {
         console.error('Comment Bot Error:', error);
         return NextResponse.json(
-            { error: 'Failed to run comment bot', details: String(error) },
+            {
+                error: 'Failed to run comment bot',
+                details: String(error),
+                azureEndpoint: process.env.AZURE_OPENAI_ENDPOINT ? 'SET' : 'MISSING',
+                azureKey: process.env.AZURE_OPENAI_API_KEY ? 'SET' : 'MISSING',
+            },
             { status: 500 }
         );
     }
