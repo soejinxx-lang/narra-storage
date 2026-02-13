@@ -738,6 +738,24 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     'Reincarnation': 'regression',
     'Transmigration': 'regression',
 
+    // Sci-Fi → sci-fi
+    'Space Opera': 'sci-fi',
+    'Cyberpunk': 'sci-fi',
+    'Post-Apocalyptic': 'sci-fi',
+    'Mecha': 'sci-fi',
+    'Virtual Reality': 'sci-fi',
+    'Hard Sci-Fi': 'sci-fi',
+    'Steampunk': 'sci-fi',
+
+    // Mystery/Thriller → mystery
+    'Psychological Thriller': 'mystery',
+    'Crime': 'mystery',
+    'Detective': 'mystery',
+    'Cozy Mystery': 'mystery',
+    'Revenge': 'mystery',
+    'Espionage': 'mystery',
+    'Whodunit': 'mystery',
+
     // Note: LGBTQ+ moved to Tropes (not genre-specific)
     // Note: Time Travel moved to Narrative Devices (not genre-specific)
 };
@@ -844,6 +862,154 @@ Ejemplos:
         'ja': '\n\n[ジャンル：回帰/異世界]\nスカッと/復讐反応。"これは痛快"など。',
         'en': '\n\n[Genre: Regression/Isekai]\nRevenge/satisfaction reactions. "Justice served!", "Get rekt".',
         'es': '\n\n[Género: Regresión/Isekai]\nVenganza/satisfacción. "¡Justicia!", "Se lo merecía".',
+    },
+
+    'sci-fi': {
+        'ko': `\n\n[장르: SF | 한국어 댓글 스타일]
+- 짧은 분석 단문
+- 쉼표 거의 없음
+- "설정", "개연성", "세계관" 반복
+- ㅋㅋ은 비꼼용
+- 감정 비율: 분석 45%, 반응 25%, 비판 15%, 감정 10%
+
+집착 포인트: 과학 설정 말이 되는지, 타임루프/양자 정합성, 복선 회수
+행동 패턴: 설정 오류 바로 지적, 반전 화 댓글 밀도 급증, 감정 < 논리
+
+예시:
+- 이 설정 말 됨?
+- 타임패러독스 무시네
+- 양자역학이 그게 아닌데
+- 복선 회수 ㅁㅊ`,
+
+        'zh': `\n\n[类型：科幻 | 中文评论风格]
+- 过度表达, "牛逼", "炸了", "离谱"
+- 哈哈哈 反复
+- 情感比例：情感/赞扬 50%, 분석 20%, 应援 20%
+
+关注点：技术规模, 文明等级, 宇宙地位, 主角天才性
+行动模式：规模大反应爆炸, 主角科学力赞扬, 集体情绪
+
+示例：
+- 这科技太牛逼了！
+- 文明等级碾压哈哈哈
+- 主角真是天才`,
+
+        'ja': `\n\n[ジャンル：SF | 日本語コメントスタイル]
+- 完結形文章, 丁寧語混在
+- ｗ使用, 過激語少ない
+- 感情比率：感想 40%, 分析 30%, 応援 20%
+
+注目点：設定ディテール, メカ/AIキャラ性, 情緒的余韻
+行動パターン：感想+分析混合, 攻撃性低い, 技術ディテール称賛
+
+例：
+- この設定好きです
+- 技術描写が細かいですねｗ
+- AIキャラが魅力的
+- 余韻が残る展開でした`,
+
+        'en': `\n\n[Genre: Sci-Fi | English comment style - MOST DEBATE-HEAVY]
+- Long sentences with commas
+- Natural conjunctions
+- Sarcasm mixed, "lol", "dude", "bro"
+- Emotion mix: Analysis 50%, Discussion 25%, Emotion 15%
+
+Focus: Physics laws, tech feasibility, AI ethics, philosophical questions
+Behavioral: Physics calculations appear, black hole/quantum debates, idea > character
+
+Examples:
+- The physics actually checks out here
+- Wait but that violates thermodynamics lol
+- The ethical implications though...
+- This AI debate is getting interesting`,
+
+        'es': `\n\n[Género: Ciencia Ficción | Estilo de comentario en español]
+- Muchas exclamaciones, MAYÚSCULAS
+- JAJAJA
+- Proporción: Emoción 45%, Análisis 25%, Apoyo 20%
+
+Enfoque: Traición/sacrificio, humanidad, IA-humano relación
+Patrón: Emoción central, personajes > tecnología, empatía colectiva
+
+Ejemplos:
+- ¡LA TECNOLOGÍA ES INCREÍBLE!
+- ¡El sacrificio me hizo llorar!
+- JAJAJA qué giro`,
+    },
+
+    'mystery': {
+        'ko': `\n\n[장르: 미스터리/스릴러 | 한국어 댓글 스타일]
+- 짧은 단문 추측
+- 쉼표 거의 없음
+- "범인각", "복선", "설정오류" 등장
+- ㅋㅋ은 비꼼용
+- 감정 비율: 추측 40%, 분석 25%, 놀람 20%, 비판 10%
+
+집착 포인트: 범인 추측, 떡밥 회수, 반전 납득 여부, 설정 구멍
+행동 패턴: 추측 댓글 빠르게 늘어남, 반전 → 댓글 폭증, 허술하면 냉소
+
+예시:
+- 범인 저 사람 아님?
+- 이거 복선이었네
+- 반전 납득 안 됨
+- 떡밥 회수 ㅁㅊ
+- 이거 영화에서 본 전개`,
+
+        'zh': `\n\n[类型：悬疑/惊悚 | 中文评论风格]
+- 感情夸张, "离谱", "炸裂"
+- 哈哈哈/？？？？
+- 情感比例：情感 45%, 推测 25%, 应援/批评 20%
+
+关注点：背叛, 家族/义理, 阴谋, 权力结构
+行动模式：主角偏向强, 凶手批评集中化, 道德判断频繁
+
+示例：
+- 这是背叛！！
+- 凶手太可恶了
+- 主角真聪明哈哈哈
+- 这阴谋太深了`,
+
+        'ja': `\n\n[ジャンル：ミステリー/スリラー | 日本語コメントスタイル]
+- 完結形文章, 丁寧語
+- ｗ使用, 過激語ほぼなし
+- 感情比率：推測 35%, 感想 35%, 分析 20%
+
+注目点：心理描写, 手がかりの繊細さ, トリック完成度
+行動パターン：落ち着いた推測, "伏線かな"のような慎重な表現
+
+例：
+- もしかして犯人は...？
+- 伏線かなと思いました
+- 心理描写が細かいですね
+- このトリック好きです`,
+
+        'en': `\n\n[Genre: Mystery/Thriller | English comment style - MOST ANALYTICAL]
+- Long sentences with commas
+- Sarcasm present, "lol", "dude"
+- Emotion mix: Analysis 50%, Discussion 25%, Surprise 15%
+
+Focus: Psychological validity, trick logic, investigation realism
+Behavioral: Long culprit theories, real crime comparisons, active debate
+
+Examples:
+- My theory: the killer is X because...
+- This makes no sense from a forensic standpoint
+- Plot hole detected lol
+- The psychology checks out actually`,
+
+        'es': `\n\n[Género: Misterio/Suspenso | Estilo de comentario en español]
+- Muchas exclamaciones, MAYÚSCULAS
+- JAJAJA
+- Proporción: Emoción 45%, Especulación 30%, Crítica 15%
+
+Enfoque: Traición, escenas impactantes, miedo emocional
+Patrón: Reacción colectiva en shock, crítica excesiva al asesino
+
+Ejemplos:
+- ¡NOOOO EL ASESINO!
+- ¡Qué traición tan horrible!
+- JAJAJA no lo vi venir
+- ¡Este giro me dejó sin palabras!`,
     },
 };
 
