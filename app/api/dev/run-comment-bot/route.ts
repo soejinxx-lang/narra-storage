@@ -678,10 +678,15 @@ ${trimmed}`;
     const raw = await callAzureGPT(prompt);
     if (!raw) return { comments: [], detectedTags: [] };
 
+    // Markdown 코드 블록 제거 (```json ... ```)
+    const cleanedRaw = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
     // JSON 파싱 시도
     try {
-        const parsed = JSON.parse(raw);
-        const comments = (parsed.comments || []).filter((c: string) => c.length > 0 && c.length < 100);
+        const parsed = JSON.parse(cleanedRaw);
+        const comments = (parsed.comments || [])
+            .map((c: string) => c.replace(/^["']|["']$/g, '').trim())  // 따옴표 제거
+            .filter((c: string) => c.length > 0 && c.length < 100);
         const detectedTags = (parsed.tags || []).filter((t: string) =>
             ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
         );
