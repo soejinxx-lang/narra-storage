@@ -589,7 +589,10 @@ async function callAzureGPT(prompt: string): Promise<string> {
     }
 
     try {
-        const url = `${endpoint}openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        // endpoint에서 base URL만 추출 (/openai/v1/ 같은 suffix 제거)
+        const baseUrl = endpoint!.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
+        const url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        console.log(`🔗 Azure GPT URL: ${url}`);
         const response = await fetch(url, {
             method: 'POST',
             headers: {
