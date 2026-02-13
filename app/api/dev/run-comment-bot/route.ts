@@ -3,11 +3,12 @@ import db from "../../../db";
 import { requireAdmin } from "../../../../lib/admin";
 
 /**
- * 댓글봇 v2 — 수집 데이터 기반 자연스러운 한국어 웹소설 댓글
- * GET /api/dev/run-comment-bot?novel=novel-xxx&count=60
+ * 댓글봇 v3 — Deep Context GPT + 태그 기반 + 수집 데이터
+ * GET /api/dev/run-comment-bot?novel=novel-xxx&count=60&deep=true
  * 
  * 17가지 규칙 + GPT 피드백 + 후처리 왜곡 + context-required 치환
- * 수집 데이터: 400+ 닉네임, 300+ 템플릿, 70+ context 템플릿, 4장르
+ * + 장면 앵커 GPT 생성 + 태그 기반 장면 매칭
+ * 수집 데이터: 400+ 닉네임, 300+ 템플릿, 77 context, 70+ 태그 템플릿
  */
 
 type PersonalityTone = 'short_reactor' | 'emotional' | 'theorist' | 'cheerleader' | 'critic';
@@ -574,6 +575,95 @@ function randomTimestamp(): Date {
 }
 
 // ============================================================
+// Deep Context GPT — Azure OpenAI 호출
+// ============================================================
+async function callAzureGPT(prompt: string): Promise<string> {
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const apiKey = process.env.AZURE_OPENAI_API_KEY;
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-10-01-preview';
+    const deployment = 'gpt-4omini';
+
+    if (!endpoint || !apiKey) {
+        console.warn('⚠️ Azure OpenAI not configured, skipping deep context');
+        return '';
+    }
+
+    try {
+        const url = `${endpoint}openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': apiKey,
+            },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.8,
+                max_tokens: 600,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error(`❌ Azure GPT error: ${response.status}`);
+            return '';
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || '';
+    } catch (err) {
+        console.error('❌ Azure GPT call failed:', err);
+        return '';
+    }
+}
+
+async function generateDeepContextComments(
+    episodeContent: string,
+    count: number = 8
+): Promise<string[]> {
+    // 본문이 너무 길면 마지막 2000자만 (최근 장면이 더 중요)
+    const trimmed = episodeContent.length > 2000
+        ? episodeContent.slice(-2000)
+        : episodeContent;
+
+    const prompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
+
+[필수 절차]
+1. 가장 꽂힌 장면 1개를 내부적으로 고른다 (출력 안 함)
+2. 그 장면에서 생긴 감정 1개만 쓴다
+3. 댓글에 장면 단서(행동/대사/수치/상황) 최소 1개를 포함한다
+
+[형식]
+- 한 줄에 하나, ${count}개
+- 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
+- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
+- ~다 어미 금지 (미쳤음/ㅁㅊ/미쳐 OK)
+- 작품 전체 평가 금지 ("전개 좋네", "재밌네" 같은 일반 감상 금지)
+- 이모지 쓰지마
+- 댓글만 출력, 번호/설명/따옴표 금지
+
+[참고 예시 — 이런 느낌으로]
+거기서 칼 빼네
+저 30퍼 터지네ㅋㅋ
+웃다가 우는거 뛰임
+아니 그걸 왜 지금 쒔
+눈물에서 끝내냐
+
+[에피소드 본문]
+${trimmed}`;
+
+    const raw = await callAzureGPT(prompt);
+    if (!raw) return [];
+
+    // 줄바꿈 분리 → 번호/따옴표 제거 → 빈줄 필터
+    const comments = raw.split('\n')
+        .map(l => l.replace(/^\d+[\.)\-]\s*/, '').replace(/^"|"$/g, '').trim())
+        .filter(l => l.length > 0 && l.length < 100);
+
+    console.log(`🧠 Deep context: generated ${comments.length} comments`);
+    return comments;
+}
+
+// ============================================================
 // 메인 API 핸들러
 // ============================================================
 export async function GET(req: NextRequest) {
@@ -582,10 +672,11 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const novelId = searchParams.get('novel');
-    const genre = searchParams.get('genre') || 'default'; // game_fantasy, romance_fantasy, martial_arts
-    const density = parseFloat(searchParams.get('density') || '1.0'); // 에피소드 밀도 (0.5~2.0)
-    const tagsParam = searchParams.get('tags') || ''; // battle,romance,cliffhanger
+    const genre = searchParams.get('genre') || 'default';
+    const density = parseFloat(searchParams.get('density') || '1.0');
+    const tagsParam = searchParams.get('tags') || '';
     const sceneTags = tagsParam ? tagsParam.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const useDeep = searchParams.get('deep') === 'true'; // Deep Context GPT 활성화
     const baseCount = parseInt(searchParams.get('count') || '60');
     const totalCount = Math.round(baseCount * density);
 
@@ -638,7 +729,24 @@ export async function GET(req: NextRequest) {
             reply_count: parseInt(r.reply_count) || 0,
         }));
 
-        // 3. 봇 생성 & 댓글 작성
+        // 3. Deep Context GPT 댓글 사전 생성 (deep=true일 때만)
+        let deepComments: string[] = [];
+        if (useDeep) {
+            // 에피소드 본문 조회
+            const contentResult = await db.query(
+                `SELECT content FROM episodes WHERE id = $1`,
+                [episodeId]
+            );
+            const episodeContent = contentResult.rows[0]?.content;
+            if (episodeContent && episodeContent.length > 50) {
+                console.log(`📖 Fetched episode content (${episodeContent.length} chars)`);
+                deepComments = await generateDeepContextComments(episodeContent);
+            } else {
+                console.log('⚠️ Episode content too short or null, skipping deep context');
+            }
+        }
+
+        // 4. 봇 생성 & 댓글 작성
         const usedTemplates = new Set<string>();
         const usedNicknames = new Set<string>();
         let totalCommentsPosted = 0;
@@ -671,7 +779,14 @@ export async function GET(req: NextRequest) {
             let lastCommentTime: Date | null = null;
 
             for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-                const content = pickComment(tone, usedTemplates, characterNames, sceneTags);
+                // Deep Context 댓글 (실험: 100% deep 우선, 없으면 템플릿 fallback)
+                let content: string;
+                if (deepComments.length > 0) {
+                    content = deepComments.pop()!;
+                    content = humanize(content);
+                } else {
+                    content = pickComment(tone, usedTemplates, characterNames, sceneTags);
+                }
                 let createdAt = randomTimestamp();
 
                 // 규칙 10: 같은 봇 댓글 간 5분~3시간 간격
