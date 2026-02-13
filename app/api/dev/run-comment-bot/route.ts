@@ -619,7 +619,7 @@ async function callAzureGPT(prompt: string): Promise<string> {
 async function generateDeepContextComments(
     episodeContent: string,
     count: number = 8
-): Promise<string[]> {
+): Promise<{ comments: string[]; detectedTags: string[] }> {
     // 본문이 너무 길면 마지막 2000자만 (최근 장면이 더 중요)
     const trimmed = episodeContent.length > 2000
         ? episodeContent.slice(-2000)
@@ -632,14 +632,18 @@ async function generateDeepContextComments(
 2. 그 장면에서 생긴 감정 1개만 쓴다
 3. 댓글에 장면 단서(행동/대사/수치/상황) 최소 1개를 포함한다
 
-[형식]
-- 한 줄에 하나, ${count}개
+[출력 형식 — 반드시 JSON]
+{
+  "tags": ["이 에피소드의 장면 태그. battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
+  "comments": ["댓글 ${count}개"]
+}
+
+[댓글 규칙]
 - 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
 - ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
 - ~다 어미 금지 (미쳤음/ㅁㅊ/미쳐 OK)
 - 작품 전체 평가 금지 ("전개 좋네", "재밌네" 같은 일반 감상 금지)
 - 이모지 쓰지마
-- 댓글만 출력, 번호/설명/따옴표 금지
 
 [참고 예시 — 이런 느낌으로]
 거기서 칼 빼네
@@ -652,15 +656,25 @@ async function generateDeepContextComments(
 ${trimmed}`;
 
     const raw = await callAzureGPT(prompt);
-    if (!raw) return [];
+    if (!raw) return { comments: [], detectedTags: [] };
 
-    // 줄바꿈 분리 → 번호/따옴표 제거 → 빈줄 필터
-    const comments = raw.split('\n')
-        .map(l => l.replace(/^\d+[\.)\-]\s*/, '').replace(/^"|"$/g, '').trim())
-        .filter(l => l.length > 0 && l.length < 100);
-
-    console.log(`🧠 Deep context: generated ${comments.length} comments`);
-    return comments;
+    // JSON 파싱 시도
+    try {
+        const parsed = JSON.parse(raw);
+        const comments = (parsed.comments || []).filter((c: string) => c.length > 0 && c.length < 100);
+        const detectedTags = (parsed.tags || []).filter((t: string) =>
+            ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+        );
+        console.log(`🧠 Deep context: ${comments.length} comments, tags: [${detectedTags.join(', ')}]`);
+        return { comments, detectedTags };
+    } catch {
+        // JSON 파싱 실패 시 줄바꿈 fallback
+        const comments = raw.split('\n')
+            .map(l => l.replace(/^\d+[\.)\-]\s*/, '').replace(/^"|"$/g, '').trim())
+            .filter(l => l.length > 0 && l.length < 100);
+        console.log(`🧠 Deep context (fallback): ${comments.length} comments, no tags`);
+        return { comments, detectedTags: [] };
+    }
 }
 
 // ============================================================
@@ -672,16 +686,13 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const novelId = searchParams.get('novel');
-    const genre = searchParams.get('genre') || 'default';
-    const density = parseFloat(searchParams.get('density') || '1.0');
-    const tagsParam = searchParams.get('tags') || '';
-    const sceneTags = tagsParam ? tagsParam.split(',').map(t => t.trim()).filter(Boolean) : [];
-    const useDeep = searchParams.get('deep') === 'true'; // Deep Context GPT 활성화
+    const useDeep = searchParams.get('deep') === 'true';
     const baseCount = parseInt(searchParams.get('count') || '60');
+    const density = parseFloat(searchParams.get('density') || '1.0');
     const totalCount = Math.round(baseCount * density);
 
-    // 장르별 가중치 적용
-    PERSONALITY_WEIGHTS = GENRE_WEIGHTS[genre] || GENRE_WEIGHTS['default'];
+    // 기본 가중치 (나중에 GPT 감지 결과로 덮어쓰기 가능)
+    PERSONALITY_WEIGHTS = GENRE_WEIGHTS['default'];
 
     if (!novelId) {
         return NextResponse.json(
@@ -731,6 +742,7 @@ export async function GET(req: NextRequest) {
 
         // 3. Deep Context GPT 댓글 사전 생성 (deep=true일 때만)
         let deepComments: string[] = [];
+        let sceneTags: string[] = [];
         if (useDeep) {
             // 에피소드 본문 조회
             const contentResult = await db.query(
@@ -740,7 +752,9 @@ export async function GET(req: NextRequest) {
             const episodeContent = contentResult.rows[0]?.content;
             if (episodeContent && episodeContent.length > 50) {
                 console.log(`📖 Fetched episode content (${episodeContent.length} chars)`);
-                deepComments = await generateDeepContextComments(episodeContent);
+                const result = await generateDeepContextComments(episodeContent);
+                deepComments = result.comments;
+                sceneTags = result.detectedTags;
             } else {
                 console.log('⚠️ Episode content too short or null, skipping deep context');
             }
