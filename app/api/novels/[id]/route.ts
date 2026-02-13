@@ -17,7 +17,7 @@ export async function GET(
   const result = await db.query(
     `SELECT 
        n.id, n.title, n.description, n.cover_url, n.source_language, 
-       n.genre, n.is_original, n.serial_status, n.episode_format, n.author_id,
+       n.genre, n.genre_taxonomy, n.is_original, n.serial_status, n.episode_format, n.author_id,
        u.name as author_name, 
        u.username as author_username
      FROM novels n
@@ -96,7 +96,7 @@ export async function PATCH(
   const body = await req.json();
 
   // 동적으로 업데이트할 필드 구성
-  const allowedFields = ["description", "genre", "is_original", "serial_status", "episode_format"];
+  const allowedFields = ["description", "genre", "genre_taxonomy", "is_original", "serial_status", "episode_format"];
   const updates: string[] = [];
   const values: any[] = [];
   let paramIndex = 1;
@@ -116,7 +116,7 @@ export async function PATCH(
   values.push(id);
 
   const result = await db.query(
-    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, is_original, serial_status, episode_format`,
+    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, genre_taxonomy, is_original, serial_status, episode_format`,
     values
   );
 
