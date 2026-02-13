@@ -742,12 +742,109 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     // Note: Time Travel moved to Narrative Devices (not genre-specific)
 };
 
-// 상위 카테고리별 GPT 힌트
-const GENRE_HINTS: Record<string, string> = {
-    'game-fantasy': '\n\n[장르 특징: 게임판타지]\n스탯/빌드/확률/레벨 같은 수치 반응을 포함해도 좋아. "밸패", "이 빌드 사기" 같은 표현 OK.',
-    'romance': '\n\n[장르 특징: 로맨스]\n감정 표현을 강하게 해. 설렘/키스각/커플링 같은 반응. "둘이 키스각", "남주 후회각" OK.',
-    'murim': '\n\n[장르 특징: 무협]\n경지/체급/초식/내공 같은 무협 표현을 써도 좋아. "화경?", "체급차이" OK.',
-    'regression': '\n\n[장르 특징: 회귀/이세계]\n참교육/사이다/통쾌함 같은 반응. "참교육 가자", "저놈 끝났네" OK.',
+// ============================================================
+// 장르별 × 언어별 GPT 힌트 (Multilingual Genre Hints)
+// ============================================================
+
+const GENRE_HINTS: Record<string, Record<string, string>> = {
+    'fantasy': {
+        'ko': `\n\n[장르: 판타지 | 한국어 댓글 스타일]
+- 짧은 문장 (5-15자)
+- 쉼표 거의 사용 안 함
+- "복선", "설정", "세계관", "각성", "서사" 자주 사용
+- 분석 + 감탄 혼합
+- 감정 비율: 계산 40%, 감정 30%, 응원 15%, 무의미(ㅋㅋ/출첵) 10%, 비판 5%
+
+예시:
+- 복선 회수 ㅁㅊ
+- 설정 이거 말 됨?
+- 각성 장면 소름
+- 진짜 서사 쩔어`,
+
+        'zh': `\n\n[类型：奇幻 | 中文评论风格]
+- 形容词夸张
+- 感叹词重复
+- "太强了", "逆天", "离谱" 常用
+- 哈哈哈, ？？？？使用频繁
+- 情感比例：夸张情感 50%, 应援 20%, 分析 15%, 集体反应 15%
+
+示例：
+- 太强了，离谱！
+- 主角逆天啊哈哈哈
+- 这才是天才！！！
+- 作者写的真好`,
+
+        'ja': `\n\n[ジャンル：ファンタジー | 日本語コメントスタイル]
+- 完結形文章
+- 丁寧語/敬語
+- ｗ使用
+- 過激語ほぼなし
+- 感情比率：個人感想 60%, 分析 20%, 応援 15%, 批判 5%
+
+例：
+- この展開好きです
+- キャラが魅力的ですね
+- 設定が面白いｗ
+- 続きが気になります`,
+
+        'en': `\n\n[Genre: Fantasy | English comment style]
+- Longer sentences with commas
+- Analytical tone
+- "lol", "bro", "ngl" casual slang
+- Irony/sarcasm acceptable
+- Emotion mix: Analysis 40%, Emotion 25%, Discussion 20%, Humor 10%, Filler 5%
+
+Examples:
+- The magic system makes sense here, ngl
+- Character development is insane
+- This world-building though...
+- Can't wait to see how this plays out`,
+
+        'es': `\n\n[Género: Fantasía | Estilo de comentario en español]
+- Muchas exclamaciones
+- JAJAJA repetido
+- MAYÚSCULAS para énfasis
+- Expresiones exageradas
+- Proporción: Emoción 50%, Apoyo 20%, Análisis 15%, Humor 10%, Crítica 5%
+
+Ejemplos:
+- ¡NO PUEDE SER!
+- JAJAJA este capítulo estuvo increíble
+- ¡Qué giro tan épico!
+- El personaje merece más amor`,
+    },
+
+    'game-fantasy': {
+        'ko': '\n\n[장르: 게임판타지]\n스탯/빌드/확률/레벨 같은 수치 반응 포함 OK. "밸패", "이 빌드 사기" 같은 표현.',
+        'zh': '\n\n[类型：游戏奇幻]\n游戏系统/数值/技能反应。"这装备太强", "技能配置离谱"等表达。',
+        'ja': '\n\n[ジャンル：ゲーム系ファンタジー]\nステータス/スキル/レベルアップ反応。"このビルド強すぎ"など。',
+        'en': '\n\n[Genre: GameLit/LitRPG]\nStats/build discussions, leveling excitement. "OP build", "min-maxing" OK.',
+        'es': '\n\n[Género: Fantasía de juego]\nEstadísticas/construcción/nivel. "Build roto", "Stats increíbles".',
+    },
+
+    'romance': {
+        'ko': '\n\n[장르: 로맨스]\n감정 표현 강하게. 설렘/키스각/커플링 반응. "둘이 키스각", "남주 후회각" OK.',
+        'zh': '\n\n[类型：言情]\n情感表达强烈。心动/亲吻/CP反应。"终于在一起了！！"等表达。',
+        'ja': '\n\n[ジャンル：ロマンス]\n感情表現豊か。胸キュン/カップリング反応。"こういう展開待ってた"など。',
+        'en': '\n\n[Genre: Romance]\nEmotional expressions. Ship/kiss/relationship focus. "The chemistry!", "OTP goals".',
+        'es': '\n\n[Género: Romance]\nExpresiones emocionales fuertes. ¡Amor/beso/pareja! "¡Por fin se besaron!"',
+    },
+
+    'murim': {
+        'ko': '\n\n[장르: 무협]\n경지/체급/초식/내공 같은 무협 표현. "화경?", "체급차이" OK.',
+        'zh': '\n\n[类型：武侠]\n境界/招式/内功等武侠表达。"这是什么境界", "招式太强"。',
+        'ja': '\n\n[ジャンル：武侠]\n境地/技/内功など武侠表現。"この技すごい"など。',
+        'en': '\n\n[Genre: Martial Arts]\nRealm/technique/cultivation terms. "Transcendent realm!", "OP technique".',
+        'es': '\n\n[Género: Artes marciales]\nNivel/técnica/cultivo. "¡Qué técnica!", "Nivel superior".',
+    },
+
+    'regression': {
+        'ko': '\n\n[장르: 회귀/이세계]\n참교육/사이다/통쾌함 반응. "참교육 가자", "저놈 끝났네" OK.',
+        'zh': '\n\n[类型：回归/异世界]\n爽文/复仇反应。"这就是爽", "报仇了！"等表达。',
+        'ja': '\n\n[ジャンル：回帰/異世界]\nスカッと/復讐反応。"これは痛快"など。',
+        'en': '\n\n[Genre: Regression/Isekai]\nRevenge/satisfaction reactions. "Justice served!", "Get rekt".',
+        'es': '\n\n[Género: Regresión/Isekai]\nVenganza/satisfacción. "¡Justicia!", "Se lo merecía".',
+    },
 };
 
 /**
@@ -769,19 +866,22 @@ function getGenreCategory(genreData: string | string[] | null): string | null {
 }
 
 /**
- * GPT로 에피소드 본문 기반 댓글 사전 생성 (with 장르 힌트)
+ * GPT로 에피소드 본문 기반 댓글 사전 생성 (with 장르 + 언어 힌트)
  */
 async function generateDeepContextCommentsWithGenre(
     episodeContent: string,
     genreCategory: string | null,
+    language: string = 'ko', // Default: Korean
     count: number = 15
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
     const trimmed = episodeContent.length > 2000
         ? episodeContent.slice(-2000)
         : episodeContent;
 
-    // 장르별 힌트 추가
-    const genreHint = genreCategory ? (GENRE_HINTS[genreCategory] || '') : '';
+    // 장르 + 언어별 힌트 가져오기 (fallback: ko)
+    const genreHint = genreCategory
+        ? (GENRE_HINTS[genreCategory]?.[language] || GENRE_HINTS[genreCategory]?.['ko'] || '')
+        : '';
 
     const prompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.${genreHint}
 
@@ -948,13 +1048,16 @@ export async function GET(req: NextRequest) {
             reply_count: parseInt(r.reply_count) || 0,
         }));
 
-        // 3. 소설 장르 조회 (장르별 댓글 특징 반영)
+        // 3. 소설 장르 + 언어 조회
         const novelResult = await db.query(
-            `SELECT genre FROM novels WHERE id = $1`,
+            `SELECT genre, source_language FROM novels WHERE id = $1`,
             [novelId]
         );
         const genreData = novelResult.rows[0]?.genre;
+        const sourceLanguage = novelResult.rows[0]?.source_language || 'ko'; // Default: Korean
         const genreCategory = getGenreCategory(genreData);
+
+        console.log(`🌐 Source language: ${sourceLanguage}`);
         if (genreCategory) {
             console.log(`🎭 Genre category: ${genreCategory}`);
         }
@@ -977,7 +1080,8 @@ export async function GET(req: NextRequest) {
                     const result = await generateDeepContextCommentsWithGenre(
                         episodeContent,
                         genreCategory,
-                        15
+                        sourceLanguage, // Use novel's source language
+                        15              // count
                     );
                     deepComments.push(...result.comments);
                     if (calls === 0) sceneTags = result.detectedTags;
