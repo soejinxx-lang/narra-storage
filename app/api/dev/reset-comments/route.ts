@@ -24,21 +24,21 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        // 1. 봇 댓글 삭제
+        // 1. 봇 댓글 삭제 (username 패턴으로 식별)
         const commentsResult = await db.query(
             `DELETE FROM comments 
        WHERE episode_id IN (
          SELECT id FROM episodes WHERE novel_id = $1
        )
        AND user_id IN (
-         SELECT id FROM users WHERE is_hidden = TRUE
+         SELECT id FROM users WHERE username LIKE 'reader%' OR username LIKE 'bot\\_%'
        )`,
             [novelId]
         );
 
         // 2. 봇 유저 삭제 (댓글 삭제 후)
         const usersResult = await db.query(
-            `DELETE FROM users WHERE is_hidden = TRUE AND username LIKE 'reader%'`
+            `DELETE FROM users WHERE username LIKE 'reader%' OR username LIKE 'bot\\_%'`
         );
 
         console.log(`🗑️ Deleted ${commentsResult.rowCount} bot comments from ${novelId}`);
