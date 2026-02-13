@@ -461,16 +461,6 @@ function humanize(comment: string): string {
         result = result.replace(/\.$/, '');
     }
 
-    // 15% 마지막 글자 삭제 (단어 경계 고려 — 한글 받침 깨짐 방지)
-    if (Math.random() < 0.15 && result.length > 5) {
-        // 공백 기준으로 마지막 단어 삭제 (글자 하나 삭제보다 자연스러움)
-        const words = result.split(' ');
-        if (words.length > 1) {
-            result = words.slice(0, -1).join(' ');
-        }
-        // 단어 1개면 truncation 안 함 (깨짐 방지)
-    }
-
     // 10% ㅋㅋ 추가 (뒤에)
     if (Math.random() < 0.10 && !result.includes('ㅋ')) {
         const count = Math.floor(Math.random() * 4) + 2;
@@ -716,6 +706,47 @@ ${trimmed}`;
     }
 }
 
+/**
+ * GPT로 부모 댓글에 어울리는 대댓글 생성
+ */
+async function generateContextualReply(parentComment: string): Promise<string> {
+    const prompt = `너는 한국 웹소설 독자야. 방금 다른 사람이 쓴 댓글을 봤어.
+
+[원댓글]
+${parentComment}
+
+이 댓글에 대한 짧은 반응(대댓글) 1개만 써줘.
+
+[규칙]
+- 5~15자 이내 초단문
+- ㅇㅈ, ㄹㅇ, ㅋㅋ, ㅠㅠ 자유
+- 원댓글 맥락에 맞춰서
+- ~다 어미 금지
+- JSON 말고 댓글 텍스트만 출력
+
+예시:
+원댓글: "미쳤음ㅋㅋ" → 반응: "ㄹㅇ"
+원댓글: "카일 죽을 듯" → 반응: "아니지 살 거야"
+원댓글: "전개 개빠름" → 반응: "인정ㅋㅋ"`;
+
+    const raw = await callAzureGPT(prompt);
+    if (!raw) return '';
+
+    // GPT 응답 정제
+    let reply = raw.trim()
+        .replace(/^```.*\n?/i, '')
+        .replace(/\n?```.*$/i, '')
+        .replace(/^["']|["']$/g, '')
+        .trim();
+
+    // 너무 길면 폐기
+    if (reply.length > 50) return '';
+
+    console.log(`💬 Contextual reply for "${parentComment.substring(0, 20)}...": "${reply}"`);
+    return reply;
+}
+
+
 // ============================================================
 // 메인 API 핸들러
 // ============================================================
@@ -741,7 +772,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        console.log(`🤖 [v2] Starting natural comment bot for ${novelId}...`);
+        console.log(`🤖[v2] Starting natural comment bot for ${novelId}...`);
 
         // 1. 에피소드 ID 조회
         const episodeResult = await db.query(
@@ -757,25 +788,29 @@ export async function GET(req: NextRequest) {
         }
 
         const episodeId = episodeResult.rows[0].id;
-        console.log(`✅ Target episode: ${episodeId}`);
+        console.log(`✅ Target episode: ${episodeId} `);
 
         // 1.5. 캐릭터 이름 로딩 (context-required 템플릿용)
         const entityResult = await db.query(
-            `SELECT source_text FROM entities WHERE novel_id = $1 AND (category = 'character' OR category IS NULL) LIMIT 20`,
+            `SELECT source_text FROM entities WHERE novel_id = $1 AND(category = 'character' OR category IS NULL) LIMIT 20`,
             [novelId]
         );
         const characterNames: string[] = entityResult.rows.map((r: { source_text: string }) => r.source_text);
 
         // 2. 기존 댓글 캐싱 (규칙 14: 답글 가중치용)
         const existingResult = await db.query(
-            `SELECT c.id, 
-                    (SELECT COUNT(*) FROM comments c2 WHERE c2.parent_id = c.id) as reply_count
+            `SELECT c.id,
+                    COALESCE(COUNT(r.id), 0) AS reply_count,
+                    c.content
              FROM comments c
-             WHERE c.episode_id = $1`,
+             LEFT JOIN comments r ON r.parent_id = c.id
+             WHERE c.episode_id = $1
+             GROUP BY c.id`,
             [episodeId]
         );
-        const commentPool: { id: string; reply_count: number }[] = existingResult.rows.map((r: { id: string; reply_count: string }) => ({
+        const commentPool: { id: string; content: string; reply_count: number }[] = existingResult.rows.map((r: { id: string; content: string; reply_count: string }) => ({
             id: r.id,
+            content: r.content,
             reply_count: parseInt(r.reply_count) || 0,
         }));
 
@@ -790,7 +825,7 @@ export async function GET(req: NextRequest) {
             );
             const episodeContent = contentResult.rows[0]?.content;
             if (episodeContent && episodeContent.length > 50) {
-                console.log(`📖 Fetched episode content (${episodeContent.length} chars)`);
+                console.log(`📖 Fetched episode content(${episodeContent.length} chars)`);
                 // totalCount만큼 GPT 댓글 확보 (15개씩 배치 호출)
                 const batchSize = 15;
                 const needed = totalCount;
@@ -800,7 +835,7 @@ export async function GET(req: NextRequest) {
                     deepComments.push(...result.comments);
                     if (calls === 0) sceneTags = result.detectedTags; // 태그는 첫 호출에서만
                     calls++;
-                    console.log(`   → 배치 ${calls}: +${result.comments.length}개 (총 ${deepComments.length}/${needed})`);
+                    console.log(`   → 배치 ${calls}: +${result.comments.length} 개(총 ${deepComments.length} / ${needed})`);
                 }
             } else {
                 console.log('⚠️ Episode content too short or null, skipping deep context');
@@ -825,11 +860,11 @@ export async function GET(req: NextRequest) {
 
             // 봇 계정 생성 (unique username)
             const timestamp = Date.now();
-            const username = `bot_${timestamp}_${i}`;
+            const username = `bot_${timestamp}_${i} `;
 
             const userResult = await db.query(
-                `INSERT INTO users (username, password_hash, name, is_hidden)
-                 VALUES ($1, '', $2, FALSE)
+                `INSERT INTO users(username, password_hash, name, is_hidden)
+    VALUES($1, '', $2, FALSE)
                  RETURNING id`,
                 [username, nickname]
             );
@@ -859,16 +894,28 @@ export async function GET(req: NextRequest) {
                 }
                 lastCommentTime = createdAt;
 
-                // 규칙 14: 답글 10% (replyCount 가중치)
+                // 규칙 14: 답글 5% (GPT 맥락 기반)
                 let parentId: string | null = null;
-                if (Math.random() < 0.10 && commentPool.length > 0) {
-                    const parent = weightedRandom(
+                if (Math.random() < 0.05 && commentPool.length > 0) {
+                    // 부모 댓글 선택 (답글 많은 댓글 2배 확률)
+                    const parentCommentId = weightedRandom(
                         commentPool.map(c => ({
                             item: c.id,
                             weight: c.reply_count > 0 ? 2.0 : 1.0,
                         }))
                     );
-                    parentId = parent;
+                    parentId = parentCommentId;
+
+                    // 부모 댓글 내용 찾기
+                    const parentComment = commentPool.find(c => c.id === parentCommentId);
+                    if (parentComment) {
+                        // GPT로 맥락 있는 대댓글 생성
+                        const contextualReply = await generateContextualReply(parentComment.content);
+                        if (contextualReply) {
+                            content = contextualReply;  // 기존 content를 대체
+                        }
+                        // GPT 실패 시 기존 content 사용
+                    }
                 }
 
                 const insertResult = await db.query(
@@ -879,7 +926,7 @@ export async function GET(req: NextRequest) {
                 );
 
                 // 새 댓글을 풀에 추가 (답글 대상)
-                commentPool.push({ id: insertResult.rows[0].id, reply_count: 0 });
+                commentPool.push({ id: insertResult.rows[0].id, content: content, reply_count: 0 });
                 totalCommentsPosted++;
             }
 
