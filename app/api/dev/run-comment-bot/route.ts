@@ -823,11 +823,11 @@ Ejemplos:
     },
 
     'romance': {
-        'ko': '\n\n[장르: 로맨스]\n감정 표현 강하게. 설렘/키스각/커플링 반응. "둘이 키스각", "남주 후회각" OK.',
-        'zh': '\n\n[类型：言情]\n情感表达强烈。心动/亲吻/CP反应。"终于在一起了！！"等表达。',
-        'ja': '\n\n[ジャンル：ロマンス]\n感情表現豊か。胸キュン/カップリング反応。"こういう展開待ってた"など。',
-        'en': '\n\n[Genre: Romance]\nEmotional expressions. Ship/kiss/relationship focus. "The chemistry!", "OTP goals".',
-        'es': '\n\n[Género: Romance]\nExpresiones emocionales fuertes. ¡Amor/beso/pareja! "¡Por fin se besaron!"',
+        'ko': `\n\n[장르: 로맨스 | 한국어 댓글 스타일]\n- 짧은 문장, 쉼표 거의 없음\n- ㅠㅠ / ㅋㅋ 많음\n- "각", "레전드", "서브남" 축약어\n- 감정 비율: 감정 폭발 50%, 커플링 논쟁 20%, 비난 15%, 응원 10%\n\n집착 포인트: 남주 태도, 질투 장면, 답답함, 후회각\n행동 패턴: 스킨십 → 댓글 몰림, 질투 장면 → 밀도 3배\n\n예시:\n- 남주 진짜 답답함\n- 저러다 후회각\n- 왜 이제야 고백함\n- 키스각ㅠㅠ`,
+        'zh': `\n\n[类型：言情 | 中文评论风格]\n- 过度形容词, 哈哈哈/？？？？\n- "甜死了", "虐死我了", "磕到了" 常用\n- 情感比例：情感夸张 60%, CP应援 20%, 分析 10%\n\n关注点：男主霸道/宠溺, 权力差, "虐"文化\n行动模式：CP应援集体化, 男主权力性正面消费\n\n示例:\n- 甜死了！！！\n- 男主太宠了哈哈哈\n- 虐死我了求作者手下留情\n- 这CP我磕了`,
+        'ja': `\n\n[ジャンル：ロマンス | 日本語コメントスタイル]\n- 完結形文章, 丁寧語\n- ｗ使用, 過激語なし\n- 感情比率：個人感想 60%, 応援 20%, 分析 15%\n\n注目点：感情の繊細さ, 小さな仕草, 日常交流\n行動パターン：感情分析多い, 攻撃性低い, 静かな応援\n\n例:\n- この空気好きです\n- キュンとしましたｗ\n- 告白シーン良かった\n- 二人の関係が素敵`,
+        'en': `\n\n[Genre: Romance | English comment style]\n- Natural comma usage\n- "lol", "omg", "girl", "bro"\n- Sarcasm/irony acceptable\n- Emotion mix: Analysis 40%, Emotion 30%, Discussion 20%\n\nFocus: Character psychology, relationship health, red flags\nBehavioral: Toxic analysis, "He's a red flag" common\n\nExamples:\n- Finally but he needs therapy lol\n- This relationship is toxic ngl\n- She deserves better\n- The slow burn is killing me`,
+        'es': `\n\n[Género: Romance | Estilo de comentario en español]\n- Muchas exclamaciones, JAJAJA\n- MAYÚSCULAS para emoción\n- "DIOS", "NOOO", "POR FAVOR"\n- Proporción: Emoción 60%, Apoyo 20%\n\nEnfoque: Celos, obsesión, confesión\nPatrón: Emoción excesiva, lágrimas/rabia extremas\n\nEjemplos:\n- ¡NO PUEDE SER!\n- DIOS MIO POR FIN SE BESARON\n- ¡Qué celos! JAJAJA\n- ¡ESTOY LLORANDO!`,
     },
 
     'murim': {
