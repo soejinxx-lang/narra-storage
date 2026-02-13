@@ -442,6 +442,20 @@ function applyDynamicVariations(text: string): string {
 function humanize(comment: string): string {
     let result = comment;
 
+    // 사자성어 필터 (포함된 댓글은 폐기)
+    const idiomBlacklist = [
+        '일석이조', '새옹지마', '천생연분', '화룡점정', '역지사지',
+        '오매불망', '절치부심', '호연지기', '동병상련', '금상첨화',
+        '전화위복', '사필귀정', '아전인수', '자업자득', '이심전심',
+        '동문서답', '우이독경', '이구동성', '백발백중', '타산지석',
+    ];
+
+    for (const idiom of idiomBlacklist) {
+        if (result.includes(idiom)) {
+            return '';  // 사자성어 포함 시 댓글 폐기
+        }
+    }
+
     // 20% 마침표 삭제
     if (Math.random() < 0.20) {
         result = result.replace(/\.$/, '');
