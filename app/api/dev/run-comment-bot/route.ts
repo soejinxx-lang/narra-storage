@@ -756,6 +756,14 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     'Espionage': 'mystery',
     'Whodunit': 'mystery',
 
+    // Horror → horror
+    'Gothic Horror': 'horror',
+    'Supernatural': 'horror',
+    'Zombie': 'horror',
+    'Survival Horror': 'horror',
+    'Body Horror': 'horror',
+    'Folk Horror': 'horror',
+
     // Note: LGBTQ+ moved to Tropes (not genre-specific)
     // Note: Time Travel moved to Narrative Devices (not genre-specific)
 };
@@ -1010,6 +1018,83 @@ Ejemplos:
 - ¡Qué traición tan horrible!
 - JAJAJA no lo vi venir
 - ¡Este giro me dejó sin palabras!`,
+    },
+
+    'horror': {
+        'ko': `\n\n[장르: 공포 | 한국어 댓글 스타일]
+- 매우 짧음 (초단문 비율 매우 높음)
+- "소름", "미쳤음", "무섭네"
+- ㅠㅠ는 불안, ㅋㅋ은 긴장 완화
+- 감정 비율: 비명/놀람 40%, 추측 25%, 분석 15%
+
+집착 포인트: 소름 장면, 복선, 귀신 정체
+행동 패턴: 갑툭튀 → 댓글 폭증, 설정 오류 → 바로 식음
+
+예시:
+- 소름
+- 미쳤음
+- 헐
+- 귀신 나옴?
+- 무섭네ㅠㅠ
+- 밤에 읽으면 안 될듯
+- 불 켜고 본다`,
+
+        'zh': `\n\n[类型：恐怖 | 中文评论风格]
+- 过度表达, "吓死我了", "离谱"
+- 哈哈哈 (紧张缓解)
+- 情感比例：情感夸张 50%, 设定推测 20%
+
+关注点：冤魂/鬼设定, 因果报应, 复仇
+行动模式：集体尖叫, 道德解释, 鬼设定讨论
+
+示例：
+- 吓死我了！！！
+- 这鬼太可怕了
+- 因果报应哈哈哈
+- 快更新啊`,
+
+        'ja': `\n\n[ジャンル：ホラー | 日本語コメントスタイル - 独特な雰囲気重視]
+- 完結形文章, 丁寧語
+- ｗは少ない, 過剰表現ほぼなし
+- 感情比率：感想 40%, 不安表現 30%, 推測 20%
+
+注目点：雰囲気, 静的恐怖, 心理的圧迫, 日常の不安
+行動パターン：落ち着いた感想, 余韻言及, 幽霊より雰囲気
+
+例：
+- こういう静かな怖さ好き
+- 雰囲気が不気味ですね
+- 心理描写がリアル
+- 余韻が残ります`,
+
+        'en': `\n\n[Genre: Horror | English comment style]
+- Medium sentences, natural commas
+- Sarcasm present
+- "nah", "nope", "hell no"
+- Emotion mix: Surprise 30%, Analysis 30%, Humor 20%
+
+Focus: Gore intensity, jump scares, psychological trauma, social metaphor
+Behavioral: Character criticism, "Don't go in there" memes, trauma analysis
+
+Examples:
+- Nope nope nope not going there
+- Why would you open that door?? lol
+- The psychological horror is chef's kiss
+- Classic horror movie mistake`,
+
+        'es': `\n\n[Género: Terror | Estilo de comentario en español]
+- Exclamaciones excesivas, MAYÚSCULAS
+- JAJAJA, "NOOOO", "DIOS"
+- Proporción: Emoción 50%, Sorpresa 25%
+
+Enfoque: Escenas de shock, descripciones crueles, aparición del fantasma
+Patrón: Gritos colectivos, concentración emocional, reacción instantánea
+
+Ejemplos:
+- ¡NOOOO QUÉ MIEDO!
+- ¡DIOS MIO NO PUEDE SER!
+- ¡Esto es demasiado terrorífico!
+- JAJAJA qué susto`,
     },
 };
 
