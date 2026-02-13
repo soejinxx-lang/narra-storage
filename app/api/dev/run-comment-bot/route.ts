@@ -55,7 +55,7 @@ const TEMPLATES: Record<PersonalityTone, string[]> = {
     short_reactor: [
         // 초단문 (1-5자)
         'ㄷㄷ', 'ㅋㅋ', '헐', '👍', '뚝!', '??', 'ㅅㅂ', 'ㄹㅇ',
-        'ㅇㅈ', '인정', '크', '미쳤다', '레전드', 'ㅇㅇ', '굿',
+        'ㅇㅈ', '인정', '크', 'ㅁㅊ', '레전드', 'ㅇㅇ', '굿',
         '1', '6등',
         // 비명/혼란 (씹덕물)
         '끼에에에에엑!!!!', '?????????????????', '받아라 천마데스비임!!!!!!!!!',
@@ -92,8 +92,8 @@ const TEMPLATES: Record<PersonalityTone, string[]> = {
 
     // 20% — 감정 표현
     emotional: [
-        '눈물남ㅠ', '눈물남ㅠㅠ', '진짜 소름', '진짜소름',
-        '심장 아파', '와ㅋㅋㅋㅋ 미쳤다', '아 ㅈㄴ슬프네',
+        '눈물남ㅠ', '눈물남ㅠㅠ', '진짜소름', '소름ㄷㄷ',
+        '심장 아파', '미쳤음ㅋㅋ', '아 ㅈㄴ슬프네',
         '이 장면 진짜...', '💔', '가슴이 웅장해진다',
         '아 개웃기네ㅋㅋㅋ', '심장 터질 것 같아', '숨 못 쉬겠어',
         '아 진짜 화나', '개감동ㅠㅠ', '설렌다', '두근두근',
@@ -170,14 +170,34 @@ const TEMPLATES: Record<PersonalityTone, string[]> = {
 // Context-required 템플릿 — {name1}, {name2} 치환 필요 (수집 데이터 70+개)
 // ============================================================
 const CONTEXT_TEMPLATES: { template: string; tone: PersonalityTone }[] = [
-    // emotional
+    // ========== emotional (25개) ==========
     { template: '{name1} 죽은 줄 알고 다 포기하고 {name2}이랑 결혼하지마..', tone: 'emotional' },
     { template: '은근히 고집있는 {name1} 귀여워', tone: 'emotional' },
     { template: '자다가도 {name1}이 다른 여자 얘기하니까 바로 깨는 {name2}', tone: 'emotional' },
     { template: '{name1}로 단련된 내 멘탈은 {name1}와 같다', tone: 'emotional' },
     { template: '도대체 {name1}얘기는 들을때마다 두려워서 건들지도 못한다...', tone: 'emotional' },
     { template: '개약한 {name1} 믿을 수 없다 아아아아악', tone: 'emotional' },
-    // short_reactor
+    { template: '{name1} 때문에 울었다 진짜', tone: 'emotional' },
+    { template: '{name1}이 불쌍해서 못보겠어', tone: 'emotional' },
+    { template: '{name1} 고백장면에서 심장터짐', tone: 'emotional' },
+    { template: '{name1}이랑 {name2} 이별하면 나 진짜 접는다', tone: 'emotional' },
+    { template: '{name1} 살려줘ㅠㅠㅠ 제발', tone: 'emotional' },
+    { template: '아 {name1} 죽으면 어떡해', tone: 'emotional' },
+    { template: '{name1} 행동 보면 진짜 답없다ㅋㅋ 근데 멋있어', tone: 'emotional' },
+    { template: '{name1}한테 감정이입 미쳤다', tone: 'emotional' },
+    { template: '{name1} 나올때마다 가슴이 아프다', tone: 'emotional' },
+    { template: '{name1} 지켜주고싶어ㅠ', tone: 'emotional' },
+    { template: '{name1} 퇴장하면 안돼...', tone: 'emotional' },
+    { template: '{name1} {name2} 그냥 행복하게 해줘라', tone: 'emotional' },
+    { template: '{name1} 고통받는거 더 못보겠다', tone: 'emotional' },
+    { template: '{name1} 각성할때 소름', tone: 'emotional' },
+    { template: '{name1} 진심 갓인데 왜 아무도 안알아봄', tone: 'emotional' },
+    { template: '{name1}하고 {name2} 재회하는데 눈물남ㅠ', tone: 'emotional' },
+    { template: '{name1} 혼자 버티는거 보니까 마음아프다', tone: 'emotional' },
+    { template: '{name1} 웃는장면 처음인데 개좋아ㅠㅠ', tone: 'emotional' },
+    { template: '{name1} 마지막말에 울컥했다', tone: 'emotional' },
+
+    // ========== short_reactor (25개) ==========
     { template: '그리고 {name1}는 귀여웠다', tone: 'short_reactor' },
     { template: '{name1} ㄹㅇ 걸쭉하다', tone: 'short_reactor' },
     { template: '{name1}랑 {name2}이 너무 쎈데', tone: 'short_reactor' },
@@ -185,21 +205,108 @@ const CONTEXT_TEMPLATES: { template: string; tone: PersonalityTone }[] = [
     { template: '이자식 {name1}이었네', tone: 'short_reactor' },
     { template: '너도 나도 {name1}은 날 사랑한다 선언ㅋㅋㅋㅋ', tone: 'short_reactor' },
     { template: '{name1} 개웃기네ㅋㅋㅋ', tone: 'short_reactor' },
-    { template: '{name1} 진짜 미쳤다', tone: 'short_reactor' },
+    { template: '{name1} 진짜 미쳤음ㅋㅋ', tone: 'short_reactor' },
     { template: '{name1} 등장할때마다 긴장됨', tone: 'short_reactor' },
     { template: '{name1} 왜 이렇게 매력있냐', tone: 'short_reactor' },
-    // theorist
+    { template: '{name1} ㅋㅋㅋㅋ 뭐하는거야', tone: 'short_reactor' },
+    { template: '{name1} 찐이다', tone: 'short_reactor' },
+    { template: '{name1}이 {name2} 때리는장면 시원하네', tone: 'short_reactor' },
+    { template: '{name1} 드디어 나왔다', tone: 'short_reactor' },
+    { template: '{name1} 이번화 존재감 미쳤는데', tone: 'short_reactor' },
+    { template: '{name1} 한마디에 분위기 다 잡네', tone: 'short_reactor' },
+    { template: '{name1} 말투 왜이래ㅋㅋ', tone: 'short_reactor' },
+    { template: '{name1}이 {name2} 구하러갈듯', tone: 'short_reactor' },
+    { template: '{name1} 쌍욕하는장면 ㅋㅋㅋ', tone: 'short_reactor' },
+    { template: '{name1} 존잘인거 확정', tone: 'short_reactor' },
+    { template: '{name1} 빠질수밖에 없다 진짜', tone: 'short_reactor' },
+    { template: '아 {name1} 짜증나ㅋㅋㅋㅋ', tone: 'short_reactor' },
+    { template: '{name1} 여기서 왜나옴', tone: 'short_reactor' },
+    { template: '{name1}이랑 {name2} 케미 미쳤다', tone: 'short_reactor' },
+    { template: '{name1} 먹방ㅋㅋㅋ진짜', tone: 'short_reactor' },
+
+    // ========== theorist (15개) ==========
     { template: '스승님 기억도 안나네 {name1}가 정실이다ㅇㅇ', tone: 'theorist' },
     { template: '역시 고인물의 재능이 느껴지는 {name1}...!', tone: 'theorist' },
     { template: '{name1} 나중에 배신할 것 같은데', tone: 'theorist' },
     { template: '{name1}이 진짜 최종보스 아님?', tone: 'theorist' },
     { template: '{name1} 정체 아직 안 밝혀졌잖아', tone: 'theorist' },
-    // cheerleader
+    { template: '{name1} 능력 각성 아직 안끝난듯', tone: 'theorist' },
+    { template: '{name1}이 {name2} 아버지인 떡밥 있는거 같은데', tone: 'theorist' },
+    { template: '{name1} 지금 숨기는거 있음 확실해', tone: 'theorist' },
+    { template: '{name1} 과거편 나올듯', tone: 'theorist' },
+    { template: '{name1} 사실 처음부터 편이었던거 아님?', tone: 'theorist' },
+    { template: '{name1}이 {name2} 스킬 카피한거 같은데', tone: 'theorist' },
+    { template: '{name1} 아이템 나중에 쓸거같음', tone: 'theorist' },
+    { template: '아무래도 {name1}이 흑막인듯', tone: 'theorist' },
+    { template: '{name1} 레벨 지금 어디쯤인거야', tone: 'theorist' },
+    { template: '{name1}이랑 {name2} 같은 혈통 아님?', tone: 'theorist' },
+
+    // ========== cheerleader (8개) ==========
     { template: '{name1} 사랑해ㅠㅠ', tone: 'cheerleader' },
     { template: '{name1} 행복해줘...', tone: 'cheerleader' },
     { template: '{name1} 보려고 정주행하는중', tone: 'cheerleader' },
+    { template: '{name1} 나올때마다 기분좋아짐', tone: 'cheerleader' },
+    { template: '{name1} 최애다 진짜', tone: 'cheerleader' },
+    { template: '{author}님 {name1} 많이 나오게 해주세요', tone: 'cheerleader' },
+    { template: '{name1} 스핀오프 내줘요 제발', tone: 'cheerleader' },
+    { template: '{name1} 엔딩 해피엔딩이어야함', tone: 'cheerleader' },
+
+    // ========== critic (4개) ==========
+    { template: '{name1} 요즘 너무 비중없다', tone: 'critic' },
+    { template: '{name1} 캐릭터 붕괴 아님?', tone: 'critic' },
+    { template: '{name1}이 이렇게 약해지면 안되는데', tone: 'critic' },
+    { template: '{name1}이랑 {name2} 전개 너무 억지', tone: 'critic' },
 ];
 
+// ============================================================
+// 태그 기반 템플릿 — 장면 유형별 사건 앵커 댓글
+// API: ?tags=battle,betrayal,cliffhanger
+// ============================================================
+const TAG_TEMPLATES: Record<string, string[]> = {
+    battle: [
+        '전투씬 미쳤음ㅋㅋ', '액션 쩔어', '이번화 전투 개쩔었는데',
+        '싸움 장면에서 소름', '때리는장면 시원하네', '전투 연출 ㄹㅇ',
+        '아 전투 너무 좋아', '칼싸움 개간지', '전투력 측정 불가ㅋㅋ',
+        '이번 배틀 역대급이네', '싸움씬 몰입감 미쳤음', '액션씬 넘 좋다',
+    ],
+    romance: [
+        '둘이 키스할줄', '설렘 폭발ㅠ', '이거 썸인거지?',
+        '심쿵사 당했음', '로맨스 개좋아', '이 커플 성사되면 울듯',
+        '고백해라 제발', '둘이 눈 마주치는데 심장', '스킨십 나올때 소름',
+        '이 장면 설렘 미쳤음', '커플링 확정이지 이거', '연애 전개 좋네',
+    ],
+    betrayal: [
+        '배신각 보였음', '쟤 처음부터 수상했음', '뒤통수 제대로 맞았네',
+        '배신 예상했는데 막상 보니까 충격', '이 배신 소름끼치네',
+        '그래서 쟤가 그랬구나', '아 배신 ㅈㄴ화남', '믿었는데 배신이라니',
+        '쟤 앞에서부터 뭔가 이상했음', '배신 반전 개쩔음',
+    ],
+    cliffhanger: [
+        '여기서 끊어?!', '다음화 존버 시작', '아 여기서 끝이냐고',
+        '이게 끝??', '다음화 안보면 미침', '작가 여기서 자름ㅋㅋ',
+        '끊는 타이밍 미쳤음', '다음화 기다리다 죽겠다', '이 클리프행어 ㅁㅊ',
+        '여기서 끊기?? 진짜??', '아아아 다음화ㅠㅠ',
+    ],
+    comedy: [
+        'ㅋㅋㅋㅋㅋ 미쳐', '이 장면에서 빵터짐', '개웃겨ㅋㅋㅋ진짜',
+        '코미디 천재임', '웃겨서 주변 눈치봄', '이거 진심 웃겼음ㅋㅋ',
+        '복통옴ㅋㅋㅋ', '아 ㅋㅋ 이건 좀',
+    ],
+    powerup: [
+        '각성 장면 소름', '레벨업 쩐다', '파워업 개간지',
+        '여기서 각성하네', '드디어 강해짐', '이 스킬 사기인데',
+        '각성씬 연출 미쳤음', '진짜 강해졌네ㅋㅋ',
+    ],
+    death: [
+        '아 죽었어??', '진짜 죽은거야?', '설마 퇴장 아니지',
+        '여기서 죽으면 안되는데', '사망 확정이야?', '아 눈물남',
+        '제발 살려줘ㅠ', '죽음 연출에 눈물',
+    ],
+    reunion: [
+        '재회 장면에서 울었음', '드디어 만났다ㅠ', '재회씬 소름',
+        '기다렸다 이 장면', '아 재회 눈물남ㅠㅠ', '드디어ㅠㅠㅠ',
+    ],
+};
 // ============================================================
 // 장르별 personalityTone 분포
 // ============================================================
@@ -381,8 +488,29 @@ function humanize(comment: string): string {
 function pickComment(
     tone: PersonalityTone,
     usedTemplates: Set<string>,
-    characterNames: string[]
+    characterNames: string[],
+    sceneTags: string[] = []
 ): string {
+    // 25% 확률로 태그 기반 장면 템플릿 시도 (태그 있을 때만)
+    if (sceneTags.length > 0 && Math.random() < 0.25) {
+        // 태그 중 랜덤으로 하나 선택
+        const tag = sceneTags[Math.floor(Math.random() * sceneTags.length)];
+        const tagPool = TAG_TEMPLATES[tag];
+        if (tagPool && tagPool.length > 0) {
+            const available = tagPool.filter(t => !usedTemplates.has(t));
+            let selected: string;
+            if (available.length === 0) {
+                selected = tagPool[Math.floor(Math.random() * tagPool.length)];
+            } else {
+                selected = available[Math.floor(Math.random() * available.length)];
+            }
+            usedTemplates.add(selected);
+            selected = applyDynamicVariations(selected);
+            selected = humanize(selected);
+            return selected;
+        }
+    }
+
     // 15% 확률로 context-required 템플릿 시도 (캐릭터 이름 있을 때만)
     if (characterNames.length > 0 && Math.random() < 0.15) {
         const contextPool = CONTEXT_TEMPLATES.filter(t => t.tone === tone);
@@ -393,6 +521,7 @@ function pickComment(
             const shuffled = [...characterNames].sort(() => Math.random() - 0.5);
             text = text.replace(/\{name1\}/g, shuffled[0] || '주인공');
             text = text.replace(/\{name2\}/g, shuffled[1] || shuffled[0] || '주인공');
+            text = text.replace(/\{author\}/g, '작가');
             text = applyDynamicVariations(text);
             text = humanize(text);
             usedTemplates.add(ct.template); // context도 재사용 방지
@@ -455,6 +584,8 @@ export async function GET(req: NextRequest) {
     const novelId = searchParams.get('novel');
     const genre = searchParams.get('genre') || 'default'; // game_fantasy, romance_fantasy, martial_arts
     const density = parseFloat(searchParams.get('density') || '1.0'); // 에피소드 밀도 (0.5~2.0)
+    const tagsParam = searchParams.get('tags') || ''; // battle,romance,cliffhanger
+    const sceneTags = tagsParam ? tagsParam.split(',').map(t => t.trim()).filter(Boolean) : [];
     const baseCount = parseInt(searchParams.get('count') || '60');
     const totalCount = Math.round(baseCount * density);
 
@@ -540,7 +671,7 @@ export async function GET(req: NextRequest) {
             let lastCommentTime: Date | null = null;
 
             for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-                const content = pickComment(tone, usedTemplates, characterNames);
+                const content = pickComment(tone, usedTemplates, characterNames, sceneTags);
                 let createdAt = randomTimestamp();
 
                 // 규칙 10: 같은 봇 댓글 간 5분~3시간 간격
