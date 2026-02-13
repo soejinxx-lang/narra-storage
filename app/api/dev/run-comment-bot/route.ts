@@ -591,9 +591,19 @@ async function callAzureGPT(prompt: string): Promise<string> {
     }
 
     try {
-        const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
-        const url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
-        console.log(`🔗 Azure GPT URL: ${url}`);
+        let url: string;
+
+        // endpoint가 이미 /deployments/ 포함하면 그대로 사용 (full URL)
+        if (endpoint.includes('/deployments/')) {
+            url = endpoint;
+            console.log(`🔗 Azure GPT URL (full): ${url}`);
+        } else {
+            // base URL만 있으면 경로 구성
+            const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
+            url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+            console.log(`🔗 Azure GPT URL (constructed): ${url}`);
+        }
+
         console.log(`📨 Prompt length: ${prompt.length} chars`);
         const response = await fetch(url, {
             method: 'POST',
