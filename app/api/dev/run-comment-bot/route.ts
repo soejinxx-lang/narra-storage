@@ -752,9 +752,17 @@ export async function GET(req: NextRequest) {
             const episodeContent = contentResult.rows[0]?.content;
             if (episodeContent && episodeContent.length > 50) {
                 console.log(`📖 Fetched episode content (${episodeContent.length} chars)`);
-                const result = await generateDeepContextComments(episodeContent);
-                deepComments = result.comments;
-                sceneTags = result.detectedTags;
+                // totalCount만큼 GPT 댓글 확보 (15개씩 배치 호출)
+                const batchSize = 15;
+                const needed = totalCount;
+                let calls = 0;
+                while (deepComments.length < needed && calls < 6) { // 최대 6회 호출 제한
+                    const result = await generateDeepContextComments(episodeContent, batchSize);
+                    deepComments.push(...result.comments);
+                    if (calls === 0) sceneTags = result.detectedTags; // 태그는 첫 호출에서만
+                    calls++;
+                    console.log(`   → 배치 ${calls}: +${result.comments.length}개 (총 ${deepComments.length}/${needed})`);
+                }
             } else {
                 console.log('⚠️ Episode content too short or null, skipping deep context');
             }
