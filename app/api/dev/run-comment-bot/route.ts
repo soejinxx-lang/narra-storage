@@ -1114,9 +1114,10 @@ ${immersedViews.map((r, i) => {
 "이거 나중에 돌아온다 100%"
 "저거 복선 맞음 ㅋㅋ"
 "작가 일부러 여기서 끊었네"
-"진짜 바보같은데 이해는 됨"
 "아 여기서 끊네 미쳤냐"
-"이 장면 구조 이전이랑 대비되는듯"
+"이건 좀 뻔한데"
+"솔직히 좀 과한 듯"
+"왜 저러는 거임 이해 안 됨"
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
@@ -1191,7 +1192,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
                 );
             }
             return (parsed.comments || [])
-                .map((c: string) => c.replace(/^["']|["']$/g, '').replace(/^반응:\s*/i, '').trim())
+                .map((c: string) => c.replace(/^["']|["']$/g, '').replace(/^(반응|원댓글|독자[AB]?|[AB]):\s*/g, '').trim())
                 .filter((c: string) => c.length > 0 && c.length < 100);
         } catch {
             return raw.split('\n')
