@@ -641,96 +641,75 @@ async function callAzureGPT(prompt: string): Promise<string> {
 }
 
 /**
- * 구조 다양성 필터: 댓글 생태계 시뮬레이션
- * GPT는 안전한 평균 구조를 선호하므로, 같은 타입의 댓글이 과다하면 제거
- * v2: 마침표 제거, 명사화 평가 감지, 템플릿 문구 감지 추가
+ * 댓글 생태계 필터 v3: 점수 기반 랭킹 + 노이즈 삽입
+ * 삭제기가 아니라 점수기: 인간스러움 점수로 랭킹, 상위 70% 유지
  */
 function filterStructuralDiversity(comments: string[]): string[] {
-    type CommentType = 'fragmentary' | 'interrogative' | 'exclamatory' | 'nominalized' | 'direct-verb';
+    // 추상어 목록 (AI가 좋아하는 안전 단어)
+    const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
 
-    const templatePhrases = ['여운 남', '감동적이', '잊혀지지 않', '찌릿했', '안쓰럽'];
-
-    const classified = comments.map(comment => {
-        // 마침표 제거 (한국 댓글은 마침표 안 씀)
+    // 각 댓글 점수 매기기
+    const scored = comments.map(comment => {
+        // 마침표 제거
         const cleaned = comment.replace(/\.$/g, '').trim();
+        let score = 50; // 기본 점수
 
-        // 소유격 패턴 (의 + 명사 + 조사)
-        const hasPossessive = /[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned);
+        // 🔻 감점 요소
+        // 소유격 + 명사 구조 (에른스트의 결단이)
+        if (/[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned)) score -= 15;
 
-        // 명사화 평가 패턴 (주어 + 이/가 + 형용사)
-        const hasNominalizedEval = /[가-힣]+[이가]\s*[가-힣]+(다|네|음|장난|대단|멋|슬프)/.test(cleaned);
+        // 추상어 사용 (관계, 심리, 마음 등)
+        const abstractCount = abstractNouns.filter(noun => cleaned.includes(noun)).length;
+        score -= abstractCount * 10;
 
-        // 템플릿 문구
-        const hasTemplate = templatePhrases.some(phrase => cleaned.includes(phrase));
+        // 명사+평가 구조 (결단이 대단해)
+        if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;
 
-        // 문장 타입 분류
-        let type: CommentType;
-        if (cleaned.includes('?') || /[뭐왜어떻]/.test(cleaned)) {
-            type = 'interrogative';
-        } else if (/[ㅋㅠㄷ]{2,}/.test(cleaned) || cleaned.length <= 8) {
-            type = 'fragmentary';
-        } else if (/[다네요]$/.test(cleaned) && !hasNominalizedEval) {
-            type = 'exclamatory';
-        } else if (hasPossessive || hasNominalizedEval || /[가-힣]+[이가]\s/.test(cleaned)) {
-            type = 'nominalized';
-        } else {
-            type = 'direct-verb';
-        }
+        // 길이 균일성 패널티 (10~15자 = 가장 AI스러운 길이)
+        if (cleaned.length >= 10 && cleaned.length <= 15) score -= 5;
 
-        return { text: cleaned, type, hasPossessive, hasNominalizedEval, hasTemplate };
+        // 🔺 가점 요소
+        // 극초단문 (5자 이하)
+        if (cleaned.length <= 5) score += 20;
+
+        // 의문형
+        if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 15;
+
+        // 파편형 (끊긴 문장, …)
+        if (cleaned.includes('…') || cleaned.includes('..')) score += 10;
+
+        // ㅋㅠㄷ 반복 (감정 신호)
+        if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) score += 10;
+
+        // 초성체/구어체 (ㅁㅊ, ㄹㅇ 등)
+        if (/[ㅁㅊㄹㅇㅂㅅㅎ]{2,}/.test(cleaned)) score += 15;
+
+        return { text: cleaned, score };
     });
 
-    const typeCounts: Record<CommentType, number> = {
-        fragmentary: 0, interrogative: 0, exclamatory: 0, nominalized: 0, 'direct-verb': 0
-    };
+    // 점수순 정렬 (높은 점수 = 더 자연스러움)
+    scored.sort((a, b) => b.score - a.score);
 
-    const filtered: string[] = [];
-    let consecutivePossessive = 0;
-    let consecutiveNominalized = 0;
+    // 상위 70% 유지
+    const keepCount = Math.max(Math.ceil(comments.length * 0.7), 4);
+    const kept = scored.slice(0, keepCount);
 
-    for (const item of classified) {
-        // 템플릿 문구 드랍
-        if (item.hasTemplate) {
-            console.log(`🔪 Filtered template: "${item.text}"`);
-            continue;
-        }
-
-        // 소유격 연속 2번 금지
-        if (item.hasPossessive) {
-            consecutivePossessive++;
-            if (consecutivePossessive >= 2) {
-                console.log(`🔪 Filtered possessive: "${item.text}"`);
-                consecutivePossessive = 0;
-                continue;
-            }
-        } else {
-            consecutivePossessive = 0;
-        }
-
-        // 명사화 평가 연속 2번 금지
-        if (item.hasNominalizedEval) {
-            consecutiveNominalized++;
-            if (consecutiveNominalized >= 2) {
-                console.log(`🔪 Filtered nominalized: "${item.text}"`);
-                consecutiveNominalized = 0;
-                continue;
-            }
-        } else {
-            consecutiveNominalized = 0;
-        }
-
-        // 같은 타입 3개 이상 금지
-        if (typeCounts[item.type] >= 3) {
-            console.log(`🔪 Filtered excess ${item.type}: "${item.text}"`);
-            continue;
-        }
-
-        filtered.push(item.text);
-        typeCounts[item.type]++;
+    // 로그
+    const dropped = scored.slice(keepCount);
+    for (const d of dropped) {
+        console.log(`🔪 Scored out (${d.score}점): "${d.text}"`);
     }
 
-    console.log(`📊 Structure diversity: ${JSON.stringify(typeCounts)}`);
-    return filtered;
+    // 노이즈 삽입: 순서를 약간 섞어서 점수순 정렬 티 안 나게
+    for (let i = kept.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        if (Math.abs(i - j) <= 2) { // 인접한 것만 교환 (너무 큰 셔플 방지)
+            [kept[i], kept[j]] = [kept[j], kept[i]];
+        }
+    }
+
+    console.log(`📊 Score filter: kept ${kept.length}/${comments.length}, scores: [${kept.map(k => k.score).join(', ')}]`);
+    return kept.map(k => k.text);
 }
 
 async function generateDeepContextComments(
@@ -755,27 +734,29 @@ async function generateDeepContextComments(
   "comments": ["댓글 ${count}개"]
 }
 
-[댓글 규칙]
-- 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
-- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
-- 마침표(.) 절대 사용 금지. 한국 댓글은 마침표 안 씀
-- 해설/평가/분석처럼 보이는 문장 구조 금지. 생각을 정리해서 쓰지 말고, 장면을 보고 바로 내뱉는 느낌으로 작성
-- 명사화 평가 구조 금지: "~이/가 + 형용사" 반복 쓰지 마 (여운 남음 ❌ / 여운 남네 ⭕)
-- 같은 문장 구조 반복 금지: "~의 ~이/가" 같은 패턴을 여러 댓글에 반복하지 마. 문장 구조 다양하게
-- 파편형·끊긴 문장 선호: 완결된 문장보다 중간에 끊긴 문장이 더 자연스러움
-- 완결형(~다) 소량 허용하되 문어체와 결합 금지 (소름이다 ⭕ / 결단이 무섭다 ❌)
-- 작품 전체 평가 금지 ("전개 좋네", "재밌네" 같은 일반 감상 금지)
-- 이모지 쓰지마
+[댓글 분포 — 반드시 이 비율로 섞어]
+- 극초단문 (5자 이하): 3개 → 뭐임 / 미침 / ㅋㅋㅋ / ㄷㄷ
+- 파편형 (끊긴 문장): 2개 → 에른스트 저기서… / 아니 왜 / 거기서 칼 빼네
+- 의문형: 2개 → 뭐냐 / 왜 저래? / 이게 맞아?
+- 감정폭발형: 1개 → 아니 ㅋㅋㅋㅋㅋ / 미쳤냐ㅋㅋㅋ / 와 잠깐만
+- 자유형 단문: 나머지
 
-[참고 예시 — 이런 느낌으로]
+[톤]
+- 장면을 보고 바로 내뱉는 느낌. 생각 정리하지 마
+- 다양한 길이를 일부러 섞어라. 전부 비슷한 길이면 실격
+- 마침표 쓰지 마. 이모지 쓰지 마
+- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
+- 규칙을 100% 지키지 않아도 된다. 자연스러움이 우선
+
+[참고 예시 — 리듬 참고]
+미침
+ㅋㅋㅋㅋㅋ
+에른스트 왜 저래?
 거기서 칼 빼네
-저 30퍼 터지네ㅋㅋ
+아니 저 30퍼에서 그걸 왜ㅋㅋ
+카일 결단 뭐냐
 웃다가 우는거 뛰임
-에른스트 결단 뭐냐
-리나 저건 좀 무섭네
 소름이다 진짜
-여운 남네
-그 장면 계속 생각남
 
 [에피소드 본문]
 ${trimmed}`;
