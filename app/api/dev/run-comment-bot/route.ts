@@ -703,6 +703,10 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
         score -= abstractCount * 10;
         if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;
         if (cleaned.length >= 10 && cleaned.length <= 15) score -= 5;
+        // 해설/뭘사 감점 (장면 요약 + 평가 톤)
+        const essayWords = ['뭘사', '장면', '인상적', '상징', '느껴진다', '감동적', '여운'];
+        const essayCount = essayWords.filter(w => cleaned.includes(w)).length;
+        score -= essayCount * 12;
 
         // 가점
         if (cleaned.length <= 5) score += 20;
@@ -866,12 +870,13 @@ async function generateDeepContextComments(
         ? episodeContent.slice(-2000)
         : episodeContent;
 
-    // ========== 공통 규칙 (금지 3개만) ==========
+    // ========== 공통 규칙 (금지 3개 + 모드 전환) ==========
     const commonRules = `[공통 규칙]
 - "~의 ~이/가" 조사 중첩 금지
 - 추상어(관계, 심리, 마음, 의미, 감정, 순간) 2개 이상 금지
 - 마침표 쓰지 마. 이모지 쓰지 마
-- 감상문처럼 보이면 실패다. 설명하려 하지 말고 즉각 반응처럼 써라`;
+- 장면을 설명하려 하지 말고, 반응만 남겨라
+- 읽다가 멈칟한 순간에 바로 친 댓글처럼 써라`;
 
     // ========== 역할별 분리 생성 ==========
 
@@ -879,7 +884,7 @@ async function generateDeepContextComments(
     const shortPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 5자 이하 극초단문 반응만 생성. 전부 다르게.
-[필수] 가장 꽂힌 장면 1개를 골라서 즉각 반응
+읽다가 멈칟한 순간에 바로 친 댓글처럼.
 
 ${commonRules}
 
@@ -905,7 +910,7 @@ ${trimmed}`;
     const fragmentPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지. 전부 다른 구조로.
-[필수] 장면 속 행동/대사/상황을 직접 언급
+장면 속 행동이나 대사를 직접 언급해. 설명하지 마.
 
 ${commonRules}
 
@@ -929,7 +934,7 @@ ${trimmed}`;
     const emotionPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 감정 폭발 3개 + 일반 단문 3개 생성. 전부 다른 톤으로.
-[필수] 감정 폭발은 ㅋㅋ/ㅠㅠ 포함, 일반은 장면 단서 포함
+감정 폭발은 ㅋㅋ/ㅠㅠ 포함. 일반은 장면 단서 포함. 설명하지 마.
 
 ${commonRules}
 
