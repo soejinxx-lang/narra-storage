@@ -702,7 +702,8 @@ interface StoryEvent {
 
 interface EventExtraction {
     events: StoryEvent[];
-    dominantEmotion: string;  // 이 에피의 지배 감정
+    dominantEmotion: string;
+    detectedGenre: string;  // GPT가 감지한 장르
 }
 
 type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' | 'misreader' | 'lurker';
@@ -967,11 +968,12 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
         : episodeContent;
 
     const prompt = `이 에피소드에서 독자가 반응할 핵심 사건 5~7개를 추출하고,
-이 에피소드의 지배적 감정 1개를 골라라.
+이 에피소드의 지배적 감정 1개와 장르를 판단하라.
 
 [출력 — 반드시 JSON]
 {
   "dominantEmotion": "긴장|슬픔|분노|웃김|소름|설렘|허탈|감동 중 1개",
+  "detectedGenre": "fantasy|romance|scifi|mystery|horror|historical|slice-of-life|action|comedy|regression 중 1개",
   "events": [
     { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
   ]
@@ -981,20 +983,21 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
 ${trimmed}`;
 
     const raw = await callAzureGPT(prompt);
-    if (!raw) return { events: [], dominantEmotion: '' };
+    if (!raw) return { events: [], dominantEmotion: '', detectedGenre: '' };
 
     try {
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         const data = JSON.parse(cleaned);
         if (data.events && Array.isArray(data.events)) {
             const emotion = data.dominantEmotion || '';
-            console.log(`📋 Events: ${data.events.length}, dominant emotion: "${emotion}"`);
-            return { events: data.events, dominantEmotion: emotion };
+            const genre = data.detectedGenre || '';
+            console.log(`📋 Events: ${data.events.length}, dominant emotion: "${emotion}", detected genre: "${genre}"`);
+            return { events: data.events, dominantEmotion: emotion, detectedGenre: genre };
         }
     } catch (e) {
         console.warn('⚠️ Event extraction parse failed');
     }
-    return { events: [], dominantEmotion: '' };
+    return { events: [], dominantEmotion: '', detectedGenre: '' };
 }
 
 // ========== Stage 2: Reader Profiles (페르소나 기반 + 감정 쏠림) ==========
@@ -1310,15 +1313,17 @@ async function generateDeepContextComments(
     // ===== Stage 1: Event Extraction =====
     console.log('📋 Stage 1: Extracting events...');
     const extraction = await extractEvents(episodeContent);
-    const { events, dominantEmotion } = extraction;
+    const { events, dominantEmotion, detectedGenre } = extraction;
 
     if (events.length === 0) {
         console.warn('⚠️ No events extracted, falling back to old method');
         return { comments: [], detectedTags: [] };
     }
 
-    // ===== Stage 1.5: 장르별 페르소나 선택 =====
-    const personas = selectPersonasForGenre(genreCategory, count);
+    // ===== Stage 1.5: GPT 감지 장르로 페르소나 선택 =====
+    const effectiveGenre = detectedGenre || genreCategory;
+    console.log(`🎯 Genre: detected="${detectedGenre}", db="${genreCategory}", using="${effectiveGenre}"`);
+    const personas = selectPersonasForGenre(effectiveGenre, count);
 
     // ===== Stage 2: Reader Profiles =====
     console.log('👥 Stage 2: Generating reader profiles...');
