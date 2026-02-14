@@ -709,13 +709,255 @@ type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' |
 
 interface ReaderProfile {
     type: ReaderType;
+    personaId: string;    // 30-persona ID (e.g. 'A1')
+    personaTone: string;  // 말투 설명
+    personaExamples: string[]; // 예시 댓글
     attentionSpan: number;
     memoryNoise: number;
     emotionalIntensity: number;
     literacy: number;
     sarcasmLevel: number;
     bandwagonTarget?: string;
-    dominantEmotion?: string;  // 감정 쏠림 적용된 경우
+    dominantEmotion?: string;
+}
+
+// ============================================================
+// 30 페르소나 풀 — 장르별 배치 시스템
+// ============================================================
+interface PersonaDef {
+    id: string;
+    name: string;
+    baseType: ReaderType;   // 읽기 방식 (attentionSpan/memoryNoise 결정)
+    callGroup: 'immersed' | 'overreactor' | 'chaos' | 'casual'; // 어떤 GPT 호출에 들어가는지
+    tone: string;           // 말투 규칙 (프롬프트에 주입)
+    examples: string[];     // 예시 댓글
+}
+
+const PERSONA_POOL: PersonaDef[] = [
+    // === A. 몰입형 (8개) ===
+    {
+        id: 'A1', name: '감정이입러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~임, ~인듯으로 끊음. 감정 표현 있지만 과잉 아님',
+        examples: ['진짜 불쌍함', '이 감정 알아', '여기서 마음 바뀐 거임']
+    },
+    {
+        id: 'A2', name: '분위기충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~다, ~미쳤다로 끊음. 감탄형 단정체. 짧은 감탄 1줄',
+        examples: ['분위기 미쳤다', '이 장면 연출 좋음', '여기 묘사 진짜 좋다']
+    },
+    {
+        id: 'A3', name: '커플러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~ㅠㅠ, ~제발로 끊음. 감정 강도 높음. 캐릭터 이름 직접 언급',
+        examples: ['둘 사이 긴장감 ㅠㅠ', '고백 언제', '제발 사귀어']
+    },
+    {
+        id: 'A4', name: '전투몰입러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~ㅋㅋ, ~미쳤다로 끊음. ㅠㅠ 거의 안 씀. 감탄+약한 비속어',
+        examples: ['전투 연출 좋다', '각성 개간지', '체급차 ㅁㅊ']
+    },
+    {
+        id: 'A5', name: '서사충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~구나, ~거임으로 끊음. 차분한 관찰체. 과장 없음',
+        examples: ['이번엔 제대로 가는구나', '성장 서사 좋다', '여기서 갈리는 거임']
+    },
+    {
+        id: 'A6', name: '공포체험러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: '~ㅅㅂ, ~진짜로 끊음. 짧은 공포 반응. ㅋㅋ는 자기방어용',
+        examples: ['ㅅㅂ 소름', '진짜 무섭다', '왜 읽고있냐 나 ㅋㅋ']
+    },
+    {
+        id: 'A7', name: '감동충', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅠㅠ 도배 허용. 과장 감정 OK. 와/아 감탄사 많음',
+        examples: ['눈물남ㅠㅠ', '와 심장 뜯김', '제발 ㅠㅠㅠ']
+    },
+    {
+        id: 'A8', name: '시대감성러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~좋다, ~안타깝다로 끊음. 차분한 감탄체. 과장 적음',
+        examples: ['이 시대 분위기 좋다', '전쟁 묘사 몰입됐음', '운명이 안타까움']
+    },
+
+    // === B. 분석형 (7개) ===
+    {
+        id: 'B1', name: '복선추적러', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~임, ~100%로 끊음. 확신형 단정체. 근거 안 씀',
+        examples: ['저거 복선임', '나중에 회수된다 100%', '이전 화 그거랑 연결됨']
+    },
+    {
+        id: 'B2', name: '세계관분석충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~인데로 끊음. 설명 없이 당연히 아는 것처럼',
+        examples: ['마법 체계상 이건 맞음', '혈통 떡밥 회수 각', '이거 3화 설정이랑 충돌하는데']
+    },
+    {
+        id: 'B3', name: '추리광', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~임, ~밖에 없음으로 끊음. 틀려도 확신',
+        examples: ['범인 걔임', '시간선 맞춰보면 얘밖에 없음', '알리바이 안 맞음']
+    },
+    {
+        id: 'B4', name: '설정감시자', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~무리인데로 끊음. 냉정 단정체. 감탄 거의 없음',
+        examples: ['설정상 이건 맞음', '물리적으로 좀 무리', '여기 설정 구멍임']
+    },
+    {
+        id: 'B5', name: '고증충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~했네로 끊음. 칭찬도 함. 약간 나이 든 느낌',
+        examples: ['이 시대면 저거 맞음', '고증 잘 찾아봤네', '역사적으로 이건 좀 다른데']
+    },
+    {
+        id: 'B6', name: '메타분석러', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~일부러, ~인듯으로 끊음. 작가 직접 언급. 관찰자 시점',
+        examples: ['작가 여기서 끊음 일부러', '이 장면 구조 대비되는듯', '연출 의도적이네']
+    },
+    {
+        id: 'B7', name: '회귀규칙충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~갈림, ~올듯으로 끊음. 전생/현생 비교',
+        examples: ['전생이랑 여기서 갈림', '나비효과 올듯', '회귀 규칙상 이건 안 되는데']
+    },
+
+    // === C. 반응형 (5개) ===
+    {
+        id: 'C1', name: '감정폭발러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅋ 또는 ㅠ 반복. 대문자/초성 혼합. 문장 구조 파괴',
+        examples: ['아니 ㅋㅋㅋㅋㅋㅋ 뭐하냐 진짜', '미쳤다 ㅋㅋㅋㅋ', 'ㅅㅂ 이거']
+    },
+    {
+        id: 'C2', name: '사이다중독자', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: '~ㅅㅂ, ~ㅋㅋ로 끊음. 쾌감 표현 특화',
+        examples: ['사이다네 ㅅㅂ', '개꿀ㅋㅋ', '시원하다 진짜']
+    },
+    {
+        id: 'C3', name: '웃음폭발러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅋ 도배 최소 5개. ~미쳤냐, ~아프다로 끊음',
+        examples: ['ㅋㅋㅋㅋㅋㅋㅋㅋ 미쳤냐', '배 아프다 ㅋㅋ', '숨 못 쉬겠음 ㅋㅋㅋ']
+    },
+    {
+        id: 'C4', name: '공감충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~임, ~됨으로 끊음. 짧은 공감형. 나 언급',
+        examples: ['아 이거 나임', '공감됨', '찐이다 ㅋㅋ']
+    },
+    {
+        id: 'C5', name: '단어투척러', baseType: 'lurker', callGroup: 'casual',
+        tone: '1~3단어만. 종결어미 없음. 마침표 없음',
+        examples: ['미쳤다', '아니', '뭐야 이거', '와']
+    },
+
+    // === D. 냉소형 (5개) ===
+    {
+        id: 'D1', name: '전개비꼼러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~느림으로 끊음. 세미콜론 자주. 하.. 한탄',
+        examples: ['또 도망이네;', '하..전개 느림', '그래서 어쭌']
+    },
+    {
+        id: 'D2', name: '클리셰헌터', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~봤는데로 끊음. 또/어디서 자주 사용',
+        examples: ['이거 어디서 봤는데', '또 각성이네;', '클리셰 풀코스 ㅋ']
+    },
+    {
+        id: 'D3', name: '파워밸런스충', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~붕괴로 끊음. 게임 용어 사용',
+        examples: ['파워인플레 시작됐네;', '밸런스 붕괴', '좀 너프되야 되는 거 아님']
+    },
+    {
+        id: 'D4', name: '작가비판러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네, ~좀..으로 끊음. 직설+세미콜론. 약간 윗사람 느낌',
+        examples: ['작가 또 이런 식이네', '구성 좀..', '이건 좀 과한 듯']
+    },
+    {
+        id: 'D5', name: '공포비꼼러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~진짜로 끊음. 왜 자주 사용',
+        examples: ['또 지하실이네;', '왜 혼자 감 진짜', '여기서 뒤돌아보면 죽는 거']
+    },
+
+    // === E. 밈/드립형 (5개) ===
+    {
+        id: 'E1', name: '게임드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: 'SSS급, 치트키 등 게임 용어+ㅋㅋ. 과장 비유',
+        examples: ['주인공 도주력 SSS급 ㅋㅋ', '뉴게임+냐', '치트키 쓰네']
+    },
+    {
+        id: 'E2', name: '밈장인', baseType: 'lurker', callGroup: 'casual',
+        tone: '시뮬레이터/다큐 등 장르 비유. 밈체+과장',
+        examples: ['탈출 시뮬레이터냐 이거 ㅋㅋ', '이 작가 독자 심장을 가지고 놈', '현실 다큐']
+    },
+    {
+        id: 'E3', name: '연애드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: '작가 직접 언급. 드립+ㅋㅋ',
+        examples: ['연애 시뮬레이터냐', '작가 솔로임?', '달달 과다 섭취 주의']
+    },
+    {
+        id: 'E4', name: '역사드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: '시대극→현대 밈 비유. 드립+ㅋㅋ',
+        examples: ['타임머신 타고 싶다', '교과서보다 재밌음 ㅋㅋ', '역사 시험에 나올듯']
+    },
+    {
+        id: 'E5', name: '오독러', baseType: 'misreader', callGroup: 'chaos',
+        tone: '~을걸, ~인듯으로 끊음. 확신형 (틀린 채로)',
+        examples: ['얘 죽었을걸', '저거 배신 각인듯', '아까 그 장면 떡밥이었음']
+    },
+];
+
+// 장르별 페르소나 풀 (이 중에서 랜덤 6~8명 선택)
+const GENRE_PERSONA_MAP: Record<string, string[]> = {
+    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
+    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5'],
+    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5'],
+    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
+    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+};
+
+// 장르별 페르소나 풀에서 8명 선택
+function selectPersonasForGenre(genreCategory: string | null, count: number = 8): PersonaDef[] {
+    const pool = genreCategory && GENRE_PERSONA_MAP[genreCategory]
+        ? GENRE_PERSONA_MAP[genreCategory]
+        : ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5']; // 기본 풀
+
+    const personaMap = new Map(PERSONA_POOL.map(p => [p.id, p]));
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const selected: PersonaDef[] = [];
+
+    // 필수: chaos 최소 1, casual 최소 1
+    const chaosPool = shuffled.filter(id => personaMap.get(id)?.callGroup === 'chaos');
+    const casualPool = shuffled.filter(id => personaMap.get(id)?.callGroup === 'casual');
+    const otherPool = shuffled.filter(id => {
+        const p = personaMap.get(id);
+        return p && p.callGroup !== 'chaos' && p.callGroup !== 'casual';
+    });
+
+    // chaos 1~2명
+    const chaosCount = Math.min(chaosPool.length, 1 + (Math.random() < 0.5 ? 1 : 0));
+    for (let i = 0; i < chaosCount; i++) {
+        const p = personaMap.get(chaosPool[i]);
+        if (p) selected.push(p);
+    }
+
+    // casual 1~2명
+    const casualCount = Math.min(casualPool.length, 1 + (Math.random() < 0.5 ? 1 : 0));
+    for (let i = 0; i < casualCount; i++) {
+        const p = personaMap.get(casualPool[i]);
+        if (p) selected.push(p);
+    }
+
+    // 나머지를 immersed/overreactor에서 채움
+    for (const id of otherPool) {
+        if (selected.length >= count) break;
+        const p = personaMap.get(id);
+        if (p) selected.push(p);
+    }
+
+    // 부족하면 chaos/casual에서 추가
+    const remaining = [...chaosPool.slice(chaosCount), ...casualPool.slice(casualCount)];
+    for (const id of remaining) {
+        if (selected.length >= count) break;
+        const p = personaMap.get(id);
+        if (p && !selected.includes(p)) selected.push(p);
+    }
+
+    console.log(`🎭 Genre "${genreCategory || 'default'}": selected ${selected.length} personas: [${selected.map(p => p.id + ' ' + p.name).join(', ')}]`);
+    return selected.slice(0, count);
 }
 
 // ========== Stage 1: Event Extractor + Dominant Emotion ==========
@@ -755,20 +997,13 @@ ${trimmed}`;
     return { events: [], dominantEmotion: '' };
 }
 
-// ========== Stage 2: Reader Profiles (강제 분포 + 감정 쏠림) ==========
-function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominantEmotion: string = ''): ReaderProfile[] {
-    const typeQuota: { type: ReaderType; count: number }[] = [
-        { type: 'immersed', count: 2 },
-        { type: 'lurker', count: 1 },
-        { type: 'skimmer', count: 1 },
-        { type: 'overreactor', count: 1 },
-        { type: 'misreader', count: 1 },
-        { type: 'troll', count: 1 },
-        { type: 'analyst', count: 1 },
-    ];
+// ========== Stage 2: Reader Profiles (페르소나 기반 + 감정 쏠림) ==========
+function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], dominantEmotion: string = ''): ReaderProfile[] {
+    const count = personas.length;
 
     // 감정 강도 히스토그램
     const emotionSlots = [1.5, 3.5, 4.0, 5.5, 6.0, 7.5, 8.0, 9.5];
+    while (emotionSlots.length < count) emotionSlots.push(Math.random() * 10);
     for (let i = emotionSlots.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [emotionSlots[i], emotionSlots[j]] = [emotionSlots[j], emotionSlots[i]];
@@ -780,7 +1015,7 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominan
         ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
         : null;
 
-    // 감정 쏠림: dominantRatio를 0.3~0.6 사이에서 랜덤 결정
+    // 감정 쏠림
     const dominantRatio = dominantEmotion ? 0.3 + Math.random() * 0.3 : 0;
     const dominantCount = Math.round(count * dominantRatio);
     if (dominantEmotion) {
@@ -788,97 +1023,95 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominan
     }
 
     const profiles: ReaderProfile[] = [];
-    let emotionIdx = 0;
     let dominantApplied = 0;
     const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-    // 감정 전염 저항도 (유형별)
     const emotionResistance: Record<ReaderType, number> = {
-        immersed: 0.2,     // 쉽게 전염됨
-        overreactor: 0.1,  // 가장 쉽게 전염
-        analyst: 0.5,      // 중간
-        skimmer: 0.6,      // 별로 영향 안 받음
+        immersed: 0.2,
+        overreactor: 0.1,
+        analyst: 0.5,
+        skimmer: 0.6,
         misreader: 0.4,
-        lurker: 0.8,       // 거의 안 받음
-        troll: 0.7,        // 30% 확률로 역행
+        lurker: 0.8,
+        troll: 0.7,
     };
 
-    for (const quota of typeQuota) {
-        for (let i = 0; i < quota.count; i++) {
-            const emotion = emotionIdx < emotionSlots.length
-                ? emotionSlots[emotionIdx++] / 10
-                : Math.random();
+    for (let i = 0; i < personas.length; i++) {
+        const persona = personas[i];
+        const emotion = i < emotionSlots.length ? emotionSlots[i] / 10 : Math.random();
 
-            const profile: ReaderProfile = {
-                type: quota.type,
-                attentionSpan: 0,
-                memoryNoise: 0,
-                emotionalIntensity: emotion,
-                literacy: 0,
-                sarcasmLevel: 0,
-            };
+        const profile: ReaderProfile = {
+            type: persona.baseType,
+            personaId: persona.id,
+            personaTone: persona.tone,
+            personaExamples: persona.examples,
+            attentionSpan: 0,
+            memoryNoise: 0,
+            emotionalIntensity: emotion,
+            literacy: 0,
+            sarcasmLevel: 0,
+        };
 
-            switch (quota.type) {
-                case 'immersed':
-                    profile.attentionSpan = rand(0.8, 1.0);
-                    profile.memoryNoise = rand(0, 0.1);
-                    profile.literacy = rand(0.6, 1.0);
-                    break;
-                case 'skimmer':
-                    profile.attentionSpan = rand(0.2, 0.4);
-                    profile.memoryNoise = rand(0.3, 0.5);
-                    profile.literacy = rand(0.3, 0.6);
-                    break;
-                case 'overreactor':
-                    profile.attentionSpan = rand(0.5, 0.8);
-                    profile.memoryNoise = rand(0.1, 0.2);
-                    profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
-                    profile.literacy = rand(0.3, 0.5);
-                    break;
-                case 'analyst':
-                    profile.attentionSpan = rand(0.9, 1.0);
-                    profile.memoryNoise = 0;
-                    profile.literacy = rand(0.7, 1.0);
-                    break;
-                case 'troll':
-                    profile.attentionSpan = rand(0.3, 0.6);
-                    profile.memoryNoise = rand(0.3, 0.7);
-                    profile.sarcasmLevel = rand(0.6, 1.0);
-                    profile.literacy = rand(0.2, 0.5);
-                    break;
-                case 'misreader':
-                    profile.attentionSpan = rand(0.4, 0.6);
-                    profile.memoryNoise = rand(0.5, 0.8);
-                    profile.literacy = rand(0.4, 0.7);
-                    break;
-                case 'lurker':
-                    profile.attentionSpan = rand(0.1, 0.3);
-                    profile.memoryNoise = 0;
-                    profile.literacy = rand(0.1, 0.3);
-                    break;
-            }
-
-            // 캐릭터 동조
-            if (bandwagonChar && Math.random() < 0.4) {
-                profile.bandwagonTarget = bandwagonChar;
-            }
-
-            // 감정 쏠림 적용 (저항도에 따라)
-            if (dominantEmotion && dominantApplied < dominantCount) {
-                const resistance = emotionResistance[quota.type];
-                if (Math.random() > resistance) {
-                    // troll은 30% 확률로 역행
-                    if (quota.type === 'troll' && Math.random() < 0.3) {
-                        profile.dominantEmotion = '반감';  // 역행
-                    } else {
-                        profile.dominantEmotion = dominantEmotion;
-                    }
-                    dominantApplied++;
-                }
-            }
-
-            profiles.push(profile);
+        // baseType에 따른 수치 설정
+        switch (persona.baseType) {
+            case 'immersed':
+                profile.attentionSpan = rand(0.8, 1.0);
+                profile.memoryNoise = rand(0, 0.1);
+                profile.literacy = rand(0.6, 1.0);
+                break;
+            case 'skimmer':
+                profile.attentionSpan = rand(0.2, 0.4);
+                profile.memoryNoise = rand(0.3, 0.5);
+                profile.literacy = rand(0.3, 0.6);
+                break;
+            case 'overreactor':
+                profile.attentionSpan = rand(0.5, 0.8);
+                profile.memoryNoise = rand(0.1, 0.2);
+                profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
+                profile.literacy = rand(0.3, 0.5);
+                break;
+            case 'analyst':
+                profile.attentionSpan = rand(0.9, 1.0);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.7, 1.0);
+                break;
+            case 'troll':
+                profile.attentionSpan = rand(0.3, 0.6);
+                profile.memoryNoise = rand(0.3, 0.7);
+                profile.sarcasmLevel = rand(0.6, 1.0);
+                profile.literacy = rand(0.2, 0.5);
+                break;
+            case 'misreader':
+                profile.attentionSpan = rand(0.4, 0.6);
+                profile.memoryNoise = rand(0.5, 0.8);
+                profile.literacy = rand(0.4, 0.7);
+                break;
+            case 'lurker':
+                profile.attentionSpan = rand(0.1, 0.3);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.1, 0.3);
+                break;
         }
+
+        // 캐릭터 동조
+        if (bandwagonChar && Math.random() < 0.4) {
+            profile.bandwagonTarget = bandwagonChar;
+        }
+
+        // 감정 쏠림 적용
+        if (dominantEmotion && dominantApplied < dominantCount) {
+            const resistance = emotionResistance[persona.baseType];
+            if (Math.random() > resistance) {
+                if (persona.baseType === 'troll' && Math.random() < 0.3) {
+                    profile.dominantEmotion = '반감';
+                } else {
+                    profile.dominantEmotion = dominantEmotion;
+                }
+                dominantApplied++;
+            }
+        }
+
+        profiles.push(profile);
     }
 
     if (bandwagonChar) {
@@ -888,6 +1121,7 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominan
 
     return profiles;
 }
+
 
 // ========== Stage 3: Info Restriction + 해석 왜곡 ==========
 function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
@@ -1066,9 +1300,10 @@ function amplifyEmotions(comments: string[]): string[] {
     return result;
 }
 
-// ========== Stage 4: Comment Generation (4회 분리 호출) ==========
+// ========== Stage 4: Comment Generation (4회 분리 호출 — 30 페르소나) ==========
 async function generateDeepContextComments(
     episodeContent: string,
+    genreCategory: string | null = null,
     count: number = 8
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
 
@@ -1082,11 +1317,14 @@ async function generateDeepContextComments(
         return { comments: [], detectedTags: [] };
     }
 
+    // ===== Stage 1.5: 장르별 페르소나 선택 =====
+    const personas = selectPersonasForGenre(genreCategory, count);
+
     // ===== Stage 2: Reader Profiles =====
     console.log('👥 Stage 2: Generating reader profiles...');
-    const profiles = generateReaderProfiles(events, count, dominantEmotion);
+    const profiles = generateReaderProfiles(events, personas, dominantEmotion);
     for (const p of profiles) {
-        console.log(`  ${p.type}: attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}${p.dominantEmotion ? `, mood=${p.dominantEmotion}` : ''}`);
+        console.log(`  ${p.personaId}(${p.type}): attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}${p.dominantEmotion ? `, mood=${p.dominantEmotion}` : ''}`);
     }
 
     // ===== Stage 3: Info Restriction =====
@@ -1096,89 +1334,98 @@ async function generateDeepContextComments(
         view: buildReaderView(events, p),
     }));
 
-    // ===== Stage 4: 4회 분리 GPT 호출 (상황 기반) =====
+    // ===== Stage 4: callGroup별 분리 GPT 호출 =====
     const moodHint = dominantEmotion ? `\n분위기: 이 화는 전체적으로 "${dominantEmotion}" 느낌이 강하다.` : '';
+    const platform = '한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.';
 
-    // 호출 1: 몰입형 + 분석형 — 독자별 문체 분리
-    const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
-    const styleBank = [
-        '주로 ~임, ~인듯 으로 끊는다. "저거 복선임", "이건 좀 뻔한데"',
-        '단어만 던진다. 짧게. "미쳤다", "아니", "뭐야 이거"',
-        '과장하고 ㅋ 많이 쓴다. "개미쳤네 ㅋㅋㅋㅋㅋ", "와씨"',
-        '작가/구조를 언급한다. "작가 여기서 끊음 일부러", "이 장면 구조 대비되는듯"',
-    ];
-    const call1Prompt = `한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.
+    // callGroup별 분류
+    const immersedViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'immersed';
+    });
+    const overreactorViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'overreactor';
+    });
+    const chaosViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'chaos';
+    });
+    const casualViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'casual';
+    });
+
+    console.log(`📊 Call groups: immersed=${immersedViews.length}, overreactor=${overreactorViews.length}, chaos=${chaosViews.length}, casual=${casualViews.length}`);
+
+    // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
+    const call1Prompt = immersedViews.length > 0 ? `${platform}
 생각 정리 안 한다. 분석하려다 말아라.${moodHint}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
-        const style = styleBank[i % styleBank.length];
         return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
 기억: ${r.view}${bandwagon}
-말투: ${style}`;
+말투: ${r.profile.personaTone}
+예: "${r.profile.personaExamples[0]}", "${r.profile.personaExamples[1] || r.profile.personaExamples[0]}"`;
     }).join('\n')}
 
 [출력 — JSON]
-{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
+{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 8)}개"] }` : null;
 
-    // 호출 2: 감정과잉형
-    const overreactorViews = readerViews.filter(r => r.profile.type === 'overreactor');
-    const call2Prompt = `한국 웹소설 모바일 댓글. 방금 읽고 폰 던질 뻔한 사람. 감정이 앞서서 타이핑 엉망.${moodHint}
+    // --- 호출 2: 감정폭발형 (페르소나별 말투 주입) ---
+    const call2Prompt = overreactorViews.length > 0 ? `${platform}
+방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}
 
-장면: ${overreactorViews.map(r => r.view).join('\n')}
-${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
-
-이렇게 말한다:
-"아니 ㅋㅋㅋㅋㅋㅋ 뭐하냐 진짜"
-"와씨 ㅠㅠㅠㅠㅠㅠㅠ 뜯김"
-"ㅇㅇㅇㅇㅇㅇ 안돼 안돼 안돼"
-
-[출력 — JSON]
-{ "comments": ["3개"] }`;
-
-    // 호출 3: 짜증형 + 오독형 — 🔒 보호 영역
-    const chaosViews = readerViews.filter(r => r.profile.type === 'troll' || r.profile.type === 'misreader');
-    const call3Prompt = `한국 웹소설 모바일 댓글. 2명의 독자. 둘 다 호의적이지 않다.
-
-[A: 짜증남] 불만 많고 비꼼. 칭찬 안 함.
-기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '대충 기억남'}
-${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 싫어함.` : ''}
-이렇게 말한다: "또 도망이네;", "하..전개 느림", "그래서 어쭔"
-
-[B: 대충 읽음] 잘못 이해하고 있음. 본인은 모름.
-기억(틀림): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억'}
-이렇게 말한다: "얘 죽었을걸", "저거 배신 각인듯", "아까 그 장면 떡밥이었음"
+${overreactorViews.map((r, i) => {
+        const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
+        return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
+장면: ${r.view}${bandwagon}
+말투: ${r.profile.personaTone}
+예: "${r.profile.personaExamples.join('", "')}"`;
+    }).join('\n')}
 
 [출력 — JSON]
-{ "comments": ["A 2개 + B 2개 = 4개"] }`;
+{ "comments": ["${Math.min(overreactorViews.length * 2, 6)}개"] }` : null;
 
-    // 호출 4: 대충형 + 관망형
-    const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
-    const call4Prompt = `한국 웹소설 모바일 댓글. 2명.
+    // --- 호출 3: 냉소형 + 오독형 — 🔒 보호 영역 ---
+    const call3Prompt = chaosViews.length > 0 ? `${platform}
+이 독자들은 호의적이지 않거나 잘못 이해하고 있다.${moodHint}
 
-[A] 대충 훑어봄. 뒤는 잘 모름.
-기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
-이렇게 말한다: "도망치는 거 같은데", "잘 모르겠는데 재밌긴"
-
-[B] 드립형. 내용 보고 밈으로 반응함.
-기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '대충 기억남'}
-이렇게 말한다: "주인공 도주력 SSS급 ㅋㅋㅋㅋㅋ", "이 작가 독자 심장을 가지고 놈", "탈출 시뮬레이터냐 이거 ㅋㅋ"
+${chaosViews.map((r, i) => {
+        const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}" 싫어함.` : '';
+        const memoryLabel = r.profile.type === 'misreader' ? '기억(틀림)' : '기억';
+        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'misreader' ? '잘못 이해' : '짜증/비꼼'}]${bandwagon}
+${memoryLabel}: ${r.view}
+말투: ${r.profile.personaTone}
+예: "${r.profile.personaExamples.join('", "')}"`;
+    }).join('\n')}
 
 [출력 — JSON]
-{ "comments": ["A 2개 + B 2개 = 4개"] }`;
+{ "comments": ["${Math.min(chaosViews.length * 2, 4)}개"] }` : null;
 
-    // ===== 4회 병렬 호출 =====
-    console.log('🧠 Stage 4: 4 separate cognitive calls...');
-    const [raw1, raw2, raw3, raw4] = await Promise.all([
-        callAzureGPT(call1Prompt),
-        callAzureGPT(call2Prompt),
-        callAzureGPT(call3Prompt),
-        callAzureGPT(call4Prompt),
-    ]);
+    // --- 호출 4: 밈/드립형 + 단어투척 ---
+    const call4Prompt = casualViews.length > 0 ? `${platform}
+이 독자들은 대충 읽거나 밈으로 반응한다.${moodHint}
 
-    // ===== 결과 합치기 (call3 보호 분리) =====
-    const safeComments: string[] = [];  // call1,2,4 → 큐레이터로
-    const chaosComments: string[] = []; // call3 → 보호 영역
+${casualViews.map((r, i) => {
+        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밈형' : '대충 반응'}]
+기억: ${r.view}
+말투: ${r.profile.personaTone}
+예: "${r.profile.personaExamples.join('", "')}"`;
+    }).join('\n')}
+
+[출력 — JSON]
+{ "comments": ["${Math.min(casualViews.length * 2, 4)}개"] }` : null;
+
+    // ===== 4회 병렬 호출 (빈 그룹은 skip) =====
+    console.log('🧠 Stage 4: Persona-based cognitive calls...');
+    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt].filter(Boolean) as string[];
+    const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
+
+    // ===== 결과 합치기 (chaos 보호 분리) =====
+    const safeComments: string[] = [];
+    const chaosComments: string[] = [];
     let detectedTags: string[] = [];
 
     const parseComments = (raw: string | null): string[] => {
@@ -1201,10 +1448,12 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
         }
     };
 
-    safeComments.push(...parseComments(raw1));
-    safeComments.push(...parseComments(raw2));
-    chaosComments.push(...parseComments(raw3));  // 🔒 분리
-    safeComments.push(...parseComments(raw4));
+    // 프롬프트 순서에 맞게 결과 분배
+    let resultIdx = 0;
+    if (call1Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call2Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call3Prompt) chaosComments.push(...parseComments(rawResults[resultIdx++] || null)); // 🔒 보호
+    if (call4Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
 
     console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}`);
 
@@ -1219,7 +1468,6 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
     console.log(`📊 After social dynamics: ${safeComments.length} → ${withEmotion.length}`);
 
     // ===== Stage 7: GPT-5 큐레이터 (safe만, chaos 제외) =====
-    // chaos 삽입 수: 0(10%), 1(50%), 2(40%)
     const chaosRoll = Math.random();
     const chaosInsertCount = Math.min(chaosComments.length, chaosRoll < 0.1 ? 0 : chaosRoll < 0.6 ? 1 : 2);
     const curatorTarget = Math.max(1, count - chaosInsertCount);
@@ -1236,6 +1484,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
     console.log(`🧠 Final: ${filtered.length} curated + ${selectedChaos.length} chaos = ${finalMerged.length}, tags: [${detectedTags.join(', ')}]`);
     return { comments: finalMerged, detectedTags };
 }
+
 
 // ========== Stage 5: GPT-5 Statistical Curator ==========
 async function curateWithGPT5(comments: string[], targetCount: number = 8): Promise<string[]> {
@@ -2374,10 +2623,9 @@ export async function GET(req: NextRequest) {
 
                 let calls = 0;
                 while (deepComments.length < totalCount && calls < 6) {
-                    const result = await generateDeepContextCommentsWithGenre(
+                    const result = await generateDeepContextComments(
                         episodeContent,
                         genreCategory,
-                        sourceLanguage, // Use novel's source language
                         15              // count
                     );
                     deepComments.push(...result.comments);
