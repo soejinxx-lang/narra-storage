@@ -641,75 +641,145 @@ async function callAzureGPT(prompt: string): Promise<string> {
 }
 
 /**
- * 댓글 생태계 필터 v3: 점수 기반 랭킹 + 노이즈 삽입
- * 삭제기가 아니라 점수기: 인간스러움 점수로 랭킹, 상위 70% 유지
+ * 댓글 생태계 필터 v4: 과생성 → 점수 선택 → 분포 보장 → 노이즈
+ * 20개 과생성 → 세트 분포 점수 → 타입별 최소 보장 → 후처리 왜곡
  */
-function filterStructuralDiversity(comments: string[]): string[] {
-    // 추상어 목록 (AI가 좋아하는 안전 단어)
+function filterStructuralDiversity(comments: string[], targetCount: number = 8): string[] {
     const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
 
-    // 각 댓글 점수 매기기
+    // ========== 1단계: 개별 점수 + 타입 분류 ==========
+    type CommentType = 'ultra-short' | 'question' | 'fragment' | 'emotion' | 'general';
+
     const scored = comments.map(comment => {
-        // 마침표 제거
         const cleaned = comment.replace(/\.$/g, '').trim();
-        let score = 50; // 기본 점수
+        let score = 50;
 
-        // 🔻 감점 요소
-        // 소유격 + 명사 구조 (에른스트의 결단이)
+        // 감점
         if (/[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned)) score -= 15;
-
-        // 추상어 사용 (관계, 심리, 마음 등)
-        const abstractCount = abstractNouns.filter(noun => cleaned.includes(noun)).length;
+        const abstractCount = abstractNouns.filter(n => cleaned.includes(n)).length;
         score -= abstractCount * 10;
-
-        // 명사+평가 구조 (결단이 대단해)
         if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;
-
-        // 길이 균일성 패널티 (10~15자 = 가장 AI스러운 길이)
         if (cleaned.length >= 10 && cleaned.length <= 15) score -= 5;
 
-        // 🔺 가점 요소
-        // 극초단문 (5자 이하)
+        // 가점
         if (cleaned.length <= 5) score += 20;
-
-        // 의문형
         if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 15;
-
-        // 파편형 (끊긴 문장, …)
         if (cleaned.includes('…') || cleaned.includes('..')) score += 10;
-
-        // ㅋㅠㄷ 반복 (감정 신호)
         if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) score += 10;
-
-        // 초성체/구어체 (ㅁㅊ, ㄹㅇ 등)
         if (/[ㅁㅊㄹㅇㅂㅅㅎ]{2,}/.test(cleaned)) score += 15;
 
-        return { text: cleaned, score };
+        // 타입 분류
+        let type: CommentType;
+        if (cleaned.length <= 5) type = 'ultra-short';
+        else if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) type = 'question';
+        else if (cleaned.includes('…') || cleaned.includes('..') || cleaned.length <= 10) type = 'fragment';
+        else if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) type = 'emotion';
+        else type = 'general';
+
+        return { text: cleaned, score, type };
     });
 
-    // 점수순 정렬 (높은 점수 = 더 자연스러움)
-    scored.sort((a, b) => b.score - a.score);
-
-    // 상위 70% 유지
-    const keepCount = Math.max(Math.ceil(comments.length * 0.7), 4);
-    const kept = scored.slice(0, keepCount);
-
-    // 로그
-    const dropped = scored.slice(keepCount);
-    for (const d of dropped) {
-        console.log(`🔪 Scored out (${d.score}점): "${d.text}"`);
-    }
-
-    // 노이즈 삽입: 순서를 약간 섞어서 점수순 정렬 티 안 나게
-    for (let i = kept.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        if (Math.abs(i - j) <= 2) { // 인접한 것만 교환 (너무 큰 셔플 방지)
-            [kept[i], kept[j]] = [kept[j], kept[i]];
+    // ========== 2단계: 세트 단위 중복 구조 감점 ==========
+    // "~의" 과다
+    const possessiveCount = scored.filter(s => s.text.includes('의 ')).length;
+    if (possessiveCount >= 3) {
+        let downgraded = 0;
+        for (const s of scored) {
+            if (s.text.includes('의 ') && downgraded < possessiveCount - 2) {
+                s.score -= 20;
+                downgraded++;
+            }
         }
     }
 
-    console.log(`📊 Score filter: kept ${kept.length}/${comments.length}, scores: [${kept.map(k => k.score).join(', ')}]`);
-    return kept.map(k => k.text);
+    // "~네" 과다
+    const neCount = scored.filter(s => s.text.endsWith('네') || s.text.endsWith('네ㅋㅋ')).length;
+    if (neCount >= 4) {
+        let downgraded = 0;
+        for (const s of scored) {
+            if ((s.text.endsWith('네') || s.text.endsWith('네ㅋㅋ')) && downgraded < neCount - 3) {
+                s.score -= 15;
+                downgraded++;
+            }
+        }
+    }
+
+    // 길이 균일성 감점 (평균 ±2자 범위에 5개 이상)
+    const avgLen = scored.reduce((sum, s) => sum + s.text.length, 0) / scored.length;
+    const uniformCount = scored.filter(s => Math.abs(s.text.length - avgLen) <= 2).length;
+    if (uniformCount >= 5) {
+        let downgraded = 0;
+        for (const s of scored) {
+            if (Math.abs(s.text.length - avgLen) <= 2 && downgraded < uniformCount - 4) {
+                s.score -= 10;
+                downgraded++;
+            }
+        }
+    }
+
+    // ========== 3단계: 분포 보장 선택 ==========
+    scored.sort((a, b) => b.score - a.score);
+
+    const selected: typeof scored = [];
+    const minQuotas: Record<CommentType, number> = {
+        'ultra-short': 2, 'question': 2, 'fragment': 1, 'emotion': 1, 'general': 0
+    };
+
+    // 먼저 각 타입별 최소 보장 (점수 높은 순)
+    for (const [type, min] of Object.entries(minQuotas)) {
+        const candidates = scored.filter(s => s.type === type && !selected.includes(s));
+        const picks = candidates.slice(0, min);
+        selected.push(...picks);
+    }
+
+    // 나머지는 점수순으로 채우기
+    for (const item of scored) {
+        if (selected.length >= targetCount) break;
+        if (!selected.includes(item)) {
+            selected.push(item);
+        }
+    }
+
+    // 드랍 로그
+    const dropped = scored.filter(s => !selected.includes(s));
+    for (const d of dropped) {
+        console.log(`🔪 Scored out (${d.score}점, ${d.type}): "${d.text}"`);
+    }
+
+    // ========== 4단계: 후처리 왜곡 (노이즈 삽입) ==========
+    const noised = selected.map(item => {
+        let text = item.text;
+
+        // 10% 확률: 마지막 단어 삭제 (파편화)
+        if (Math.random() < 0.1 && text.length > 5) {
+            const words = text.split(' ');
+            if (words.length >= 2) {
+                text = words.slice(0, -1).join(' ');
+            }
+        }
+
+        // 10% 확률: ㅋㅋ 과잉 삽입
+        if (Math.random() < 0.1 && !text.includes('ㅋ')) {
+            text += 'ㅋㅋ';
+        }
+
+        return text;
+    });
+
+    // 순서 셔플 (인접 교환)
+    for (let i = noised.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        if (Math.abs(i - j) <= 2) {
+            [noised[i], noised[j]] = [noised[j], noised[i]];
+        }
+    }
+
+    const typeDistribution = selected.reduce((acc, s) => {
+        acc[s.type] = (acc[s.type] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+    console.log(`📊 Final: ${noised.length}/${comments.length}, types: ${JSON.stringify(typeDistribution)}`);
+    return noised;
 }
 
 async function generateDeepContextComments(
@@ -729,10 +799,10 @@ async function generateDeepContextComments(
 
     // ========== 역할별 분리 생성 ==========
 
-    // 1️⃣ 태그 + 극초단문 (3개)
+    // 1️⃣ 태그 + 극초단문 (6개 과생성)
     const shortPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
-[역할] 5자 이하 극초단문 반응만 생성
+[역할] 5자 이하 극초단문 반응만 생성. 전부 다르게.
 [필수] 가장 꽂힌 장면 1개를 골라서 즉각 반응
 
 ${commonRules}
@@ -740,7 +810,7 @@ ${commonRules}
 [출력 — 반드시 JSON]
 {
   "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
-  "comments": ["극초단문 3개"]
+  "comments": ["극초단문 6개. 전부 다른 구조로"]
 }
 
 [예시]
@@ -755,17 +825,17 @@ ${commonRules}
 [에피소드 본문]
 ${trimmed}`;
 
-    // 2️⃣ 의문형 + 파편형 (3개)
+    // 2️⃣ 의문형 + 파편형 (8개 과생성)
     const fragmentPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
-[역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지.
+[역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지. 전부 다른 구조로.
 [필수] 장면 속 행동/대사/상황을 직접 언급
 
 ${commonRules}
 
 [출력 — 반드시 JSON]
 {
-  "comments": ["의문형/파편형 3개"]
+  "comments": ["의문형/파편형 8개. 같은 패턴 반복 금지"]
 }
 
 [예시]
@@ -779,17 +849,17 @@ ${commonRules}
 [에피소드 본문]
 ${trimmed}`;
 
-    // 3️⃣ 감정폭발 + 일반 (2개)
+    // 3️⃣ 감정폭발 + 일반 (6개 과생성)
     const emotionPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
-[역할] 감정 폭발 반응 1개 + 일반 단문 1개 생성
+[역할] 감정 폭발 3개 + 일반 단문 3개 생성. 전부 다른 톤으로.
 [필수] 감정 폭발은 ㅋㅋ/ㅠㅠ 포함, 일반은 장면 단서 포함
 
 ${commonRules}
 
 [출력 — 반드시 JSON]
 {
-  "comments": ["감정폭발 1개, 일반단문 1개"]
+  "comments": ["감정폭발 3개 + 일반단문 3개. 전부 다르게"]
 }
 
 [예시]
