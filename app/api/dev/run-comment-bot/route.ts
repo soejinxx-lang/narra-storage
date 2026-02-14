@@ -1144,7 +1144,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
 
 [B: 대충 읽음] 잘못 이해하고 있음. 본인은 모름.
 기억(틀림): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억'}
-이렇게 말한다: "얘 죽은 거 아님?", "저거 배신 각인듯", "아까 그 장면 뭐였지"
+이렇게 말한다: "얘 죽었을걸", "저거 배신 각인듯", "아까 그 장면 떡밥이었음"
 
 [출력 — JSON]
 { "comments": ["A 2개 + B 2개 = 4개"] }`;
@@ -1155,7 +1155,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
 
 [A] 대충 훑어봄. 뒤는 잘 모름.
 기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
-이렇게 말한다: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
+이렇게 말한다: "도망치는 거 같은데", "잘 모르겠는데 재밌긴"
 
 [B] 드립형. 내용 보고 밈으로 반응함.
 기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '대충 기억남'}
@@ -1322,7 +1322,7 @@ ${commentList}
         // 마침표 제거
         text = text.replace(/\.$/, '').replace(/\.\s/g, ' ').trim();
         // 40% 확률로 물음표 댓글을 단정형으로 변환
-        if (text.includes('?') && Math.random() < 0.4) {
+        if (text.includes('?') && Math.random() < 0.5) {
             text = text.replace(/\?+$/, '')
                 .replace(/(일|는 건|는거|는걸|를|을)\s*(까|가)$/, '$1듯')
                 .replace(/(럼|처럼)$/, '인듯');
