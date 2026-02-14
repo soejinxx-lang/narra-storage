@@ -685,14 +685,14 @@ async function callAzureGPT(prompt: string): Promise<string> {
 }
 
 /**
- * 댓글 생태계 필터 v4: 과생성 → 코드 점수 → GPT-5 검수 → 분포 보장 → 노이즈
+ * 댓글 생태계 필터 v5: 과생성 → 코드 사전필터 → GPT-5 큐레이션 → 노이즈
+ * GPT-5는 점수기가 아니라 큐레이터: "인간 커뮤니티처럼 보이는 조합"을 직접 고른다
  */
 async function filterStructuralDiversity(comments: string[], targetCount: number = 8): Promise<string[]> {
     const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
+    const essayWords = ['묘사', '장면', '인상적', '상징', '느껴진다', '감동적', '여운'];
 
-    // ========== 1단계: 개별 점수 + 타입 분류 ==========
-    type CommentType = 'ultra-short' | 'question' | 'fragment' | 'emotion' | 'general';
-
+    // ========== Stage 1: 코드 사전필터 (하위 30% 제거) ==========
     const scored = comments.map(comment => {
         const cleaned = comment.replace(/\.$/g, '').trim();
         let score = 50;
@@ -703,8 +703,6 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
         score -= abstractCount * 10;
         if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;
         if (cleaned.length >= 10 && cleaned.length <= 15) score -= 5;
-        // 해설/뭘사 감점 (장면 요약 + 평가 톤)
-        const essayWords = ['뭘사', '장면', '인상적', '상징', '느껴진다', '감동적', '여운'];
         const essayCount = essayWords.filter(w => cleaned.includes(w)).length;
         score -= essayCount * 12;
 
@@ -715,138 +713,73 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
         if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) score += 10;
         if (/[ㅁㅊㄹㅇㅂㅅㅎ]{2,}/.test(cleaned)) score += 15;
 
-        // 타입 분류
-        let type: CommentType;
-        if (cleaned.length <= 5) type = 'ultra-short';
-        else if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) type = 'question';
-        else if (cleaned.includes('…') || cleaned.includes('..') || cleaned.length <= 10) type = 'fragment';
-        else if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) type = 'emotion';
-        else type = 'general';
-
-        return { text: cleaned, score, type };
+        return { text: cleaned, score };
     });
 
-    // ========== 2단계: 세트 단위 중복 구조 감점 ==========
-    // "~의" 과다
-    const possessiveCount = scored.filter(s => s.text.includes('의 ')).length;
-    if (possessiveCount >= 3) {
-        let downgraded = 0;
-        for (const s of scored) {
-            if (s.text.includes('의 ') && downgraded < possessiveCount - 2) {
-                s.score -= 20;
-                downgraded++;
-            }
-        }
+    // 점수순 정렬, 하위 30% 제거 (명백한 저품질만 걸러냄)
+    scored.sort((a, b) => b.score - a.score);
+    const preFiltered = scored.slice(0, Math.ceil(scored.length * 0.7));
+    const preDropped = scored.slice(Math.ceil(scored.length * 0.7));
+    for (const d of preDropped) {
+        console.log(`🔪 Pre-filter (${d.score}점): "${d.text}"`);
     }
 
-    // "~네" 과다
-    const neCount = scored.filter(s => s.text.endsWith('네') || s.text.endsWith('네ㅋㅋ')).length;
-    if (neCount >= 4) {
-        let downgraded = 0;
-        for (const s of scored) {
-            if ((s.text.endsWith('네') || s.text.endsWith('네ㅋㅋ')) && downgraded < neCount - 3) {
-                s.score -= 15;
-                downgraded++;
-            }
-        }
-    }
+    // ========== Stage 2: GPT-5 큐레이션 ==========
+    const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
 
-    // 길이 균일성 감점 (평균 ±2자 범위에 5개 이상)
-    const avgLen = scored.reduce((sum, s) => sum + s.text.length, 0) / scored.length;
-    const uniformCount = scored.filter(s => Math.abs(s.text.length - avgLen) <= 2).length;
-    if (uniformCount >= 5) {
-        let downgraded = 0;
-        for (const s of scored) {
-            if (Math.abs(s.text.length - avgLen) <= 2 && downgraded < uniformCount - 4) {
-                s.score -= 10;
-                downgraded++;
-            }
-        }
-    }
+    const curatorPrompt = `너는 한국 웹소설 댓글창 편집자야.
+아래 댓글 ${preFiltered.length}개 중에서 진짜 사람 댓글창처럼 보이는 ${targetCount}개를 골라줘.
 
-    // ========== 2.5단계: GPT-5 검수 (선택적) ==========
-    const reviewPrompt = `한국 웹소설 댓글 ${scored.length}개의 자연스러움을 평가해줘.
-
-[평가 기준]
-- 평균적인 감상문은 감점 ("~의 ~이/가 + 평가" 구조)
-- 파편적이고 즉각적인 반응은 가점
-- 추상어(관계, 심리, 마음, 의미, 감정) 과다는 감점
-- 극초단문, 의문형, 초성체는 가점
-- 사람 댓글창과 비슷할수록 높은 점수
+[선택 기준]
+- 감상문처럼 정돈된 것은 피해라
+- 톤, 길이, 감정 강도가 다양한 조합을 선택해라
+- 극초단문(ㅋㅋ, 뭐임), 의문형, 파편형이 섞여야 한다
+- 전부 비슷한 길이면 실격
+- 실제 댓글창의 리듬: 짧음-짧음-의문-파편-광기-짧음
 
 [댓글 목록]
-` + scored.map((s, i) => `${i}: "${s.text}"`).join('\n') + `
+${commentList}
 
 [출력 — 반드시 JSON]
-{ "scores": [각 댓글의 자연스러움 점수 0~100] }`;
+{ "selected": [선택한 댓글의 번호 ${targetCount}개] }`;
 
-    const reviewRaw = await callOpenAIReview(reviewPrompt);
-    if (reviewRaw) {
+    const curatorRaw = await callOpenAIReview(curatorPrompt);
+    let finalComments: string[] = [];
+
+    if (curatorRaw) {
         try {
-            const cleaned = reviewRaw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-            const reviewData = JSON.parse(cleaned);
-            if (reviewData.scores && Array.isArray(reviewData.scores)) {
-                for (let i = 0; i < Math.min(reviewData.scores.length, scored.length); i++) {
-                    // GPT-5 점수를 30% 가중치로 합산
-                    scored[i].score = scored[i].score * 0.7 + (reviewData.scores[i] / 100 * 50) * 0.3;
-                }
-                console.log(`🧠 GPT-5 review applied: ${reviewData.scores.join(', ')}`);
+            const cleaned = curatorRaw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+            const curatorData = JSON.parse(cleaned);
+            if (curatorData.selected && Array.isArray(curatorData.selected)) {
+                finalComments = curatorData.selected
+                    .filter((idx: number) => idx >= 0 && idx < preFiltered.length)
+                    .map((idx: number) => preFiltered[idx].text);
+                console.log(`🧠 GPT-5 curator selected: [${curatorData.selected.join(', ')}]`);
             }
         } catch (e) {
-            console.warn('⚠️ GPT-5 review parse failed, using code scores only');
+            console.warn('⚠️ GPT-5 curator parse failed, falling back to code selection');
         }
     }
 
-    // ========== 3단계: 분포 보장 선택 ==========
-    scored.sort((a, b) => b.score - a.score);
-
-    const selected: typeof scored = [];
-    const minQuotas: Record<CommentType, number> = {
-        'ultra-short': 2, 'question': 2, 'fragment': 1, 'emotion': 1, 'general': 0
-    };
-
-    // 먼저 각 타입별 최소 보장 (점수 높은 순)
-    for (const [type, min] of Object.entries(minQuotas)) {
-        const candidates = scored.filter(s => s.type === type && !selected.includes(s));
-        const picks = candidates.slice(0, min);
-        selected.push(...picks);
+    // GPT-5 실패 시 코드 폴백 (점수 상위 선택)
+    if (finalComments.length < targetCount) {
+        console.log('📊 Fallback: code-based selection');
+        finalComments = preFiltered.slice(0, targetCount).map(s => s.text);
     }
 
-    // 나머지는 점수순으로 채우기
-    for (const item of scored) {
-        if (selected.length >= targetCount) break;
-        if (!selected.includes(item)) {
-            selected.push(item);
-        }
-    }
-
-    // 드랍 로그
-    const dropped = scored.filter(s => !selected.includes(s));
-    for (const d of dropped) {
-        console.log(`🔪 Scored out (${d.score}점, ${d.type}): "${d.text}"`);
-    }
-
-    // ========== 4단계: 후처리 왜곡 (노이즈 삽입) ==========
-    const noised = selected.map(item => {
-        let text = item.text;
-
-        // 10% 확률: 마지막 단어 삭제 (파편화)
+    // ========== Stage 3: 후처리 왜곡 (가벼운 노이즈) ==========
+    const noised = finalComments.map(text => {
+        // 10% 확률: 마지막 단어 삭제
         if (Math.random() < 0.1 && text.length > 5) {
             const words = text.split(' ');
-            if (words.length >= 2) {
-                text = words.slice(0, -1).join(' ');
-            }
+            if (words.length >= 2) text = words.slice(0, -1).join(' ');
         }
-
-        // 10% 확률: ㅋㅋ 과잉 삽입
-        if (Math.random() < 0.1 && !text.includes('ㅋ')) {
-            text += 'ㅋㅋ';
-        }
-
+        // 10% 확률: ㅋㅋ 삽입
+        if (Math.random() < 0.1 && !text.includes('ㅋ')) text += 'ㅋㅋ';
         return text;
     });
 
-    // 순서 셔플 (인접 교환)
+    // 순서 셔플
     for (let i = noised.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         if (Math.abs(i - j) <= 2) {
@@ -854,11 +787,7 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
         }
     }
 
-    const typeDistribution = selected.reduce((acc, s) => {
-        acc[s.type] = (acc[s.type] || 0) + 1;
-        return acc;
-    }, {} as Record<string, number>);
-    console.log(`📊 Final: ${noised.length}/${comments.length}, types: ${JSON.stringify(typeDistribution)}`);
+    console.log(`📊 Final: ${noised.length}/${comments.length} (pre-filter: ${preFiltered.length})`);
     return noised;
 }
 
@@ -870,13 +799,14 @@ async function generateDeepContextComments(
         ? episodeContent.slice(-2000)
         : episodeContent;
 
-    // ========== 공통 규칙 (금지 3개 + 모드 전환) ==========
+    // ========== 공통 규칙 (금지 최소 + 편차 강제) ==========
     const commonRules = `[공통 규칙]
-- "~의 ~이/가" 조사 중첩 금지
-- 추상어(관계, 심리, 마음, 의미, 감정, 순간) 2개 이상 금지
 - 마침표 쓰지 마. 이모지 쓰지 마
 - 장면을 설명하려 하지 말고, 반응만 남겨라
-- 읽다가 멈칟한 순간에 바로 친 댓글처럼 써라`;
+- 읽다가 멈칟한 순간에 바로 친 댓글처럼 써라
+- 댓글들끼리 말투가 비슷해지면 실패다
+- 진지함과 가벼움이 섞여 있어야 한다
+- 한두 개는 어설퍼도 괜찮다`;
 
     // ========== 역할별 분리 생성 ==========
 
@@ -884,24 +814,25 @@ async function generateDeepContextComments(
     const shortPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 5자 이하 극초단문 반응만 생성. 전부 다르게.
-읽다가 멈칟한 순간에 바로 친 댓글처럼.
+감정만 던지고 맥락 없어도 된다. 생각 정리하지 마.
 
 ${commonRules}
 
 [출력 — 반드시 JSON]
 {
   "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
-  "comments": ["극초단문 6개. 전부 다른 구조로"]
+  "comments": ["극초단문 6개"]
 }
 
 [예시]
 미침
 ㅋㅋㅋㅋ
 ㄷㄷ
-뭐임
-헐
-ㅁㅊ
-ㄹㅇ
+보는나
+어
+ㅋㅋㅋㅋㅋㅋㅋ
+뿌
+와
 
 [에피소드 본문]
 ${trimmed}`;
@@ -910,7 +841,7 @@ ${trimmed}`;
     const fragmentPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지. 전부 다른 구조로.
-장면 속 행동이나 대사를 직접 언급해. 설명하지 마.
+장면을 떠올리게 하는 단어만 써라. 문장으로 설명하지 마.
 
 ${commonRules}
 
@@ -920,7 +851,7 @@ ${commonRules}
 }
 
 [예시]
-에른스트 왜 저래?
+에른스트 왔이러는거
 거기서 칼 빼네
 아니 그걸 왜 지금
 카일 결단 뭐냐
@@ -934,18 +865,19 @@ ${trimmed}`;
     const emotionPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
 [역할] 감정 폭발 3개 + 일반 단문 3개 생성. 전부 다른 톤으로.
-감정 폭발은 ㅋㅋ/ㅠㅠ 포함. 일반은 장면 단서 포함. 설명하지 마.
+감정 폭발은 ㅋㅋ/ㅠㅠ 포함. 일반은 구체적 장면 단어 1개 이상 포함.
+감정 설명 금지. "감동적이다", "긴장감 넘친다" 이런 거 쓰지 마.
 
 ${commonRules}
 
 [출력 — 반드시 JSON]
 {
-  "comments": ["감정폭발 3개 + 일반단문 3개. 전부 다르게"]
+  "comments": ["감정폭발 3개 + 일반단문 3개"]
 }
 
 [예시]
 아니 ㅋㅋㅋㅋㅋ 미쳤냐
-소름이다 진짜
+카일 뛰는 장면 소름
 웃다가 우는거 뛰임
 와 잠깐만ㅋㅋㅋㅋ
 
