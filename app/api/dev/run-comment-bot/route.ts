@@ -764,6 +764,37 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     'Body Horror': 'horror',
     'Folk Horror': 'horror',
 
+    // Historical → historical  
+    'Period Drama': 'historical',
+    'Alternate History': 'historical',
+    'Historical Fantasy': 'historical',
+    'Court Intrigue': 'historical',
+    'War Epic': 'historical',
+    'Dynasty': 'historical',
+
+    // Slice of Life / Contemporary → slice-of-life
+    'Contemporary': 'slice-of-life',
+    'Coming of Age': 'slice-of-life',
+    'School Life': 'slice-of-life',
+    'Workplace': 'slice-of-life',
+    'Family Drama': 'slice-of-life',
+    'Tragedy': 'slice-of-life',
+    'Melodrama': 'slice-of-life',
+
+    // Action → action
+    'Superhero': 'action',
+    'Military': 'action',
+    'Survival': 'action',
+    'Apocalyptic': 'action',
+    'Battle Royale': 'action',
+    'Sports': 'action',
+
+    // Comedy → comedy
+    'Parody': 'comedy',
+    'Satire': 'comedy',
+    'Slapstick': 'comedy',
+    'Dark Comedy': 'comedy',
+
     // Note: LGBTQ+ moved to Tropes (not genre-specific)
     // Note: Time Travel moved to Narrative Devices (not genre-specific)
 };
@@ -865,11 +896,77 @@ Ejemplos:
     },
 
     'regression': {
-        'ko': '\n\n[장르: 회귀/이세계]\n참교육/사이다/통쾌함 반응. "참교육 가자", "저놈 끝났네" OK.',
-        'zh': '\n\n[类型：回归/异世界]\n爽文/复仇反应。"这就是爽", "报仇了！"等表达。',
-        'ja': '\n\n[ジャンル：回帰/異世界]\nスカッと/復讐反応。"これは痛快"など。',
-        'en': '\n\n[Genre: Regression/Isekai]\nRevenge/satisfaction reactions. "Justice served!", "Get rekt".',
-        'es': '\n\n[Género: Regresión/Isekai]\nVenganza/satisfacción. "¡Justicia!", "Se lo merecía".',
+        'ko': `\n\n[장르: 회귀/이세계 | 한국어 댓글 스타일]
+- 짧은 단문
+- "각", "사기", "루트", "빌드"
+- ㅋㅋ은 냉소
+- 공략형/최적화 집착
+
+소비 성향: 정보 우위 활용 집착, 루트 최적화, 전개 속도 민감
+행동 패턴: 전략 토론, 회차 비교, 설정 오류 빠른 지적
+
+예시:
+- 각 나옴
+- 루트 사기네
+- 저기서 왜 저래
+- 빌드 말이 안 됨
+- 정보 써먹네
+- 설정 오류`,
+
+        'zh': `\n\n[类型：重生/穿越 | 中文评论风格]
+- 夸张形容词, 哈哈哈
+- 情感过热, 集体汇聚
+- 위상 상승/체급 소비
+
+消费倾向：力量上升最重要, 血统/特别性强调, 复仇叙事过热
+行动模式：主角赞扬集体化, 地位比较
+
+示例：
+- 太强了！！
+- 这境界牛逼
+- 血统觉醒！
+- 复仇爽哈哈哈`,
+
+        'ja': `\n\n[ジャンル：異世界/転生 | 日本語コメントスタイル]
+- 完結形文章, ｗ使用
+- 過激語少ない
+- 적응 서사/일상화 소비
+
+消費傾向：異世界適応期, 転生日常, 能力より関係
+行動：落ち着いた感想, キャラ関係中心
+
+例：
+- こういう設定好き
+- 異世界適応が丁寧
+- キャラとの関係いい
+- ゆっくり成長型好きです`,
+
+        'en': `\n\n[Genre: Regression/Isekai/LitRPG | English comment style]
+- Natural commas, "lol", "bro"
+- Sarcasm exists
+- 정합성/패러독스 집착
+
+Consumption: Timeline logic, system coherence, cheat verification
+Behavior: Long analysis, paradox criticism, setting collapse critique
+
+Examples:
+- Timeline paradox detected
+- This doesn't add up lol
+- System logic broken here
+- Plot hole in the regression mechanic`,
+
+        'es': `\n\n[Género: Regresión/Isekai | Estilo de comentario en español]
+- Exclamaciones muchas, JAJAJA
+- 감정형 성장 소비
+
+Consumo: Trampa < emoción, proceso de crecimiento, relaciones
+Comportamiento: MAYÚSCULAS emocionales, empatía colectiva
+
+Ejemplos:
+- ¡Qué crecimiento tan hermoso!
+- ¡NOOOO el sacrificio!
+- ¡Me encanta esta relación!
+- JAJAJA qué poder`,
     },
 
     'sci-fi': {
@@ -1095,6 +1192,305 @@ Ejemplos:
 - ¡DIOS MIO NO PUEDE SER!
 - ¡Esto es demasiado terrorífico!
 - JAJAJA qué susto`,
+    },
+
+    'historical': {
+        'ko': `\n\n[장르: 역사물 | 한국어 댓글 스타일]
+- 비교적 단문, 쉼표 적음
+- "고증", "왜곡", "사료", "설정"
+- ㅋㅋ은 비꼼용
+- 감정 비율: 고증 지적 35%, 감정 25%, 정치 해석 20%
+
+집착 포인트: 고증 정확성, 인물 왜곡 여부, 정치 해석, 시대 분위기
+행동 패턴: 고증 오류 지적 빠름, 정치적 해석 싸움 발생
+
+예시:
+- 이거 실제 기록이랑 다름
+- 고증 오류네
+- 이건 너무 미화
+- 저 인물 왜곡 심함
+- 정치 해석이 좀...`,
+
+        'zh': `\n\n[类型：历史 | 中文评论风格 - 历史消费大市场]
+- 过度形容词, "牛逼", "炸了"
+- 集体赞扬/批评, 哈哈哈
+- 情感比例：情感/赞扬 40%, 战略分析 25%, 政治 20%
+
+关注点：皇帝/将军地位, 权力规模, 战略, 民族自豪
+行动模式：伟大人物赞扬, 民族情绪强, 背叛/义理过热
+
+示例：
+- 这皇帝太强了！
+- 战略牛逼哈哈哈
+- 民族英雄！
+- 作者写的太好了`,
+
+        'ja': `\n\n[ジャンル：歴史 | 日本語コメントスタイル]
+- 完結形文章, 丁寧語
+- 過激語ほぼなし, ｗ少ない
+- 感情比率：感想 45%, 分析 30%, 応援 15%
+
+注目点：人物心理, 時代雰囲気, 繊細なディテール, 文化描写
+行動パターン：落ち着いた感想, 考証指摘も丁寧, 喧嘩少ない
+
+例：
+- こういう時代描写好きです
+- ディテールが細かいですね
+- 人物心理がリアル
+- 雰囲気が良いです`,
+
+        'en': `\n\n[Genre: Historical | English comment style]
+- Long sentences with commas
+- Sarcasm present
+- Real history comparisons
+- Emotion mix: Analysis 40%, Discussion 30%, Emotion 20%
+
+Focus: Social implications, human rights/ethics, power structures, modern interpretations
+Behavioral: Moral evaluations, historical interpretation debates, political discussions
+
+Examples:
+- This feels historically inaccurate
+- The power dynamics make sense here
+- Interesting take on [historical figure]
+- From a modern lens, this is problematic`,
+
+        'es': `\n\n[Género: Histórico | Estilo de comentario en español]
+- Muchas exclamaciones, MAYÚSCULAS
+- JAJAJA
+- Proporción: Emoción 45%, Política/poder 25%, Análisis 20%
+
+Enfoque: Conflictos de poder, traición, drama emocional, revolución
+Patrón: Inmersión emocional, explosión en traición, interpretación política emocional
+
+Ejemplos:
+- ¡NOOOO LA TRAICIÓN!
+- ¡Viva la revolución!
+- ¡Este poder es increíble!
+- JAJAJA qué estrategia`,
+    },
+
+    'slice-of-life': {
+        'ko': `\n\n[장르: 일상/현대물 | 한국어 댓글 스타일]
+- 짧은 단문, 쉼표 거의 없음
+- "현실적이네", "공감됨", "저게 맞지"
+- ㅋㅋ은 체념/냉소
+- 감정 비율: 공감 45%, 냉소 20%, 감정 20%
+
+집착 포인트: 현실 공감, 회사/학교 상황, 부모 세대 문제, 경제적 현실
+행동 패턴: "나도 저랬음" 등장, 회사 이야기 → 댓글 밀도 상승
+
+예시:
+- 나도 저랬음
+- 이게 현실이지
+- 현실적이네
+- 공감됨
+- 회사 그렇지ㅋㅋ
+- 저게 맞음`,
+
+        'zh': `\n\n[类型：日常/现代 | 中文评论风格]
+- 感情夸张, "太真实了"
+- 集体共鸣评论
+- 情感比例：情感 50%, 共鸣 25%, 应援 15%
+
+关注点：家庭义务, 孝, 世代冲突, 成功/出人头地
+行动模式：父母世代争论, 牺牲叙事消费, 集体情绪
+
+示例：
+- 太真实了！
+- 父母就是这样
+- 家庭责任太重
+- 主角加油`,
+
+        'ja': `\n\n[ジャンル：日常系 | 日本語コメントスタイル]
+- 完結形文章, 丁寧語
+- "こういう日常好き"
+- 感情比率：感想 50%, 共感 30%, 応援 15%
+
+注目点：日常ディテール, 静かな感情変化, 教室雰囲気
+行動パターン：落ち着いた感想, 小さな場面反応, 喧嘩ほぼなし
+
+例：
+- こういう日常好きです
+- わかります
+- 穏やかな展開ですね
+- ディテールが良いです`,
+
+        'en': `\n\n[Genre: Contemporary/Slice of Life | English comment style]
+- Long sentences (higher ratio)
+- Natural commas, "this hits hard"
+- Emotion mix: Empathy 40%, Analysis 30%, Discussion 20%
+
+Focus: Personal growth, independence, self-discovery, workplace power
+Behavioral: Long personal experience sharing, psychological analysis
+
+Examples:
+- I went through this exact thing
+- This hits so hard ngl
+- Been there, done that
+- My parents were like this too`,
+
+        'es': `\n\n[Género: Contemporáneo/Cotidiano | Estilo de comentario en español]
+- Muchas exclamaciones, MAYÚSCULAS
+- "NOOO", "DIOS", JAJAJA
+- Proporción: Emoción 55%, Empatía 25%
+
+Enfoque: Conflictos emocionales, traición, sacrificio, padre-hijo
+Patrón: Explosión emocional, empatía colectiva, exageración
+
+Ejemplos:
+- ¡Esto mismo me pasó!
+- ¡NOOOO QUÉ TRISTEZA!
+- ¡Siento tanto por el personaje!
+- JAJAJA así son las familias`,
+    },
+
+    'action': {
+        'ko': `\n\n[장르: 액션 | 한국어 댓글 스타일]
+- 짧음 (초단문 비율 높음)
+- "개간지", "체급차", "사이다"
+- ㅋㅋ은 긴장 해소
+- 감정 비율: 반응 40%, 체급 언급 25%, 전략 15%
+
+집착 포인트: 체급, 사이다, 전략, 설정 합리성
+행동 패턴: 전투화 → 댓글 폭증, 주인공 강하면 바로 찬양
+
+예시:
+- 개간지
+- 체급차 ㅁㅊ
+- 사이다네ㅋㅋ
+- 전투 연출 좋음
+- 저기서 왜 저래`,
+
+        'zh': `\n\n[类型：武侠/动作 | 中文评论风格 - 武侠特别强]
+- 过度表达, "太强了", "牛逼"
+- 哈哈哈, 集体赞扬
+- 情感比例：情感/赞扬 50%, 境界分析 25%
+
+关注点：境界, 血统, 地位, 规模
+行动模式：主角强 → 情感爆炸, 境界阶段言及, 集体应援
+
+示例：
+- 太强了！！
+- 这境界牛逼
+- 主角无敌哈哈哈
+- 作者写的好`,
+
+        'ja': `\n\n[ジャンル：アクション/ヒーロー | 日本語コメントスタイル]
+- 完結形文章, 丁寧語混在
+- ｗ使用, 過激語少ない
+- 感情比率：感想 40%, 技言及 25%, 応援 20%
+
+注目点：キャラクター性, 技ディテール, チームワーク, 犠牲
+行動パターン：戦闘よりキャラ感情, 技名言及, 批判少ない
+
+例：
+- こういうバトル好き
+- 技名がかっこいい
+- チームワークが良い
+- 犠牲シーン辛い`,
+
+        'en': `\n\n[Genre: Action/Military/Superhero | English comment style]
+- Long sentences (combat analysis)
+- Sarcasm exists, "bro", "dude"
+- Emotion mix: Analysis 40%, Humor 20%, Emotion 20%, Discussion 20%
+
+Focus: Tactical realism, equipment, ethics issues, team strategy
+Behavioral: Equipment discussion, military realism critique, hero ethics debate
+
+Examples:
+- The tactics actually make sense here
+- That weapon choice is questionable lol
+- Hero ethics debate incoming
+- Solid team strategy ngl`,
+
+        'es': `\n\n[Género: Acción/Apocalipsis | Estilo de comentario en español]
+- MAYÚSCULAS, exclamaciones excesivas
+- JAJAJA
+- Proporción: Emoción 50%, Reacción 25%
+
+Enfoque: Situaciones extremas, sacrificio, traición, explosión emocional
+Patrón: Reacción colectiva, crisis → emoción, apoyo a personajes
+
+Ejemplos:
+- ¡NOOOO QUÉ ACCIÓN!
+- ¡Increíble pelea!
+- ¡El sacrificio! 😭
+- JAJAJA qué golpe`,
+    },
+
+    'comedy': {
+        'ko': `\n\n[장르: 코미디 | 한국어 댓글 스타일]
+- 초단문 매우 많음
+- ㅋㅋ 롱테일 분포 (ㅋ ~ ㅋㅋㅋㅋㅋㅋㅋㅋ)
+- "미쳤냐", "레전드", "이건 좀"
+- 감정 비율: 비명형 웃음 45%, 단문 반응 30%, 밈 15%
+
+집착 포인트: 타이밍, 예상 밖 반전, 병맛, 말장난
+행동 패턴: 펀치라인 → 댓글 폭증, ㅋㅋ 길이 경쟁, 캐릭터 별명 생성
+
+예시:
+- ㅋㅋㅋㅋㅋㅋ
+- 미쳤냐ㅋㅋㅋ
+- 레전드
+- 이건 좀
+- 개웃김ㅋㅋ
+- 미침`,
+
+        'zh': `\n\n[类型：搞笑 | 中文评论风格]
+- 初段文 높음, 哈哈哈 반복
+- "笑死我了", 夸张形容词
+- 情感比例：笑 50%, 情感夸张 30%, 梗扩展 15%
+
+关注点：夸张, 情况极端化, 人物出丑
+行动模式：集体笑声, 人物调侃, 梗扩展
+
+示例：
+- 哈哈哈哈哈
+- 笑死我了
+- 太搞笑了
+- 作者太有才了`,
+
+        'ja': `\n\n[ジャンル：コメディ | 日本語コメントスタイル]
+- ｗ使用, 完結形文章
+- 過激語少ない, 語調柔らかい
+- 感情比率：感想 40%, ｗ笑い 35%, 応援 15%
+
+注目点：小さなギャグ, キャラ性格差, 状況コメディ
+行動パターン：落ち着いた笑い, 状況蓄積型, キャラ中心
+
+例：
+- こういうノリ好きｗ
+- キャラが面白い
+- 癒されますｗｗ
+- ギャグセンスいいですね`,
+
+        'en': `\n\n[Genre: Comedy/Satire | English comment style - META-HEAVY]
+- Medium sentences, "lol" moderate
+- Sarcasm heavy
+- Emotion mix: Humor 40%, Satire interpretation 25%, Meme 20%, Discussion 15%
+
+Focus: Irony, social satire, meta jokes, character self-deprecation
+Behavioral: Joke interpretation, political/social connections, meme expansion
+
+Examples:
+- The irony here is chef's kiss lol
+- This is literally [meme reference]
+- Meta commentary on point
+- Satire so good it hurts`,
+
+        'es': `\n\n[Género: Comedia | Estilo de comentario en español]
+- JAJAJA, MAYÚSCULAS de risa
+- Exclamaciones muchas
+- Proporción: Risa 55%, Emoción 25%, Memes 15%
+
+Enfoque: Exageración emocional, personajes ridículos, situación explosiva
+Patrón: Risa colectiva, reacción explosiva, burla a personajes
+
+Ejemplos:
+- JAJAJAJAJA
+- ¡QUÉ GRACIOSO!
+- ¡Me muero de risa! 😂
+- ¡Esto es oro!`,
     },
 };
 
