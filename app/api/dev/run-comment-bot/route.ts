@@ -643,67 +643,86 @@ async function callAzureGPT(prompt: string): Promise<string> {
 /**
  * 구조 다양성 필터: 댓글 생태계 시뮬레이션
  * GPT는 안전한 평균 구조를 선호하므로, 같은 타입의 댓글이 과다하면 제거
+ * v2: 마침표 제거, 명사화 평가 감지, 템플릿 문구 감지 추가
  */
 function filterStructuralDiversity(comments: string[]): string[] {
-    // 댓글 타입 분류
     type CommentType = 'fragmentary' | 'interrogative' | 'exclamatory' | 'nominalized' | 'direct-verb';
 
-    interface ClassifiedComment {
-        text: string;
-        type: CommentType;
-        hasPossessive: boolean;
-    }
+    const templatePhrases = ['여운 남', '감동적이', '잊혀지지 않', '찌릿했', '안쓰럽'];
 
-    const classified: ClassifiedComment[] = comments.map(comment => {
-        // 소유격 패턴 감지 (의 + 명사 + 조사)
-        const possessivePattern = /[가-힣]+의\s*[가-힣]+[이가은는을를]/;
-        const hasPossessive = possessivePattern.test(comment);
+    const classified = comments.map(comment => {
+        // 마침표 제거 (한국 댓글은 마침표 안 씀)
+        const cleaned = comment.replace(/\.$/g, '').trim();
+
+        // 소유격 패턴 (의 + 명사 + 조사)
+        const hasPossessive = /[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned);
+
+        // 명사화 평가 패턴 (주어 + 이/가 + 형용사)
+        const hasNominalizedEval = /[가-힣]+[이가]\s*[가-힣]+(다|네|음|장난|대단|멋|슬프)/.test(cleaned);
+
+        // 템플릿 문구
+        const hasTemplate = templatePhrases.some(phrase => cleaned.includes(phrase));
 
         // 문장 타입 분류
         let type: CommentType;
-        if (comment.includes('?') || /[뭐왜어떻]/.test(comment)) {
-            type = 'interrogative'; // 의문형
-        } else if (/[ㅋㅠㄷ]{2,}/.test(comment) || comment.length <= 8) {
-            type = 'fragmentary'; // 파편형
-        } else if (/[다네요네욬네욬]$/.test(comment)) {
-            type = 'exclamatory'; // 감탄형
-        } else if (hasPossessive || /[가-힣]+이\s/.test(comment)) {
-            type = 'nominalized'; // 명사화형
+        if (cleaned.includes('?') || /[뭐왜어떻]/.test(cleaned)) {
+            type = 'interrogative';
+        } else if (/[ㅋㅠㄷ]{2,}/.test(cleaned) || cleaned.length <= 8) {
+            type = 'fragmentary';
+        } else if (/[다네요]$/.test(cleaned) && !hasNominalizedEval) {
+            type = 'exclamatory';
+        } else if (hasPossessive || hasNominalizedEval || /[가-힣]+[이가]\s/.test(cleaned)) {
+            type = 'nominalized';
         } else {
-            type = 'direct-verb'; // 동사직접형
+            type = 'direct-verb';
         }
 
-        return { text: comment, type, hasPossessive };
+        return { text: cleaned, type, hasPossessive, hasNominalizedEval, hasTemplate };
     });
 
-    // 같은 타입 3개 이상이면 제거
     const typeCounts: Record<CommentType, number> = {
-        fragmentary: 0,
-        interrogative: 0,
-        exclamatory: 0,
-        nominalized: 0,
-        'direct-verb': 0
+        fragmentary: 0, interrogative: 0, exclamatory: 0, nominalized: 0, 'direct-verb': 0
     };
 
     const filtered: string[] = [];
-    let consecutivePossessiveCount = 0;
+    let consecutivePossessive = 0;
+    let consecutiveNominalized = 0;
 
     for (const item of classified) {
-        // 같은 구조 연속 2번 이상 금지
+        // 템플릿 문구 드랍
+        if (item.hasTemplate) {
+            console.log(`🔪 Filtered template: "${item.text}"`);
+            continue;
+        }
+
+        // 소유격 연속 2번 금지
         if (item.hasPossessive) {
-            consecutivePossessiveCount++;
-            if (consecutivePossessiveCount >= 2) {
-                console.log(`🔪 Filtered consecutive possessive: "${item.text}"`);
-                continue; // 연속 소유격 구조 드랍
+            consecutivePossessive++;
+            if (consecutivePossessive >= 2) {
+                console.log(`🔪 Filtered possessive: "${item.text}"`);
+                consecutivePossessive = 0;
+                continue;
             }
         } else {
-            consecutivePossessiveCount = 0;
+            consecutivePossessive = 0;
+        }
+
+        // 명사화 평가 연속 2번 금지
+        if (item.hasNominalizedEval) {
+            consecutiveNominalized++;
+            if (consecutiveNominalized >= 2) {
+                console.log(`🔪 Filtered nominalized: "${item.text}"`);
+                consecutiveNominalized = 0;
+                continue;
+            }
+        } else {
+            consecutiveNominalized = 0;
         }
 
         // 같은 타입 3개 이상 금지
         if (typeCounts[item.type] >= 3) {
             console.log(`🔪 Filtered excess ${item.type}: "${item.text}"`);
-            continue; // 과다 타입 드랍
+            continue;
         }
 
         filtered.push(item.text);
@@ -739,9 +758,11 @@ async function generateDeepContextComments(
 [댓글 규칙]
 - 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
 - ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
+- 마침표(.) 절대 사용 금지. 한국 댓글은 마침표 안 씀
 - 해설/평가/분석처럼 보이는 문장 구조 금지. 생각을 정리해서 쓰지 말고, 장면을 보고 바로 내뱉는 느낌으로 작성
+- 명사화 평가 구조 금지: "~이/가 + 형용사" 반복 쓰지 마 (여운 남음 ❌ / 여운 남네 ⭕)
 - 같은 문장 구조 반복 금지: "~의 ~이/가" 같은 패턴을 여러 댓글에 반복하지 마. 문장 구조 다양하게
-- 파편형 문장 OK: 불완전한 문장, 조사 생략 자연스러움
+- 파편형·끊긴 문장 선호: 완결된 문장보다 중간에 끊긴 문장이 더 자연스러움
 - 완결형(~다) 소량 허용하되 문어체와 결합 금지 (소름이다 ⭕ / 결단이 무섭다 ❌)
 - 작품 전체 평가 금지 ("전개 좋네", "재밌네" 같은 일반 감상 금지)
 - 이모지 쓰지마
@@ -753,6 +774,8 @@ async function generateDeepContextComments(
 에른스트 결단 뭐냐
 리나 저건 좀 무섭네
 소름이다 진짜
+여운 남네
+그 장면 계속 생각남
 
 [에피소드 본문]
 ${trimmed}`;
