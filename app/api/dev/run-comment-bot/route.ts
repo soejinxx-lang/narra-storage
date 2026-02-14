@@ -700,6 +700,11 @@ interface StoryEvent {
     quote?: string;
 }
 
+interface EventExtraction {
+    events: StoryEvent[];
+    dominantEmotion: string;  // 이 에피의 지배 감정
+}
+
 type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' | 'misreader' | 'lurker';
 
 interface ReaderProfile {
@@ -709,44 +714,49 @@ interface ReaderProfile {
     emotionalIntensity: number;
     literacy: number;
     sarcasmLevel: number;
-    bandwagonTarget?: string;  // 집단 동조 대상 캐릭터
+    bandwagonTarget?: string;
+    dominantEmotion?: string;  // 감정 쏠림 적용된 경우
 }
 
-// ========== Stage 1: Event Extractor ==========
-async function extractEvents(episodeContent: string): Promise<StoryEvent[]> {
+// ========== Stage 1: Event Extractor + Dominant Emotion ==========
+async function extractEvents(episodeContent: string): Promise<EventExtraction> {
     const trimmed = episodeContent.length > 3000
         ? episodeContent.slice(-3000)
         : episodeContent;
 
-    const prompt = `이 에피소드에서 독자가 반응할 핵심 사건 5~7개를 추출해라.
+    const prompt = `이 에피소드에서 독자가 반응할 핵심 사건 5~7개를 추출하고,
+이 에피소드의 지배적 감정 1개를 골라라.
 
 [출력 — 반드시 JSON]
-{ "events": [
-  { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
-] }
+{
+  "dominantEmotion": "긴장|슬픔|분노|웃김|소름|설렘|허탈|감동 중 1개",
+  "events": [
+    { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
+  ]
+}
 
 [에피소드]
 ${trimmed}`;
 
     const raw = await callAzureGPT(prompt);
-    if (!raw) return [];
+    if (!raw) return { events: [], dominantEmotion: '' };
 
     try {
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         const data = JSON.parse(cleaned);
         if (data.events && Array.isArray(data.events)) {
-            console.log(`📋 Events extracted: ${data.events.length}`);
-            return data.events;
+            const emotion = data.dominantEmotion || '';
+            console.log(`📋 Events: ${data.events.length}, dominant emotion: "${emotion}"`);
+            return { events: data.events, dominantEmotion: emotion };
         }
     } catch (e) {
         console.warn('⚠️ Event extraction parse failed');
     }
-    return [];
+    return { events: [], dominantEmotion: '' };
 }
 
-// ========== Stage 2: Reader Profiles (강제 분포) ==========
-function generateReaderProfiles(events: StoryEvent[], count: number = 8): ReaderProfile[] {
-    // 쿼터제: 랜덤 아님
+// ========== Stage 2: Reader Profiles (강제 분포 + 감정 쏠림) ==========
+function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominantEmotion: string = ''): ReaderProfile[] {
     const typeQuota: { type: ReaderType; count: number }[] = [
         { type: 'immersed', count: 2 },
         { type: 'lurker', count: 1 },
@@ -757,30 +767,41 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8): Reader
         { type: 'analyst', count: 1 },
     ];
 
-    // 감정 강도 히스토그램 강제 (8명용)
-    const emotionSlots = [
-        1.5,  // 1~2: 무성의
-        3.5, 4.0,  // 3~4: 약함
-        5.5, 6.0,  // 5~6: 보통
-        7.5, 8.0,  // 7~8: 강함
-        9.5,  // 9~10: 극단
-    ];
-    // 셔플
+    // 감정 강도 히스토그램
+    const emotionSlots = [1.5, 3.5, 4.0, 5.5, 6.0, 7.5, 8.0, 9.5];
     for (let i = emotionSlots.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [emotionSlots[i], emotionSlots[j]] = [emotionSlots[j], emotionSlots[i]];
     }
 
-    // 20% 확률: 집단 동조 파동 — 한 캐릭터에 반응 집중
+    // 캐릭터 동조 파동
     const allCharacters = [...new Set(events.flatMap(e => e.characters))];
     const bandwagonChar = Math.random() < 0.2 && allCharacters.length > 0
         ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
         : null;
 
+    // 감정 쏠림: dominantRatio를 0.3~0.6 사이에서 랜덤 결정
+    const dominantRatio = dominantEmotion ? 0.3 + Math.random() * 0.3 : 0;
+    const dominantCount = Math.round(count * dominantRatio);
+    if (dominantEmotion) {
+        console.log(`🎭 Emotion skew: "${dominantEmotion}" → ${dominantCount}/${count} readers (${(dominantRatio * 100).toFixed(0)}%)`);
+    }
+
     const profiles: ReaderProfile[] = [];
     let emotionIdx = 0;
-
+    let dominantApplied = 0;
     const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+    // 감정 전염 저항도 (유형별)
+    const emotionResistance: Record<ReaderType, number> = {
+        immersed: 0.2,     // 쉽게 전염됨
+        overreactor: 0.1,  // 가장 쉽게 전염
+        analyst: 0.5,      // 중간
+        skimmer: 0.6,      // 별로 영향 안 받음
+        misreader: 0.4,
+        lurker: 0.8,       // 거의 안 받음
+        troll: 0.7,        // 30% 확률로 역행
+    };
 
     for (const quota of typeQuota) {
         for (let i = 0; i < quota.count; i++) {
@@ -797,7 +818,6 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8): Reader
                 sarcasmLevel: 0,
             };
 
-            // 유형별 파라미터 강제
             switch (quota.type) {
                 case 'immersed':
                     profile.attentionSpan = rand(0.8, 1.0);
@@ -838,9 +858,23 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8): Reader
                     break;
             }
 
-            // 집단 동조 파동 적용
+            // 캐릭터 동조
             if (bandwagonChar && Math.random() < 0.4) {
                 profile.bandwagonTarget = bandwagonChar;
+            }
+
+            // 감정 쏠림 적용 (저항도에 따라)
+            if (dominantEmotion && dominantApplied < dominantCount) {
+                const resistance = emotionResistance[quota.type];
+                if (Math.random() > resistance) {
+                    // troll은 30% 확률로 역행
+                    if (quota.type === 'troll' && Math.random() < 0.3) {
+                        profile.dominantEmotion = '반감';  // 역행
+                    } else {
+                        profile.dominantEmotion = dominantEmotion;
+                    }
+                    dominantApplied++;
+                }
             }
 
             profiles.push(profile);
@@ -848,8 +882,9 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8): Reader
     }
 
     if (bandwagonChar) {
-        console.log(`👥 Bandwagon effect: ${profiles.filter(p => p.bandwagonTarget).length} readers focused on "${bandwagonChar}"`);
+        console.log(`👥 Bandwagon: ${profiles.filter(p => p.bandwagonTarget).length} readers on "${bandwagonChar}"`);
     }
+    console.log(`🎭 Emotion infected: ${profiles.filter(p => p.dominantEmotion).length}/${profiles.length}`);
 
     return profiles;
 }
@@ -943,50 +978,57 @@ function distortInterpretation(summary: string, characters: string[]): string {
     return distortions[Math.floor(Math.random() * distortions.length)];
 }
 
-// ========== Stage 5: 집단 동조 파동 (Herd Effect) ==========
+// ========== Stage 5: 집단 동조 파동 (Herd Effect — 리얼 군집) ==========
 function injectHerdEffect(comments: string[]): string[] {
     // 30% 확률로만 발생
     if (Math.random() > 0.3 || comments.length < 4) return comments;
 
-    // 씨앗 댓글 선택 (5자 이상, ㅋㅋ만 아닌 것)
     const candidates = comments.filter(c => c.length >= 5 && !/^[ㅋㅠㄷㅇ]+$/.test(c));
     if (candidates.length === 0) return comments;
 
-    const seed = candidates[Math.floor(Math.random() * candidates.length)];
-
-    // 핵심 키워드 추출 (2글자 이상 명사/동사 느낌)
+    const seedIdx = Math.floor(Math.random() * candidates.length);
+    const seed = candidates[seedIdx];
     const keywords = seed.match(/[가-힣]{2,}/g) || [];
     if (keywords.length === 0) return comments;
     const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
-    console.log(`👥 Herd effect triggered: seed="${seed}", keyword="${keyword}"`);
+    console.log(`👥 Herd: seed="${seed}", keyword="${keyword}"`);
 
-    // 동조 댓글 2~3개 생성
+    // 받아치기 스타일 동조 (독립적이 아니라 반응형)
     const echoTemplates = [
-        `ㄹㅇ ${keyword}`,
-        `${keyword} ㄷㄷ`,
-        `${keyword} 미쳤다`,
-        `와 ${keyword}`,
-        `${keyword} 진짜`,
-        `${keyword} 개쩐다`,
-        `${keyword} ㅋㅋㅋ`,
+        `ㄹㅇ ${keyword} 개빡셀 듯`,
+        `ㅋㅋ 진짜 ${keyword} 또 나오네`,
+        `${keyword} 미쳤다 ㄷㄷ`,
+        `와 ${keyword} 소름`,
+        `${keyword} 진짜 이번엔`,
+        `나만 ${keyword} 보고 소름?`,
     ];
-    const shuffledEchoes = echoTemplates.sort(() => Math.random() - 0.5);
-    const echoCount = 2 + Math.floor(Math.random() * 2); // 2~3개
-    const echoes = shuffledEchoes.slice(0, echoCount);
-
-    // 반동 댓글 1개 (동조에 대한 반발)
     const counterTemplates = [
         `아니 ${keyword}은 좀 질림`,
         `${keyword} 또야?`,
         `${keyword} 왜 다 난리임`,
-        `걍 그냥저냥이었는데`,
+        `걍 그냥저냥인데`,
         `그거 그렇게 대단한가`,
     ];
+
+    const echoCount = 2 + Math.floor(Math.random() * 2);
+    const echoes = echoTemplates.sort(() => Math.random() - 0.5).slice(0, echoCount);
     const counter = counterTemplates[Math.floor(Math.random() * counterTemplates.length)];
 
-    const result = [...comments, ...echoes, counter];
-    console.log(`👥 Herd: +${echoes.length} echoes, +1 counter`);
+    // 리얼 군집 배치: 씨앗 위치 찾고 2연속 + 끼어들기 + 재등장
+    const result = [...comments];
+    const seedPosition = result.indexOf(seed);
+    const insertAt = seedPosition >= 0 ? seedPosition + 1 : result.length;
+
+    // echo[0], echo[1] 연속 → 반동 끼어들기 → (있으면) echo[2] 재등장
+    const cluster: string[] = [];
+    cluster.push(echoes[0]);
+    if (echoes.length >= 2) cluster.push(echoes[1]);
+    cluster.push(counter);  // 반동 끼어들기
+    if (echoes.length >= 3) cluster.push(echoes[2]);  // 재등장
+
+    result.splice(insertAt, 0, ...cluster);
+    console.log(`👥 Herd: +${echoes.length} echoes, +1 counter (clustered at pos ${insertAt})`);
     return result;
 }
 
@@ -1032,7 +1074,8 @@ async function generateDeepContextComments(
 
     // ===== Stage 1: Event Extraction =====
     console.log('📋 Stage 1: Extracting events...');
-    const events = await extractEvents(episodeContent);
+    const extraction = await extractEvents(episodeContent);
+    const { events, dominantEmotion } = extraction;
 
     if (events.length === 0) {
         console.warn('⚠️ No events extracted, falling back to old method');
@@ -1041,9 +1084,9 @@ async function generateDeepContextComments(
 
     // ===== Stage 2: Reader Profiles =====
     console.log('👥 Stage 2: Generating reader profiles...');
-    const profiles = generateReaderProfiles(events, count);
+    const profiles = generateReaderProfiles(events, count, dominantEmotion);
     for (const p of profiles) {
-        console.log(`  ${p.type}: attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}`);
+        console.log(`  ${p.type}: attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}${p.dominantEmotion ? `, mood=${p.dominantEmotion}` : ''}`);
     }
 
     // ===== Stage 3: Info Restriction =====
@@ -1261,7 +1304,7 @@ ${commentList}
         finalComments = preFiltered.slice(0, targetCount).map(s => s.text);
     }
 
-    // --- Stage 6: 후처리 노이즈 ---
+    // --- Stage 8: 후처리 노이즈 ---
     const noised = finalComments.map(text => {
         if (Math.random() < 0.1 && text.length > 5) {
             const words = text.split(' ');
@@ -1271,6 +1314,21 @@ ${commentList}
         return text;
     });
 
+    // --- 쓸데없는 댓글 삽입 (50%=1개, 20%=2개, 30%=없음) ---
+    const uselessPool = [
+        '출첵', '1', 'ㅇㅇ', '감사', '여기까지 읽음', '오늘도 왔다',
+        '잘 봤습니다', '굿', 'ㅋ', '다음화 언제', '작가님 건강하세요',
+        '이름이 왜 이렇게 멋있냐', '광고보고왔는데', '읽는중',
+    ];
+    const uselessRoll = Math.random();
+    const uselessCount = uselessRoll < 0.3 ? 0 : uselessRoll < 0.8 ? 1 : 2;
+    for (let u = 0; u < uselessCount; u++) {
+        const useless = uselessPool[Math.floor(Math.random() * uselessPool.length)];
+        const pos = Math.floor(Math.random() * (noised.length + 1));
+        noised.splice(pos, 0, useless);
+        console.log(`📝 Useless comment "${useless}" at pos ${pos}`);
+    }
+
     // 셔플 (70% 랜덤, 느슨하게)
     for (let i = noised.length - 1; i > 0; i--) {
         if (Math.random() < 0.7) {
@@ -1279,7 +1337,7 @@ ${commentList}
         }
     }
 
-    console.log(`📊 Curated: ${noised.length}/${comments.length}`);
+    console.log(`📊 Curated: ${noised.length}/${comments.length} (useless: ${uselessCount})`);
     return noised;
 }
 
