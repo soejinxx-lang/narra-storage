@@ -1188,7 +1188,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
                 );
             }
             return (parsed.comments || [])
-                .map((c: string) => c.replace(/^["']|["']$/g, '').trim())
+                .map((c: string) => c.replace(/^["']|["']$/g, '').replace(/^반응:\s*/i, '').trim())
                 .filter((c: string) => c.length > 0 && c.length < 100);
         } catch {
             return raw.split('\n')
@@ -1215,13 +1215,19 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
     console.log(`📊 After social dynamics: ${safeComments.length} → ${withEmotion.length}`);
 
     // ===== Stage 7: GPT-5 큐레이터 (safe만, chaos 제외) =====
-    const chaosInsertCount = Math.min(chaosComments.length, Math.floor(Math.random() * 3)); // 0~2개 랜덤
+    // chaos 삽입 수: 0(10%), 1(50%), 2(40%)
+    const chaosRoll = Math.random();
+    const chaosInsertCount = Math.min(chaosComments.length, chaosRoll < 0.1 ? 0 : chaosRoll < 0.6 ? 1 : 2);
     const curatorTarget = Math.max(1, count - chaosInsertCount);
     const filtered = await curateWithGPT5(withEmotion, curatorTarget);
 
-    // chaos 보호 영역에서 0~2개 추출 후 합치기
+    // chaos 보호 영역에서 1~2개 추출 후 랜덤 위치 삽입
     const selectedChaos = chaosComments.sort(() => Math.random() - 0.5).slice(0, chaosInsertCount);
-    const finalMerged = [...filtered, ...selectedChaos];
+    const finalMerged = [...filtered];
+    for (const chaos of selectedChaos) {
+        const pos = Math.floor(Math.random() * (finalMerged.length + 1));
+        finalMerged.splice(pos, 0, chaos);
+    }
 
     console.log(`🧠 Final: ${filtered.length} curated + ${selectedChaos.length} chaos = ${finalMerged.length}, tags: [${detectedTags.join(', ')}]`);
     return { comments: finalMerged, detectedTags };
