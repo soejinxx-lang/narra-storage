@@ -1110,10 +1110,13 @@ ${immersedViews.map((r, i) => {
 기억: ${r.view}${bandwagon}`;
     }).join('\n')}
 
-이런 톤:
+이런 톤이 섞여야 한다:
 "이거 나중에 돌아온다 100%"
+"저거 복선 맞음 ㅋㅋ"
+"작가 일부러 여기서 끊었네"
 "진짜 바보같은데 이해는 됨"
 "아 여기서 끊네 미쳤냐"
+"이 장면 구조 이전이랑 대비되는듯"
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
