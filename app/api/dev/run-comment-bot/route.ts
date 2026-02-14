@@ -1099,21 +1099,24 @@ async function generateDeepContextComments(
     // ===== Stage 4: 4회 분리 GPT 호출 (상황 기반) =====
     const moodHint = dominantEmotion ? `\n분위기: 이 화는 전체적으로 "${dominantEmotion}" 느낌이 강하다.` : '';
 
-    // 호출 1: 몰입형 + 분석형
+    // 호출 1: 몰입형 + 분석형 — 독자별 문체 분리
     const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
+    const styleBank = [
+        '주로 ~임, ~인듯 으로 끊는다. "저거 복선임", "이건 좀 뻔한데"',
+        '단어만 던진다. 짧게. "미쳤다", "아니", "뭐야 이거"',
+        '과장하고 ㅋ 많이 쓴다. "개미쳤네 ㅋㅋㅋㅋㅋ", "와씨"',
+        '작가/구조를 언급한다. "작가 여기서 끊음 일부러", "이 장면 구조 대비되는듯"',
+    ];
     const call1Prompt = `한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.
-생각 정리 안 하고 먼저 느낌이 나온다. 근거 설명 안 한다. 분석하려다 말아라.${moodHint}
+생각 정리 안 한다. 분석하려다 말아라.${moodHint}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
+        const style = styleBank[i % styleBank.length];
         return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
-기억: ${r.view}${bandwagon}`;
+기억: ${r.view}${bandwagon}
+말투: ${style}`;
     }).join('\n')}
-
-이렇게 말한다:
-"저거 복선임"
-"작가 여기서 끊음 일부러"
-"이건 좀 뻔한데"
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
