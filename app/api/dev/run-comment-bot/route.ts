@@ -1120,7 +1120,7 @@ ${immersedViews.map((r, i) => {
 
     // 호출 2: 감정과잉형
     const overreactorViews = readerViews.filter(r => r.profile.type === 'overreactor');
-    const call2Prompt = `방금 읽고 폰 던질 뻔한 사람. 감정이 앞서서 타이핑 엉망.${moodHint}
+    const call2Prompt = `한국 웹소설 모바일 댓글. 방금 읽고 폰 던질 뻔한 사람. 감정이 앞서서 타이핑 엉망.${moodHint}
 
 장면: ${overreactorViews.map(r => r.view).join('\n')}
 ${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
@@ -1135,7 +1135,7 @@ ${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile
 
     // 호출 3: 짜증형 + 오독형 — 🔒 보호 영역
     const chaosViews = readerViews.filter(r => r.profile.type === 'troll' || r.profile.type === 'misreader');
-    const call3Prompt = `2명의 독자. 둘 다 호의적이지 않다.
+    const call3Prompt = `한국 웹소설 모바일 댓글. 2명의 독자. 둘 다 호의적이지 않다.
 
 [A: 짜증남] 불만 많고 비꼼. 칭찬 안 함.
 기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '대충 기억남'}
@@ -1151,7 +1151,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
 
     // 호출 4: 대충형 + 관망형
     const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
-    const call4Prompt = `2명. 관심 별로 없다.
+    const call4Prompt = `한국 웹소설 모바일 댓글. 2명. 관심 별로 없다.
 
 [A] 앞부분만 훑어봄. 뒤는 모름.
 기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
@@ -1338,20 +1338,7 @@ ${commentList}
         return text;
     });
 
-    // --- 쓸데없는 댓글 삽입 (50%=1개, 20%=2개, 30%=없음) ---
-    const uselessPool = [
-        '출첵', '1', 'ㅇㅇ', '감사', '여기까지 읽음', '오늘도 왔다',
-        '잘 봤습니다', '굿', 'ㅋ', '다음화 언제', '작가님 건강하세요',
-        '이름이 왜 이렇게 멋있냐', '광고보고왔는데', '읽는중',
-    ];
-    const uselessRoll = Math.random();
-    const uselessCount = uselessRoll < 0.3 ? 0 : uselessRoll < 0.8 ? 1 : 2;
-    for (let u = 0; u < uselessCount; u++) {
-        const useless = uselessPool[Math.floor(Math.random() * uselessPool.length)];
-        const pos = Math.floor(Math.random() * (noised.length + 1));
-        noised.splice(pos, 0, useless);
-        console.log(`📝 Useless comment "${useless}" at pos ${pos}`);
-    }
+    // (쓸데없는 댓글은 딥컨텍스트에서 제거 — 템플릿 전용)
 
     // 셔플 (70% 랜덤, 느슨하게)
     for (let i = noised.length - 1; i > 0; i--) {
@@ -1361,7 +1348,7 @@ ${commentList}
         }
     }
 
-    console.log(`📊 Curated: ${noised.length}/${comments.length} (useless: ${uselessCount})`);
+    console.log(`📊 Curated: ${noised.length}/${comments.length}`);
     return noised;
 }
 
