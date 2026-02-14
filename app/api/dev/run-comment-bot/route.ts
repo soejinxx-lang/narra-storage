@@ -579,6 +579,50 @@ function randomTimestamp(): Date {
 }
 
 // ============================================================
+// ============================================================
+// Review Model — OpenAI 직접 API (GPT-5 시리즈 검수용)
+// ============================================================
+async function callOpenAIReview(prompt: string): Promise<string> {
+    const apiKey = process.env.OPENAI_REVIEW_API_KEY;
+    const model = process.env.OPENAI_REVIEW_MODEL || 'o3-mini';
+
+    if (!apiKey) {
+        console.warn('⚠️ OpenAI Review API key not configured, skipping review');
+        return '';
+    }
+
+    try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                max_tokens: 800,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error(`❌ OpenAI Review error: ${response.status} — ${errorBody.substring(0, 200)}`);
+            return '';
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        console.log(`✅ OpenAI Review response: ${content.substring(0, 100)}...`);
+        return content;
+    } catch (err) {
+        console.error('❌ OpenAI Review call failed:', err);
+        return '';
+    }
+}
+
+// ============================================================
 // Deep Context GPT — Azure OpenAI 호출
 // ============================================================
 async function callAzureGPT(prompt: string): Promise<string> {
@@ -641,10 +685,9 @@ async function callAzureGPT(prompt: string): Promise<string> {
 }
 
 /**
- * 댓글 생태계 필터 v4: 과생성 → 점수 선택 → 분포 보장 → 노이즈
- * 20개 과생성 → 세트 분포 점수 → 타입별 최소 보장 → 후처리 왜곡
+ * 댓글 생태계 필터 v4: 과생성 → 코드 점수 → GPT-5 검수 → 분포 보장 → 노이즈
  */
-function filterStructuralDiversity(comments: string[], targetCount: number = 8): string[] {
+async function filterStructuralDiversity(comments: string[], targetCount: number = 8): Promise<string[]> {
     const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
 
     // ========== 1단계: 개별 점수 + 타입 분류 ==========
@@ -714,6 +757,39 @@ function filterStructuralDiversity(comments: string[], targetCount: number = 8):
                 s.score -= 10;
                 downgraded++;
             }
+        }
+    }
+
+    // ========== 2.5단계: GPT-5 검수 (선택적) ==========
+    const reviewPrompt = `한국 웹소설 댓글 ${scored.length}개의 자연스러움을 평가해줘.
+
+[평가 기준]
+- 평균적인 감상문은 감점 ("~의 ~이/가 + 평가" 구조)
+- 파편적이고 즉각적인 반응은 가점
+- 추상어(관계, 심리, 마음, 의미, 감정) 과다는 감점
+- 극초단문, 의문형, 초성체는 가점
+- 사람 댓글창과 비슷할수록 높은 점수
+
+[댓글 목록]
+` + scored.map((s, i) => `${i}: "${s.text}"`).join('\n') + `
+
+[출력 — 반드시 JSON]
+{ "scores": [각 댓글의 자연스러움 점수 0~100] }`;
+
+    const reviewRaw = await callOpenAIReview(reviewPrompt);
+    if (reviewRaw) {
+        try {
+            const cleaned = reviewRaw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+            const reviewData = JSON.parse(cleaned);
+            if (reviewData.scores && Array.isArray(reviewData.scores)) {
+                for (let i = 0; i < Math.min(reviewData.scores.length, scored.length); i++) {
+                    // GPT-5 점수를 30% 가중치로 합산
+                    scored[i].score = scored[i].score * 0.7 + (reviewData.scores[i] / 100 * 50) * 0.3;
+                }
+                console.log(`🧠 GPT-5 review applied: ${reviewData.scores.join(', ')}`);
+            }
+        } catch (e) {
+            console.warn('⚠️ GPT-5 review parse failed, using code scores only');
         }
     }
 
@@ -907,8 +983,8 @@ ${trimmed}`;
     allComments.push(...parseComments(fragmentRaw));
     allComments.push(...parseComments(emotionRaw));
 
-    // 점수 기반 필터 적용
-    const filtered = filterStructuralDiversity(allComments);
+    // 점수 기반 필터 적용 (GPT-5 검수 포함)
+    const filtered = await filterStructuralDiversity(allComments);
 
     console.log(`🧠 Split result: ${allComments.length} raw → ${filtered.length} filtered, tags: [${detectedTags.join(', ')}]`);
     return { comments: filtered, detectedTags };
