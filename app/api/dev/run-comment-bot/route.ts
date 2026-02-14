@@ -1097,7 +1097,9 @@ async function generateDeepContextComments(
     }));
 
     // ===== Stage 4: 4회 분리 GPT 호출 =====
-    const commonRules = `마침표 쓰지 마. 이모지 쓰지 마. 한국어 웹소설 댓글이야.`;
+    const commonRules = `마침표 쓰지 마. 이모지 쓰지 마. 쉼표(,) 절대 쓰지 마. 한국어 웹소설 댓글이야.
+질문형보다 단정형이 많아야 함. 10개 중 질문은 2~3개만. 나머지는 "~임", "~인듯", "~네", "~다" 단정 형태.
+댓글 중 20% 정도는 범용 맞춤법 오류를 자연스럽게 포함해라. 예: 됨→됌, 겠→겟, 돼→되, 되게→되개, 왠지→웬지, 세요→새요. 일부러 틀리는 게 아니라 모바일로 대충 치는 느낌.`;
 
     // 호출 1: 몰입형 + 분석형
     const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
@@ -1107,15 +1109,16 @@ ${commonRules}
 각 독자의 기억:
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? `\n이 독자는 특히 "${r.profile.bandwagonTarget}"에 꽂혀있음.` : '';
+        const mood = r.profile.dominantEmotion ? `\n이 독자는 지금 "${r.profile.dominantEmotion}" 감정이 지배적.` : '';
         return `
 [독자${i + 1}: ${r.profile.type}, 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
-${r.view}${bandwagon}`;
+${r.view}${bandwagon}${mood}`;
     }).join('\n')}
 
 [출력 — 반드시 JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["각 독자가 1~2개씩, 총 ${Math.min(immersedViews.length * 2, 6)}개"] }
 
-끊긴 문장, 의문형 위주. 완결된 문장 금지.
+끊긴 문장, 단정형 위주. 완결된 문장 금지. 쉼표 금지.
 각 독자의 감정강도에 맞춰: 낮으면 짧게, 높으면 과하게.`;
 
     // 호출 2: 감정과잉형
@@ -1241,12 +1244,18 @@ async function curateWithGPT5(comments: string[], targetCount: number = 8): Prom
         if (cleaned.length > 15 && !cleaned.includes('ㅋ') && !cleaned.includes('ㅠ')
             && !cleaned.includes('?') && !cleaned.includes('…')) score -= 10;
 
+        // 쉴표 감점 (AI 티)
+        const commaCount = (cleaned.match(/,/g) || []).length;
+        score -= commaCount * 15;
+
         // 가점 (인간적 특징)
         if (cleaned.length <= 5) score += 20;
-        if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 15;
+        if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 10;  // 줄임 (15→10)
         if (cleaned.includes('…') || cleaned.includes('..')) score += 10;
         if (/[ㅋㅠㄷ]{2,}/.test(cleaned)) score += 10;
         if (/[ㅁㅊㄹㅇㅂㅅㅎ]{2,}/.test(cleaned)) score += 15;
+        // 단정형 가점 (~임, ~다, ~네, ~듯)
+        if (/(임|다|네|듯|각|데)$/.test(cleaned)) score += 10;
 
         return { text: cleaned, score };
     });
@@ -1306,6 +1315,18 @@ ${commentList}
 
     // --- Stage 8: 후처리 노이즈 ---
     const noised = finalComments.map(text => {
+        // 쉼표 전체 제거
+        text = text.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        // 40% 확률로 물음표 댓글을 단정형으로 변환
+        if (text.includes('?') && Math.random() < 0.4) {
+            text = text.replace(/\?+$/, '')
+                .replace(/(일|는 건|는거|는걸|를|을)\s*(까|가)$/, '$1듯')
+                .replace(/(럼|처럼)$/, '인듯');
+            if (!text.endsWith('듯') && !text.endsWith('인듯')) {
+                const assertEndings = ['임', '인듯', '네', '다', '각'];
+                text = text + assertEndings[Math.floor(Math.random() * assertEndings.length)];
+            }
+        }
         if (Math.random() < 0.1 && text.length > 5) {
             const words = text.split(' ');
             if (words.length >= 2) text = words.slice(0, -1).join(' ');
