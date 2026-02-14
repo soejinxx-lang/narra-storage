@@ -716,80 +716,132 @@ async function generateDeepContextComments(
     episodeContent: string,
     count: number = 8
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
-    // 본문이 너무 길면 마지막 2000자만 (최근 장면이 더 중요)
     const trimmed = episodeContent.length > 2000
         ? episodeContent.slice(-2000)
         : episodeContent;
 
-    const prompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
+    // ========== 공통 규칙 (금지 3개만) ==========
+    const commonRules = `[공통 규칙]
+- "~의 ~이/가" 조사 중첩 금지
+- 추상어(관계, 심리, 마음, 의미, 감정, 순간) 2개 이상 금지
+- 마침표 쓰지 마. 이모지 쓰지 마
+- 감상문처럼 보이면 실패다. 설명하려 하지 말고 즉각 반응처럼 써라`;
 
-[필수 절차]
-1. 가장 꽂힌 장면 1개를 내부적으로 고른다 (출력 안 함)
-2. 그 장면에서 생긴 감정 1개만 쓴다
-3. 댓글에 장면 단서(행동/대사/수치/상황) 최소 1개를 포함한다
+    // ========== 역할별 분리 생성 ==========
 
-[출력 형식 — 반드시 JSON]
+    // 1️⃣ 태그 + 극초단문 (3개)
+    const shortPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
+
+[역할] 5자 이하 극초단문 반응만 생성
+[필수] 가장 꽂힌 장면 1개를 골라서 즉각 반응
+
+${commonRules}
+
+[출력 — 반드시 JSON]
 {
-  "tags": ["이 에피소드의 장면 태그. battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
-  "comments": ["댓글 ${count}개"]
+  "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
+  "comments": ["극초단문 3개"]
 }
 
-[댓글 분포 — 반드시 이 비율로 섞어]
-- 극초단문 (5자 이하): 3개 → 뭐임 / 미침 / ㅋㅋㅋ / ㄷㄷ
-- 파편형 (끊긴 문장): 2개 → 에른스트 저기서… / 아니 왜 / 거기서 칼 빼네
-- 의문형: 2개 → 뭐냐 / 왜 저래? / 이게 맞아?
-- 감정폭발형: 1개 → 아니 ㅋㅋㅋㅋㅋ / 미쳤냐ㅋㅋㅋ / 와 잠깐만
-- 자유형 단문: 나머지
-
-[톤]
-- 장면을 보고 바로 내뱉는 느낌. 생각 정리하지 마
-- 다양한 길이를 일부러 섞어라. 전부 비슷한 길이면 실격
-- 마침표 쓰지 마. 이모지 쓰지 마
-- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
-- 규칙을 100% 지키지 않아도 된다. 자연스러움이 우선
-
-[참고 예시 — 리듬 참고]
+[예시]
 미침
-ㅋㅋㅋㅋㅋ
-에른스트 왜 저래?
-거기서 칼 빼네
-아니 저 30퍼에서 그걸 왜ㅋㅋ
-카일 결단 뭐냐
-웃다가 우는거 뛰임
-소름이다 진짜
+ㅋㅋㅋㅋ
+ㄷㄷ
+뭐임
+헐
+ㅁㅊ
+ㄹㅇ
 
 [에피소드 본문]
 ${trimmed}`;
 
-    const raw = await callAzureGPT(prompt);
-    if (!raw) return { comments: [], detectedTags: [] };
+    // 2️⃣ 의문형 + 파편형 (3개)
+    const fragmentPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
 
-    // Markdown 코드 블록 제거 (```json ... ```)
-    const cleanedRaw = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+[역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지.
+[필수] 장면 속 행동/대사/상황을 직접 언급
 
-    // JSON 파싱 시도
-    try {
-        const parsed = JSON.parse(cleanedRaw);
-        let comments = (parsed.comments || [])
-            .map((c: string) => c.replace(/^["']|["']$/g, '').trim())  // 따옴표 제거
-            .filter((c: string) => c.length > 0 && c.length < 100);
-        const detectedTags = (parsed.tags || []).filter((t: string) =>
-            ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
-        );
+${commonRules}
 
-        // 구조 다양성 필터 적용
-        comments = filterStructuralDiversity(comments);
+[출력 — 반드시 JSON]
+{
+  "comments": ["의문형/파편형 3개"]
+}
 
-        console.log(`🧠 Deep context: ${comments.length} comments, tags: [${detectedTags.join(', ')}]`);
-        return { comments, detectedTags };
-    } catch {
-        // JSON 파싱 실패 시 줄바꿈 fallback
-        const comments = raw.split('\n')
-            .map(l => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
-            .filter(l => l.length > 0 && l.length < 100);
-        console.log(`🧠 Deep context (fallback): ${comments.length} comments, no tags`);
-        return { comments, detectedTags: [] };
-    }
+[예시]
+에른스트 왜 저래?
+거기서 칼 빼네
+아니 그걸 왜 지금
+카일 결단 뭐냐
+저기서 뛰어내린다고?
+리나 저건 좀…
+
+[에피소드 본문]
+${trimmed}`;
+
+    // 3️⃣ 감정폭발 + 일반 (2개)
+    const emotionPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
+
+[역할] 감정 폭발 반응 1개 + 일반 단문 1개 생성
+[필수] 감정 폭발은 ㅋㅋ/ㅠㅠ 포함, 일반은 장면 단서 포함
+
+${commonRules}
+
+[출력 — 반드시 JSON]
+{
+  "comments": ["감정폭발 1개, 일반단문 1개"]
+}
+
+[예시]
+아니 ㅋㅋㅋㅋㅋ 미쳤냐
+소름이다 진짜
+웃다가 우는거 뛰임
+와 잠깐만ㅋㅋㅋㅋ
+
+[에피소드 본문]
+${trimmed}`;
+
+    // ========== 병렬 호출 ==========
+    console.log('🧠 Split generation: 3 specialized calls...');
+    const [shortRaw, fragmentRaw, emotionRaw] = await Promise.all([
+        callAzureGPT(shortPrompt),
+        callAzureGPT(fragmentPrompt),
+        callAzureGPT(emotionPrompt)
+    ]);
+
+    // ========== 결과 합치기 ==========
+    const allComments: string[] = [];
+    let detectedTags: string[] = [];
+
+    const parseComments = (raw: string | null): string[] => {
+        if (!raw) return [];
+        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (parsed.tags) {
+                detectedTags = (parsed.tags || []).filter((t: string) =>
+                    ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+                );
+            }
+            return (parsed.comments || [])
+                .map((c: string) => c.replace(/^["']|["']$/g, '').trim())
+                .filter((c: string) => c.length > 0 && c.length < 100);
+        } catch {
+            return raw.split('\n')
+                .map(l => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
+                .filter(l => l.length > 0 && l.length < 100);
+        }
+    };
+
+    allComments.push(...parseComments(shortRaw));
+    allComments.push(...parseComments(fragmentRaw));
+    allComments.push(...parseComments(emotionRaw));
+
+    // 점수 기반 필터 적용
+    const filtered = filterStructuralDiversity(allComments);
+
+    console.log(`🧠 Split result: ${allComments.length} raw → ${filtered.length} filtered, tags: [${detectedTags.join(', ')}]`);
+    return { comments: filtered, detectedTags };
 }
 
 // ============================================================
