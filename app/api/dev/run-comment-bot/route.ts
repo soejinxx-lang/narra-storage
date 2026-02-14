@@ -1110,14 +1110,10 @@ ${immersedViews.map((r, i) => {
 기억: ${r.view}${bandwagon}`;
     }).join('\n')}
 
-이런 톤이 섞여야 한다:
-"이거 나중에 돌아온다 100%"
-"저거 복선 맞음 ㅋㅋ"
-"작가 일부러 여기서 끊었네"
-"아 여기서 끊네 미쳤냐"
+이렇게 말한다:
+"저거 복선임"
+"작가 여기서 끊음 일부러"
 "이건 좀 뻔한데"
-"솔직히 좀 과한 듯"
-"왜 저러는 거임 이해 안 됨"
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
@@ -1129,10 +1125,10 @@ ${immersedViews.map((r, i) => {
 장면: ${overreactorViews.map(r => r.view).join('\n')}
 ${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
 
-이런 톤:
-"아니 ㅋㅋㅋㅋ 미쳤냐 진짜"
-"와씨 개쫄림"
-"ㅠㅠㅠㅠㅠ 안돼"
+이렇게 말한다:
+"아니 ㅋㅋㅋㅋㅋㅋ 뭐하냐 진짜"
+"와씨 ㅠㅠㅠㅠㅠㅠㅠ 뜯김"
+"ㅇㅇㅇㅇㅇㅇ 안돼 안돼 안돼"
 
 [출력 — JSON]
 { "comments": ["3개"] }`;
@@ -1144,11 +1140,11 @@ ${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile
 [A: 짜증남] 불만 많고 비꼼. 칭찬 안 함.
 기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '대충 기억남'}
 ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 싫어함.` : ''}
-이런 톤: "또 도망이네", "전개 느림", "답답", "이거 어디서 봤는데"
+이렇게 말한다: "또 도망이네;", "하..전개 느림", "그래서 어쭔"
 
 [B: 대충 읽음] 잘못 이해하고 있음. 본인은 모름.
 기억(틀림): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억'}
-이런 톤: "얘 죽은 거 아님?", "저거 배신하려는 거지", "아까 그 장면 뭐였지"
+이렇게 말한다: "얘 죽은 거 아님?", "저거 배신 각인듯", "아까 그 장면 뭐였지"
 
 [출력 — JSON]
 { "comments": ["A 2개 + B 2개 = 4개"] }`;
@@ -1159,11 +1155,11 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
 
 [A] 대충 훑어봄. 뒤는 잘 모름.
 기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
-이런 톤: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
+이렇게 말한다: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
 
-[B] 드립형. 내용 보고 농담이나 밈으로 반응함.
+[B] 드립형. 내용 보고 밈으로 반응함.
 기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '대충 기억남'}
-이런 톤: "주인공 도주력 SSS급", "이 작가 독자 심장을 가지고 놈", "탈출 시뮬레이터냐 ㅋㅋ"
+이렇게 말한다: "주인공 도주력 SSS급 ㅋㅋㅋㅋㅋ", "이 작가 독자 심장을 가지고 놈", "탈출 시뮬레이터냐 이거 ㅋㅋ"
 
 [출력 — JSON]
 { "comments": ["A 2개 + B 2개 = 4개"] }`;
