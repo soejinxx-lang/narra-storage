@@ -1155,14 +1155,15 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
 
     // 호출 4: 대충형 + 관망형
     const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
-    const call4Prompt = `한국 웹소설 모바일 댓글. 2명. 관심 별로 없다.
+    const call4Prompt = `한국 웹소설 모바일 댓글. 2명.
 
-[A] 앞부분만 훑어봄. 뒤는 모름.
+[A] 대충 훑어봄. 뒤는 잘 모름.
 기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
 이런 톤: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
 
-[B] 거의 안 읽음. 5자 이하만 씀.
-이런 톤: ㅇㅇ, 1, ㄷㄷ, 와, 굿, 보는중
+[B] 드립형. 내용 보고 농담이나 밈으로 반응함.
+기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '대충 기억남'}
+이런 톤: "주인공 도주력 SSS급", "이 작가 독자 심장을 가지고 놈", "탈출 시뮬레이터냐 ㅋㅋ"
 
 [출력 — JSON]
 { "comments": ["A 2개 + B 2개 = 4개"] }`;
