@@ -684,29 +684,412 @@ async function callAzureGPT(prompt: string): Promise<string> {
     }
 }
 
-/**
- * 댓글 생태계 필터 v5: 과생성 → 코드 사전필터 → GPT-5 큐레이션 → 노이즈
- * GPT-5는 점수기가 아니라 큐레이터: "인간 커뮤니티처럼 보이는 조합"을 직접 고른다
- */
-async function filterStructuralDiversity(comments: string[], targetCount: number = 8): Promise<string[]> {
-    const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
-    const essayWords = ['묘사', '장면', '인상적', '상징', '느껴진다', '감동적', '여운'];
+// ============================================================
+// 집단 독자 행동 시뮬레이터 v1
+// Stage 1: Event Extraction → Stage 2: Reader Profiles →
+// Stage 3: Info Restriction → Stage 4: Comment Gen →
+// Stage 5: GPT-5 Curator → Stage 6: Noise
+// ============================================================
 
-    // ========== Stage 1: 코드 사전필터 (하위 30% 제거) ==========
+interface StoryEvent {
+    id: number;
+    summary: string;
+    type: string;
+    importance: number;
+    characters: string[];
+    quote?: string;
+}
+
+type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' | 'misreader' | 'lurker';
+
+interface ReaderProfile {
+    type: ReaderType;
+    attentionSpan: number;
+    memoryNoise: number;
+    emotionalIntensity: number;
+    literacy: number;
+    sarcasmLevel: number;
+    bandwagonTarget?: string;  // 집단 동조 대상 캐릭터
+}
+
+// ========== Stage 1: Event Extractor ==========
+async function extractEvents(episodeContent: string): Promise<StoryEvent[]> {
+    const trimmed = episodeContent.length > 3000
+        ? episodeContent.slice(-3000)
+        : episodeContent;
+
+    const prompt = `이 에피소드에서 독자가 반응할 핵심 사건 5~7개를 추출해라.
+
+[출력 — 반드시 JSON]
+{ "events": [
+  { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
+] }
+
+[에피소드]
+${trimmed}`;
+
+    const raw = await callAzureGPT(prompt);
+    if (!raw) return [];
+
+    try {
+        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const data = JSON.parse(cleaned);
+        if (data.events && Array.isArray(data.events)) {
+            console.log(`📋 Events extracted: ${data.events.length}`);
+            return data.events;
+        }
+    } catch (e) {
+        console.warn('⚠️ Event extraction parse failed');
+    }
+    return [];
+}
+
+// ========== Stage 2: Reader Profiles (강제 분포) ==========
+function generateReaderProfiles(events: StoryEvent[], count: number = 8): ReaderProfile[] {
+    // 쿼터제: 랜덤 아님
+    const typeQuota: { type: ReaderType; count: number }[] = [
+        { type: 'immersed', count: 2 },
+        { type: 'lurker', count: 1 },
+        { type: 'skimmer', count: 1 },
+        { type: 'overreactor', count: 1 },
+        { type: 'misreader', count: 1 },
+        { type: 'troll', count: 1 },
+        { type: 'analyst', count: 1 },
+    ];
+
+    // 감정 강도 히스토그램 강제 (8명용)
+    const emotionSlots = [
+        1.5,  // 1~2: 무성의
+        3.5, 4.0,  // 3~4: 약함
+        5.5, 6.0,  // 5~6: 보통
+        7.5, 8.0,  // 7~8: 강함
+        9.5,  // 9~10: 극단
+    ];
+    // 셔플
+    for (let i = emotionSlots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [emotionSlots[i], emotionSlots[j]] = [emotionSlots[j], emotionSlots[i]];
+    }
+
+    // 20% 확률: 집단 동조 파동 — 한 캐릭터에 반응 집중
+    const allCharacters = [...new Set(events.flatMap(e => e.characters))];
+    const bandwagonChar = Math.random() < 0.2 && allCharacters.length > 0
+        ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
+        : null;
+
+    const profiles: ReaderProfile[] = [];
+    let emotionIdx = 0;
+
+    const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+    for (const quota of typeQuota) {
+        for (let i = 0; i < quota.count; i++) {
+            const emotion = emotionIdx < emotionSlots.length
+                ? emotionSlots[emotionIdx++] / 10
+                : Math.random();
+
+            const profile: ReaderProfile = {
+                type: quota.type,
+                attentionSpan: 0,
+                memoryNoise: 0,
+                emotionalIntensity: emotion,
+                literacy: 0,
+                sarcasmLevel: 0,
+            };
+
+            // 유형별 파라미터 강제
+            switch (quota.type) {
+                case 'immersed':
+                    profile.attentionSpan = rand(0.8, 1.0);
+                    profile.memoryNoise = rand(0, 0.1);
+                    profile.literacy = rand(0.6, 1.0);
+                    break;
+                case 'skimmer':
+                    profile.attentionSpan = rand(0.2, 0.4);
+                    profile.memoryNoise = rand(0.3, 0.5);
+                    profile.literacy = rand(0.3, 0.6);
+                    break;
+                case 'overreactor':
+                    profile.attentionSpan = rand(0.5, 0.8);
+                    profile.memoryNoise = rand(0.1, 0.2);
+                    profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
+                    profile.literacy = rand(0.3, 0.5);
+                    break;
+                case 'analyst':
+                    profile.attentionSpan = rand(0.9, 1.0);
+                    profile.memoryNoise = 0;
+                    profile.literacy = rand(0.7, 1.0);
+                    break;
+                case 'troll':
+                    profile.attentionSpan = rand(0.3, 0.6);
+                    profile.memoryNoise = rand(0.3, 0.7);
+                    profile.sarcasmLevel = rand(0.6, 1.0);
+                    profile.literacy = rand(0.2, 0.5);
+                    break;
+                case 'misreader':
+                    profile.attentionSpan = rand(0.4, 0.6);
+                    profile.memoryNoise = rand(0.5, 0.8);
+                    profile.literacy = rand(0.4, 0.7);
+                    break;
+                case 'lurker':
+                    profile.attentionSpan = rand(0.1, 0.3);
+                    profile.memoryNoise = 0;
+                    profile.literacy = rand(0.1, 0.3);
+                    break;
+            }
+
+            // 집단 동조 파동 적용
+            if (bandwagonChar && Math.random() < 0.4) {
+                profile.bandwagonTarget = bandwagonChar;
+            }
+
+            profiles.push(profile);
+        }
+    }
+
+    if (bandwagonChar) {
+        console.log(`👥 Bandwagon effect: ${profiles.filter(p => p.bandwagonTarget).length} readers focused on "${bandwagonChar}"`);
+    }
+
+    return profiles;
+}
+
+// ========== Stage 3: Info Restriction + 해석 왜곡 ==========
+function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
+    // attentionSpan에 따라 볼 수 있는 사건 수 결정
+    const visibleCount = Math.max(1, Math.round(events.length * profile.attentionSpan));
+
+    let visibleEvents: StoryEvent[];
+    if (profile.type === 'skimmer') {
+        // 앞쪽 사건만 봄
+        visibleEvents = events.slice(0, visibleCount);
+    } else if (profile.type === 'overreactor') {
+        // importance 높은 것만 봄
+        visibleEvents = [...events].sort((a, b) => b.importance - a.importance).slice(0, visibleCount);
+    } else {
+        // 랜덤 선택
+        const shuffled = [...events].sort(() => Math.random() - 0.5);
+        visibleEvents = shuffled.slice(0, visibleCount);
+    }
+
+    // 해석 왜곡 (misreader 전용 — 텍스트 왜곡이 아니라 추론 왜곡)
+    if (profile.type === 'misreader' && profile.memoryNoise > 0.3) {
+        visibleEvents = visibleEvents.map(e => {
+            if (Math.random() < profile.memoryNoise) {
+                return {
+                    ...e,
+                    summary: distortInterpretation(e.summary, e.characters),
+                };
+            }
+            return e;
+        });
+    }
+
+    // 프로파일별 포맷
+    switch (profile.type) {
+        case 'lurker':
+            // 캐릭터 이름 + 키워드만
+            return visibleEvents.map(e => e.characters.join('/') + ': ' + e.type).join(', ');
+
+        case 'troll':
+            // 캐릭터 이름 + 사건 요약만
+            return visibleEvents.map(e => `${e.characters[0] || '누군가'} — ${e.summary}`).join('\n');
+
+        case 'analyst':
+            // 사건 전체 + quote + 관계
+            return visibleEvents.map(e =>
+                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` — "${e.quote}"` : ''}`
+            ).join('\n');
+
+        default:
+            // 사건 요약 + quote
+            return visibleEvents.map(e =>
+                `${e.summary}${e.quote ? ` — "${e.quote}"` : ''}`
+            ).join('\n');
+    }
+}
+
+// 해석 왜곡 — 추론 레벨 (텍스트 변환 X)
+function distortInterpretation(summary: string, characters: string[]): string {
+    const char = characters[0] || '주인공';
+    const distortions = [
+        `${char} 배신하려는 거 아님?`,
+        `${char} 사실 거짓말한 거 같은데`,
+        `${char} 여기서 죽는 건 아니지?`,
+        `이거 ${char} 흑화 떡밥 아닌가`,
+        `${char} 결국 돌아올 수밖에 없을 듯`,
+        `${char} 진심인지 모르겠음`,
+        `이거 나중에 복선 회수되는 거 같은데`,
+        `아 이거 ${char} 함정인데`,
+    ];
+    return distortions[Math.floor(Math.random() * distortions.length)];
+}
+
+// ========== Stage 4: Comment Generation (4회 분리 호출) ==========
+async function generateDeepContextComments(
+    episodeContent: string,
+    count: number = 8
+): Promise<{ comments: string[]; detectedTags: string[] }> {
+
+    // ===== Stage 1: Event Extraction =====
+    console.log('📋 Stage 1: Extracting events...');
+    const events = await extractEvents(episodeContent);
+
+    if (events.length === 0) {
+        console.warn('⚠️ No events extracted, falling back to old method');
+        return { comments: [], detectedTags: [] };
+    }
+
+    // ===== Stage 2: Reader Profiles =====
+    console.log('👥 Stage 2: Generating reader profiles...');
+    const profiles = generateReaderProfiles(events, count);
+    for (const p of profiles) {
+        console.log(`  ${p.type}: attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}`);
+    }
+
+    // ===== Stage 3: Info Restriction =====
+    console.log('🔒 Stage 3: Building reader views...');
+    const readerViews = profiles.map(p => ({
+        profile: p,
+        view: buildReaderView(events, p),
+    }));
+
+    // ===== Stage 4: 4회 분리 GPT 호출 =====
+    const commonRules = `마침표 쓰지 마. 이모지 쓰지 마. 한국어 웹소설 댓글이야.`;
+
+    // 호출 1: 몰입형 + 분석형
+    const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
+    const call1Prompt = `너는 한국 웹소설 독자 ${immersedViews.length}명이야. 각각 다른 사람이다.
+${commonRules}
+
+각 독자의 기억:
+${immersedViews.map((r, i) => {
+        const bandwagon = r.profile.bandwagonTarget ? `\n이 독자는 특히 "${r.profile.bandwagonTarget}"에 꽂혀있음.` : '';
+        return `
+[독자${i + 1}: ${r.profile.type}, 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
+${r.view}${bandwagon}`;
+    }).join('\n')}
+
+[출력 — 반드시 JSON]
+{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["각 독자가 1~2개씩, 총 ${Math.min(immersedViews.length * 2, 6)}개"] }
+
+끊긴 문장, 의문형 위주. 완결된 문장 금지.
+각 독자의 감정강도에 맞춰: 낮으면 짧게, 높으면 과하게.`;
+
+    // 호출 2: 감정과잉형
+    const overreactorViews = readerViews.filter(r => r.profile.type === 'overreactor');
+    const call2Prompt = `너는 감정 조절 안 되는 웹소설 독자야.
+${commonRules}
+
+기억하는 장면:
+${overreactorViews.map(r => r.view).join('\n')}
+${overreactorViews[0]?.profile.bandwagonTarget ? `특히 "${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
+
+[출력 — 반드시 JSON]
+{ "comments": ["과잉 반응 3개. ㅋㅋ/ㅠㅠ 필수. 분석 금지. 감정을 터뜨려라"] }
+
+감정 설명("감동적이다") 금지. "아니 ㅋㅋㅋㅋ 미쳤냐" 이런 톤.`;
+
+    // 호출 3: 트롤 + 오독형
+    const chaosViews = readerViews.filter(r => r.profile.type === 'troll' || r.profile.type === 'misreader');
+    const call3Prompt = `너는 2명의 서로 다른 웹소설 독자야.
+${commonRules}
+
+[독자A: 드립러] 비꼼, 편애, 장난. 진지하지 마.
+기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '캐릭터 이름만 기억남'}
+${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `특히 "${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 좋아하거나 싫어함.` : ''}
+
+[독자B: 오독형] 대충 읽어서 잘못 이해함. 틀린 해석 OK.
+기억(왜곡됨): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억함'}
+
+[출력 — 반드시 JSON]
+{ "comments": ["독자A 2개 + 독자B 2개 = 총 4개"] }`;
+
+    // 호출 4: 대충형 + 관망형
+    const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
+    const call4Prompt = `너는 2명의 웹소설 독자야. 둘 다 열심히 안 읽음.
+${commonRules}
+
+[독자A: 대충 훑어봄] 앞부분만 좀 읽음. 뒤 모름.
+기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 기억 없음'}
+
+[독자B: 관망형] 거의 안 읽음. 5자 이하만 씀.
+기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '모름'}
+
+[출력 — 반드시 JSON]
+{ "comments": ["독자A 2개(대충 읽은 티) + 독자B 2개(극초단문) = 총 4개"] }
+
+독자B 예시: ㅇㅇ, 1, 보는나, ㄷㄷ, 와`;
+
+    // ===== 4회 병렬 호출 =====
+    console.log('🧠 Stage 4: 4 separate cognitive calls...');
+    const [raw1, raw2, raw3, raw4] = await Promise.all([
+        callAzureGPT(call1Prompt),
+        callAzureGPT(call2Prompt),
+        callAzureGPT(call3Prompt),
+        callAzureGPT(call4Prompt),
+    ]);
+
+    // ===== 결과 합치기 =====
+    const allComments: string[] = [];
+    let detectedTags: string[] = [];
+
+    const parseComments = (raw: string | null): string[] => {
+        if (!raw) return [];
+        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (parsed.tags) {
+                detectedTags = (parsed.tags || []).filter((t: string) =>
+                    ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+                );
+            }
+            return (parsed.comments || [])
+                .map((c: string) => c.replace(/^["']|["']$/g, '').trim())
+                .filter((c: string) => c.length > 0 && c.length < 100);
+        } catch {
+            return raw.split('\n')
+                .map((l: string) => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
+                .filter((l: string) => l.length > 0 && l.length < 100);
+        }
+    };
+
+    allComments.push(...parseComments(raw1));
+    allComments.push(...parseComments(raw2));
+    allComments.push(...parseComments(raw3));
+    allComments.push(...parseComments(raw4));
+
+    console.log(`📊 Raw comments: ${allComments.length} from 4 calls`);
+
+    // ===== Stage 5: GPT-5 Statistical Curator =====
+    const filtered = await curateWithGPT5(allComments, count);
+
+    console.log(`🧠 Final: ${filtered.length} curated from ${allComments.length} raw, tags: [${detectedTags.join(', ')}]`);
+    return { comments: filtered, detectedTags };
+}
+
+// ========== Stage 5: GPT-5 Statistical Curator ==========
+async function curateWithGPT5(comments: string[], targetCount: number = 8): Promise<string[]> {
+    // --- 코드 사전필터: AI 티 나는 것만 감점 ---
+    const abstractNouns = ['관계', '심리', '마음', '의미', '감정', '순간', '시작', '존재', '가치'];
+    const essayWords = ['묘사', '장면', '인상적', '상징', '느껴진다', '감동적', '여운', '긴장감'];
+
     const scored = comments.map(comment => {
         const cleaned = comment.replace(/\.$/g, '').trim();
         let score = 50;
 
-        // 감점
-        if (/[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned)) score -= 15;
+        // AI 티 감점
+        if (/[가-힣]+의\s*[가-힣]+[이가은는을를]/.test(cleaned)) score -= 15;  // 소유격 과다
         const abstractCount = abstractNouns.filter(n => cleaned.includes(n)).length;
-        score -= abstractCount * 10;
-        if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;
-        if (cleaned.length >= 10 && cleaned.length <= 15) score -= 5;
+        score -= abstractCount * 10;  // 추상어
         const essayCount = essayWords.filter(w => cleaned.includes(w)).length;
-        score -= essayCount * 12;
+        score -= essayCount * 12;  // 해설 톤
+        if (/[가-힣]+[이가]\s*[가-힣]+(다|해|네|음|져|워)/.test(cleaned)) score -= 10;  // 설명형
+        // 🆕 지나친 문장 완성도 감점
+        if (cleaned.length > 15 && !cleaned.includes('ㅋ') && !cleaned.includes('ㅠ')
+            && !cleaned.includes('?') && !cleaned.includes('…')) score -= 10;
 
-        // 가점
+        // 가점 (인간적 특징)
         if (cleaned.length <= 5) score += 20;
         if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 15;
         if (cleaned.includes('…') || cleaned.includes('..')) score += 10;
@@ -716,15 +1099,15 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
         return { text: cleaned, score };
     });
 
-    // 점수순 정렬, 하위 30% 제거 (명백한 저품질만 걸러냄)
+    // 하위 20%만 제거 (오독/이상치 보호를 위해 관대하게)
     scored.sort((a, b) => b.score - a.score);
-    const preFiltered = scored.slice(0, Math.ceil(scored.length * 0.7));
-    const preDropped = scored.slice(Math.ceil(scored.length * 0.7));
+    const preFiltered = scored.slice(0, Math.ceil(scored.length * 0.8));
+    const preDropped = scored.slice(Math.ceil(scored.length * 0.8));
     for (const d of preDropped) {
-        console.log(`🔪 Pre-filter (${d.score}점): "${d.text}"`);
+        console.log(`🔪 AI-tell filter (${d.score}점): "${d.text}"`);
     }
 
-    // ========== Stage 2: GPT-5 큐레이션 ==========
+    // --- GPT-5 큐레이터: 집단 통계 기반 선택 ---
     const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
 
     const curatorPrompt = `너는 한국 웹소설 댓글창 편집자야.
@@ -733,9 +1116,12 @@ async function filterStructuralDiversity(comments: string[], targetCount: number
 [선택 기준]
 - 감상문처럼 정돈된 것은 피해라
 - 톤, 길이, 감정 강도가 다양한 조합을 선택해라
-- 극초단문(ㅋㅋ, 뭐임), 의문형, 파편형이 섞여야 한다
+- 극초단문, 의문형, 파편형, 드립, 오독이 섞여야 한다
+- 1~2개는 반드시 이상하거나 엉뚱한 댓글 포함
+- 전부 정상이면 실격
+- 비슷한 반응이 2~3개 겹쳐도 괜찮음 (현실적 군집)
 - 전부 비슷한 길이면 실격
-- 실제 댓글창의 리듬: 짧음-짧음-의문-파편-광기-짧음
+- 너무 고르게 분포하면 감점 — 약간 치우쳐야 자연스러움
 
 [댓글 목록]
 ${commentList}
@@ -757,174 +1143,35 @@ ${commentList}
                 console.log(`🧠 GPT-5 curator selected: [${curatorData.selected.join(', ')}]`);
             }
         } catch (e) {
-            console.warn('⚠️ GPT-5 curator parse failed, falling back to code selection');
+            console.warn('⚠️ GPT-5 curator parse failed, falling back');
         }
     }
 
-    // GPT-5 실패 시 코드 폴백 (점수 상위 선택)
     if (finalComments.length < targetCount) {
         console.log('📊 Fallback: code-based selection');
         finalComments = preFiltered.slice(0, targetCount).map(s => s.text);
     }
 
-    // ========== Stage 3: 후처리 왜곡 (가벼운 노이즈) ==========
+    // --- Stage 6: 후처리 노이즈 ---
     const noised = finalComments.map(text => {
-        // 10% 확률: 마지막 단어 삭제
         if (Math.random() < 0.1 && text.length > 5) {
             const words = text.split(' ');
             if (words.length >= 2) text = words.slice(0, -1).join(' ');
         }
-        // 10% 확률: ㅋㅋ 삽입
-        if (Math.random() < 0.1 && !text.includes('ㅋ')) text += 'ㅋㅋ';
+        if (Math.random() < 0.08 && !text.includes('ㅋ')) text += 'ㅋㅋ';
         return text;
     });
 
-    // 순서 셔플
+    // 셔플 (70% 랜덤, 느슨하게)
     for (let i = noised.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        if (Math.abs(i - j) <= 2) {
+        if (Math.random() < 0.7) {
+            const j = Math.floor(Math.random() * (i + 1));
             [noised[i], noised[j]] = [noised[j], noised[i]];
         }
     }
 
-    console.log(`📊 Final: ${noised.length}/${comments.length} (pre-filter: ${preFiltered.length})`);
+    console.log(`📊 Curated: ${noised.length}/${comments.length}`);
     return noised;
-}
-
-async function generateDeepContextComments(
-    episodeContent: string,
-    count: number = 8
-): Promise<{ comments: string[]; detectedTags: string[] }> {
-    const trimmed = episodeContent.length > 2000
-        ? episodeContent.slice(-2000)
-        : episodeContent;
-
-    // ========== 공통 규칙 (금지 최소 + 편차 강제) ==========
-    const commonRules = `[공통 규칙]
-- 마침표 쓰지 마. 이모지 쓰지 마
-- 장면을 설명하려 하지 말고, 반응만 남겨라
-- 읽다가 멈칟한 순간에 바로 친 댓글처럼 써라
-- 댓글들끼리 말투가 비슷해지면 실패다
-- 진지함과 가벼움이 섞여 있어야 한다
-- 한두 개는 어설퍼도 괜찮다`;
-
-    // ========== 역할별 분리 생성 ==========
-
-    // 1️⃣ 태그 + 극초단문 (6개 과생성)
-    const shortPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
-
-[역할] 5자 이하 극초단문 반응만 생성. 전부 다르게.
-감정만 던지고 맥락 없어도 된다. 생각 정리하지 마.
-
-${commonRules}
-
-[출력 — 반드시 JSON]
-{
-  "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
-  "comments": ["극초단문 6개"]
-}
-
-[예시]
-미침
-ㅋㅋㅋㅋ
-ㄷㄷ
-보는나
-어
-ㅋㅋㅋㅋㅋㅋㅋ
-뿌
-와
-
-[에피소드 본문]
-${trimmed}`;
-
-    // 2️⃣ 의문형 + 파편형 (8개 과생성)
-    const fragmentPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
-
-[역할] 끊긴 문장, 의문형 반응만 생성. 완결된 문장 금지. 전부 다른 구조로.
-장면을 떠올리게 하는 단어만 써라. 문장으로 설명하지 마.
-
-${commonRules}
-
-[출력 — 반드시 JSON]
-{
-  "comments": ["의문형/파편형 8개. 같은 패턴 반복 금지"]
-}
-
-[예시]
-에른스트 왔이러는거
-거기서 칼 빼네
-아니 그걸 왜 지금
-카일 결단 뭐냐
-저기서 뛰어내린다고?
-리나 저건 좀…
-
-[에피소드 본문]
-${trimmed}`;
-
-    // 3️⃣ 감정폭발 + 일반 (6개 과생성)
-    const emotionPrompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
-
-[역할] 감정 폭발 3개 + 일반 단문 3개 생성. 전부 다른 톤으로.
-감정 폭발은 ㅋㅋ/ㅠㅠ 포함. 일반은 구체적 장면 단어 1개 이상 포함.
-감정 설명 금지. "감동적이다", "긴장감 넘친다" 이런 거 쓰지 마.
-
-${commonRules}
-
-[출력 — 반드시 JSON]
-{
-  "comments": ["감정폭발 3개 + 일반단문 3개"]
-}
-
-[예시]
-아니 ㅋㅋㅋㅋㅋ 미쳤냐
-카일 뛰는 장면 소름
-웃다가 우는거 뛰임
-와 잠깐만ㅋㅋㅋㅋ
-
-[에피소드 본문]
-${trimmed}`;
-
-    // ========== 병렬 호출 ==========
-    console.log('🧠 Split generation: 3 specialized calls...');
-    const [shortRaw, fragmentRaw, emotionRaw] = await Promise.all([
-        callAzureGPT(shortPrompt),
-        callAzureGPT(fragmentPrompt),
-        callAzureGPT(emotionPrompt)
-    ]);
-
-    // ========== 결과 합치기 ==========
-    const allComments: string[] = [];
-    let detectedTags: string[] = [];
-
-    const parseComments = (raw: string | null): string[] => {
-        if (!raw) return [];
-        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-        try {
-            const parsed = JSON.parse(cleaned);
-            if (parsed.tags) {
-                detectedTags = (parsed.tags || []).filter((t: string) =>
-                    ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
-                );
-            }
-            return (parsed.comments || [])
-                .map((c: string) => c.replace(/^["']|["']$/g, '').trim())
-                .filter((c: string) => c.length > 0 && c.length < 100);
-        } catch {
-            return raw.split('\n')
-                .map(l => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
-                .filter(l => l.length > 0 && l.length < 100);
-        }
-    };
-
-    allComments.push(...parseComments(shortRaw));
-    allComments.push(...parseComments(fragmentRaw));
-    allComments.push(...parseComments(emotionRaw));
-
-    // 점수 기반 필터 적용 (GPT-5 검수 포함)
-    const filtered = await filterStructuralDiversity(allComments);
-
-    console.log(`🧠 Split result: ${allComments.length} raw → ${filtered.length} filtered, tags: [${detectedTags.join(', ')}]`);
-    return { comments: filtered, detectedTags };
 }
 
 // ============================================================
