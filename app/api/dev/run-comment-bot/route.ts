@@ -872,13 +872,17 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
         visibleEvents = shuffled.slice(0, visibleCount);
     }
 
-    // 해석 왜곡 (misreader 전용 — 텍스트 왜곡이 아니라 추론 왜곡)
+    // 이중 왜곡 (misreader 전용 — 텍스트 40% + 해석 60%)
     if (profile.type === 'misreader' && profile.memoryNoise > 0.3) {
         visibleEvents = visibleEvents.map(e => {
             if (Math.random() < profile.memoryNoise) {
+                // 40% 텍스트 왜곡, 60% 해석 왜곡
+                const useTextDistort = Math.random() < 0.4;
                 return {
                     ...e,
-                    summary: distortInterpretation(e.summary, e.characters),
+                    summary: useTextDistort
+                        ? distortEventText(e.summary)
+                        : distortInterpretation(e.summary, e.characters),
                 };
             }
             return e;
@@ -909,6 +913,18 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
     }
 }
 
+// 텍스트 왜곡 — 기억 혼동, 인과관계 뒤집힘
+function distortEventText(summary: string): string {
+    const transforms = [
+        (s: string) => s.replace(/(했|함|됨|임)$/, '한 건가?'),
+        (s: string) => s + '인 줄 알았는데',
+        (s: string) => '뭔가 ' + s.split(' ').slice(-2).join(' ') + ' 같은',
+        (s: string) => s.split(' ').reverse().slice(0, 3).join(' '),
+        (s: string) => s + '였나?',
+    ];
+    return transforms[Math.floor(Math.random() * transforms.length)](summary);
+}
+
 // 해석 왜곡 — 추론 레벨 (텍스트 변환 X)
 function distortInterpretation(summary: string, characters: string[]): string {
     const char = characters[0] || '주인공';
@@ -921,8 +937,91 @@ function distortInterpretation(summary: string, characters: string[]): string {
         `${char} 진심인지 모르겠음`,
         `이거 나중에 복선 회수되는 거 같은데`,
         `아 이거 ${char} 함정인데`,
+        `${char} 이러다 진짜 죽을 수도`,
+        `결국 ${char} 책임인 거 아님?`,
     ];
     return distortions[Math.floor(Math.random() * distortions.length)];
+}
+
+// ========== Stage 5: 집단 동조 파동 (Herd Effect) ==========
+function injectHerdEffect(comments: string[]): string[] {
+    // 30% 확률로만 발생
+    if (Math.random() > 0.3 || comments.length < 4) return comments;
+
+    // 씨앗 댓글 선택 (5자 이상, ㅋㅋ만 아닌 것)
+    const candidates = comments.filter(c => c.length >= 5 && !/^[ㅋㅠㄷㅇ]+$/.test(c));
+    if (candidates.length === 0) return comments;
+
+    const seed = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // 핵심 키워드 추출 (2글자 이상 명사/동사 느낌)
+    const keywords = seed.match(/[가-힣]{2,}/g) || [];
+    if (keywords.length === 0) return comments;
+    const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+
+    console.log(`👥 Herd effect triggered: seed="${seed}", keyword="${keyword}"`);
+
+    // 동조 댓글 2~3개 생성
+    const echoTemplates = [
+        `ㄹㅇ ${keyword}`,
+        `${keyword} ㄷㄷ`,
+        `${keyword} 미쳤다`,
+        `와 ${keyword}`,
+        `${keyword} 진짜`,
+        `${keyword} 개쩐다`,
+        `${keyword} ㅋㅋㅋ`,
+    ];
+    const shuffledEchoes = echoTemplates.sort(() => Math.random() - 0.5);
+    const echoCount = 2 + Math.floor(Math.random() * 2); // 2~3개
+    const echoes = shuffledEchoes.slice(0, echoCount);
+
+    // 반동 댓글 1개 (동조에 대한 반발)
+    const counterTemplates = [
+        `아니 ${keyword}은 좀 질림`,
+        `${keyword} 또야?`,
+        `${keyword} 왜 다 난리임`,
+        `걍 그냥저냥이었는데`,
+        `그거 그렇게 대단한가`,
+    ];
+    const counter = counterTemplates[Math.floor(Math.random() * counterTemplates.length)];
+
+    const result = [...comments, ...echoes, counter];
+    console.log(`👥 Herd: +${echoes.length} echoes, +1 counter`);
+    return result;
+}
+
+// ========== Stage 6: 감정 증폭 파동 ==========
+function amplifyEmotions(comments: string[]): string[] {
+    const result = [...comments];
+
+    // 고감정 댓글 감지 (ㅋㅋㅋ 3개 이상, ㅠㅠ 2개 이상, ㅅㅂ 등)
+    const highEmotionIdx: number[] = [];
+    result.forEach((c, i) => {
+        if (/[ㅋ]{3,}/.test(c) || /[ㅠ]{2,}/.test(c) || /ㅅㅂ|미쳤|ㅁㅊ/.test(c)) {
+            highEmotionIdx.push(i);
+        }
+    });
+
+    if (highEmotionIdx.length === 0) return result;
+
+    // 고감정 댓글 인접에 감정 부스터 삽입 (50% 확률)
+    const boosters = [
+        '와 소름', 'ㄹㅇ', '인정', '이거 진짜', 'ㅋㅋㅋㅋㅋ',
+        'ㅠㅠ', '와', '대박', 'ㅇㅈ', '크',
+    ];
+
+    let inserted = 0;
+    for (const idx of highEmotionIdx) {
+        if (Math.random() < 0.5 && inserted < 2) {
+            const booster = boosters[Math.floor(Math.random() * boosters.length)];
+            // 고감정 댓글 바로 뒤에 삽입
+            result.splice(idx + 1 + inserted, 0, booster);
+            inserted++;
+            console.log(`🔥 Emotion amp: "${booster}" after "${result[idx + inserted - 1]}"`);
+        }
+    }
+
+    return result;
 }
 
 // ========== Stage 4: Comment Generation (4회 분리 호출) ==========
@@ -1061,8 +1160,18 @@ ${commonRules}
 
     console.log(`📊 Raw comments: ${allComments.length} from 4 calls`);
 
-    // ===== Stage 5: GPT-5 Statistical Curator =====
-    const filtered = await curateWithGPT5(allComments, count);
+    // ===== Stage 5: 집단 동조 파동 =====
+    console.log('👥 Stage 5: Herd effect...');
+    const withHerd = injectHerdEffect(allComments);
+
+    // ===== Stage 6: 감정 증폭 =====
+    console.log('🔥 Stage 6: Emotion amplification...');
+    const withEmotion = amplifyEmotions(withHerd);
+
+    console.log(`📊 After social dynamics: ${allComments.length} → ${withEmotion.length}`);
+
+    // ===== Stage 7: GPT-5 Statistical Curator =====
+    const filtered = await curateWithGPT5(withEmotion, count);
 
     console.log(`🧠 Final: ${filtered.length} curated from ${allComments.length} raw, tags: [${detectedTags.join(', ')}]`);
     return { comments: filtered, detectedTags };
