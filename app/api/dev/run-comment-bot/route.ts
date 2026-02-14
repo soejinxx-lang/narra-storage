@@ -1096,75 +1096,72 @@ async function generateDeepContextComments(
         view: buildReaderView(events, p),
     }));
 
-    // ===== Stage 4: 4회 분리 GPT 호출 =====
-    const commonRules = `마침표 쓰지 마. 이모지 쓰지 마. 쉼표(,) 절대 쓰지 마. 한국어 웹소설 댓글이야.
-질문형보다 단정형이 많아야 함. 10개 중 질문은 2~3개만. 나머지는 "~임", "~인듯", "~네", "~다" 단정 형태.
-댓글 중 20% 정도는 범용 맞춤법 오류를 자연스럽게 포함해라. 예: 됨→됌, 겠→겟, 돼→되, 되게→되개, 왠지→웬지, 세요→새요. 일부러 틀리는 게 아니라 모바일로 대충 치는 느낌.`;
+    // ===== Stage 4: 4회 분리 GPT 호출 (상황 기반) =====
+    const moodHint = dominantEmotion ? `\n분위기: 이 화는 전체적으로 "${dominantEmotion}" 느낌이 강하다.` : '';
 
     // 호출 1: 몰입형 + 분석형
     const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
-    const call1Prompt = `너는 한국 웹소설 독자 ${immersedViews.length}명이야. 각각 다른 사람이다.
-${commonRules}
+    const call1Prompt = `한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.
+생각 정리 안 하고 먼저 느낌이 나온다. 근거 설명 안 한다. 분석하려다 말아라.${moodHint}
 
-각 독자의 기억:
 ${immersedViews.map((r, i) => {
-        const bandwagon = r.profile.bandwagonTarget ? `\n이 독자는 특히 "${r.profile.bandwagonTarget}"에 꽂혀있음.` : '';
-        const mood = r.profile.dominantEmotion ? `\n이 독자는 지금 "${r.profile.dominantEmotion}" 감정이 지배적.` : '';
-        return `
-[독자${i + 1}: ${r.profile.type}, 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
-${r.view}${bandwagon}${mood}`;
+        const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
+        return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
+기억: ${r.view}${bandwagon}`;
     }).join('\n')}
 
-[출력 — 반드시 JSON]
-{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["각 독자가 1~2개씩, 총 ${Math.min(immersedViews.length * 2, 6)}개"] }
+이런 톤:
+"이거 나중에 돌아온다 100%"
+"진짜 바보같은데 이해는 됨"
+"아 여기서 끊네 미쳤냐"
 
-끊긴 문장, 단정형 위주. 완결된 문장 금지. 쉼표 금지.
-각 독자의 감정강도에 맞춰: 낮으면 짧게, 높으면 과하게.`;
+[출력 — JSON]
+{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
 
     // 호출 2: 감정과잉형
     const overreactorViews = readerViews.filter(r => r.profile.type === 'overreactor');
-    const call2Prompt = `너는 감정 조절 안 되는 웹소설 독자야.
-${commonRules}
+    const call2Prompt = `방금 읽고 폰 던질 뻔한 사람. 감정이 앞서서 타이핑 엉망.${moodHint}
 
-기억하는 장면:
-${overreactorViews.map(r => r.view).join('\n')}
-${overreactorViews[0]?.profile.bandwagonTarget ? `특히 "${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
+장면: ${overreactorViews.map(r => r.view).join('\n')}
+${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
 
-[출력 — 반드시 JSON]
-{ "comments": ["과잉 반응 3개. ㅋㅋ/ㅠㅠ 필수. 분석 금지. 감정을 터뜨려라"] }
+이런 톤:
+"아니 ㅋㅋㅋㅋ 미쳤냐 진짜"
+"와씨 개쫄림"
+"ㅠㅠㅠㅠㅠ 안돼"
 
-감정 설명("감동적이다") 금지. "아니 ㅋㅋㅋㅋ 미쳤냐" 이런 톤.`;
+[출력 — JSON]
+{ "comments": ["3개"] }`;
 
-    // 호출 3: 트롤 + 오독형
+    // 호출 3: 짜증형 + 오독형 — 🔒 보호 영역
     const chaosViews = readerViews.filter(r => r.profile.type === 'troll' || r.profile.type === 'misreader');
-    const call3Prompt = `너는 2명의 서로 다른 웹소설 독자야.
-${commonRules}
+    const call3Prompt = `2명의 독자. 둘 다 호의적이지 않다.
 
-[독자A: 드립러] 비꼼, 편애, 장난. 진지하지 마.
-기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '캐릭터 이름만 기억남'}
-${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `특히 "${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 좋아하거나 싫어함.` : ''}
+[A: 짜증남] 불만 많고 비꼼. 칭찬 안 함.
+기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '대충 기억남'}
+${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 싫어함.` : ''}
+이런 톤: "또 도망이네", "전개 느림", "답답", "이거 어디서 봤는데"
 
-[독자B: 오독형] 대충 읽어서 잘못 이해함. 틀린 해석 OK.
-기억(왜곡됨): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억함'}
+[B: 대충 읽음] 잘못 이해하고 있음. 본인은 모름.
+기억(틀림): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억'}
+이런 톤: "얘 죽은 거 아님?", "저거 배신하려는 거지", "아까 그 장면 뭐였지"
 
-[출력 — 반드시 JSON]
-{ "comments": ["독자A 2개 + 독자B 2개 = 총 4개"] }`;
+[출력 — JSON]
+{ "comments": ["A 2개 + B 2개 = 4개"] }`;
 
     // 호출 4: 대충형 + 관망형
     const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
-    const call4Prompt = `너는 2명의 웹소설 독자야. 둘 다 열심히 안 읽음.
-${commonRules}
+    const call4Prompt = `2명. 관심 별로 없다.
 
-[독자A: 대충 훑어봄] 앞부분만 좀 읽음. 뒤 모름.
-기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 기억 없음'}
+[A] 앞부분만 훑어봄. 뒤는 모름.
+기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
+이런 톤: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
 
-[독자B: 관망형] 거의 안 읽음. 5자 이하만 씀.
-기억: ${casualViews.find(r => r.profile.type === 'lurker')?.view || '모름'}
+[B] 거의 안 읽음. 5자 이하만 씀.
+이런 톤: ㅇㅇ, 1, ㄷㄷ, 와, 굿, 보는중
 
-[출력 — 반드시 JSON]
-{ "comments": ["독자A 2개(대충 읽은 티) + 독자B 2개(극초단문) = 총 4개"] }
-
-독자B 예시: ㅇㅇ, 1, 보는나, ㄷㄷ, 와`;
+[출력 — JSON]
+{ "comments": ["A 2개 + B 2개 = 4개"] }`;
 
     // ===== 4회 병렬 호출 =====
     console.log('🧠 Stage 4: 4 separate cognitive calls...');
@@ -1175,8 +1172,9 @@ ${commonRules}
         callAzureGPT(call4Prompt),
     ]);
 
-    // ===== 결과 합치기 =====
-    const allComments: string[] = [];
+    // ===== 결과 합치기 (call3 보호 분리) =====
+    const safeComments: string[] = [];  // call1,2,4 → 큐레이터로
+    const chaosComments: string[] = []; // call3 → 보호 영역
     let detectedTags: string[] = [];
 
     const parseComments = (raw: string | null): string[] => {
@@ -1199,28 +1197,34 @@ ${commonRules}
         }
     };
 
-    allComments.push(...parseComments(raw1));
-    allComments.push(...parseComments(raw2));
-    allComments.push(...parseComments(raw3));
-    allComments.push(...parseComments(raw4));
+    safeComments.push(...parseComments(raw1));
+    safeComments.push(...parseComments(raw2));
+    chaosComments.push(...parseComments(raw3));  // 🔒 분리
+    safeComments.push(...parseComments(raw4));
 
-    console.log(`📊 Raw comments: ${allComments.length} from 4 calls`);
+    console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}`);
 
-    // ===== Stage 5: 집단 동조 파동 =====
+    // ===== Stage 5: 집단 동조 파동 (safe만) =====
     console.log('👥 Stage 5: Herd effect...');
-    const withHerd = injectHerdEffect(allComments);
+    const withHerd = injectHerdEffect(safeComments);
 
     // ===== Stage 6: 감정 증폭 =====
     console.log('🔥 Stage 6: Emotion amplification...');
     const withEmotion = amplifyEmotions(withHerd);
 
-    console.log(`📊 After social dynamics: ${allComments.length} → ${withEmotion.length}`);
+    console.log(`📊 After social dynamics: ${safeComments.length} → ${withEmotion.length}`);
 
-    // ===== Stage 7: GPT-5 Statistical Curator =====
-    const filtered = await curateWithGPT5(withEmotion, count);
+    // ===== Stage 7: GPT-5 큐레이터 (safe만, chaos 제외) =====
+    const chaosInsertCount = Math.min(chaosComments.length, Math.floor(Math.random() * 3)); // 0~2개 랜덤
+    const curatorTarget = Math.max(1, count - chaosInsertCount);
+    const filtered = await curateWithGPT5(withEmotion, curatorTarget);
 
-    console.log(`🧠 Final: ${filtered.length} curated from ${allComments.length} raw, tags: [${detectedTags.join(', ')}]`);
-    return { comments: filtered, detectedTags };
+    // chaos 보호 영역에서 0~2개 추출 후 합치기
+    const selectedChaos = chaosComments.sort(() => Math.random() - 0.5).slice(0, chaosInsertCount);
+    const finalMerged = [...filtered, ...selectedChaos];
+
+    console.log(`🧠 Final: ${filtered.length} curated + ${selectedChaos.length} chaos = ${finalMerged.length}, tags: [${detectedTags.join(', ')}]`);
+    return { comments: finalMerged, detectedTags };
 }
 
 // ========== Stage 5: GPT-5 Statistical Curator ==========
@@ -1271,24 +1275,13 @@ async function curateWithGPT5(comments: string[], targetCount: number = 8): Prom
     // --- GPT-5 큐레이터: 집단 통계 기반 선택 ---
     const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
 
-    const curatorPrompt = `너는 한국 웹소설 댓글창 편집자야.
-아래 댓글 ${preFiltered.length}개 중에서 진짜 사람 댓글창처럼 보이는 ${targetCount}개를 골라줘.
+    const curatorPrompt = `댓글 ${preFiltered.length}개 중 ${targetCount}개 골라.
+깔끔하거나 정돈된 세트는 가짜다. 길이 다르고 톤 다른 게 자연스럽다.
 
-[선택 기준]
-- 감상문처럼 정돈된 것은 피해라
-- 톤, 길이, 감정 강도가 다양한 조합을 선택해라
-- 극초단문, 의문형, 파편형, 드립, 오독이 섞여야 한다
-- 1~2개는 반드시 이상하거나 엉뚱한 댓글 포함
-- 전부 정상이면 실격
-- 비슷한 반응이 2~3개 겹쳐도 괜찮음 (현실적 군집)
-- 전부 비슷한 길이면 실격
-- 너무 고르게 분포하면 감점 — 약간 치우쳐야 자연스러움
-
-[댓글 목록]
 ${commentList}
 
-[출력 — 반드시 JSON]
-{ "selected": [선택한 댓글의 번호 ${targetCount}개] }`;
+[출력 — JSON]
+{ "selected": [번호 ${targetCount}개] }`;
 
     const curatorRaw = await callOpenAIReview(curatorPrompt);
     let finalComments: string[] = [];
@@ -1315,8 +1308,12 @@ ${commentList}
 
     // --- Stage 8: 후처리 노이즈 ---
     const noised = finalComments.map(text => {
-        // 쉼표 전체 제거
-        text = text.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        // 쉼표 제거 (과도하지 않게: 2개 이상만)
+        if ((text.match(/,/g) || []).length >= 2) {
+            text = text.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+        // 마침표 제거
+        text = text.replace(/\.$/, '').replace(/\.\s/g, ' ').trim();
         // 40% 확률로 물음표 댓글을 단정형으로 변환
         if (text.includes('?') && Math.random() < 0.4) {
             text = text.replace(/\?+$/, '')
