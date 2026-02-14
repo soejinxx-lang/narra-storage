@@ -703,7 +703,6 @@ interface StoryEvent {
 interface EventExtraction {
     events: StoryEvent[];
     dominantEmotion: string;
-    detectedGenre: string;  // GPT가 감지한 장르
 }
 
 type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' | 'misreader' | 'lurker';
@@ -944,53 +943,93 @@ const GENRE_PERSONA_MAP: Record<string, string[]> = {
 };
 
 // 장르별 페르소나 풀에서 8명 선택
-function selectPersonasForGenre(genreCategory: string | null, count: number = 8): PersonaDef[] {
-    const pool = genreCategory && GENRE_PERSONA_MAP[genreCategory]
-        ? GENRE_PERSONA_MAP[genreCategory]
-        : ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5']; // 기본 풀
-
+function selectPersonasForGenre(genreWeights: Record<string, number>, count: number = 8): PersonaDef[] {
     const personaMap = new Map(PERSONA_POOL.map(p => [p.id, p]));
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const defaultPool = ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5'];
+
+    const categories = Object.keys(genreWeights);
+
+    // 가중치 없으면 기본 풀
+    if (categories.length === 0) {
+        const shuffled = [...defaultPool].sort(() => Math.random() - 0.5).slice(0, count);
+        const result = shuffled.map(id => personaMap.get(id)).filter(Boolean) as PersonaDef[];
+        console.log(`🎭 Genre "default": selected ${result.length} personas: [${result.map(p => p.id + ' ' + p.name).join(', ')}]`);
+        return result;
+    }
+
+    // 장르별 슬롯 수 계산 (Largest Remainder Method)
+    const rawSlots = categories.map(cat => ({
+        cat,
+        raw: genreWeights[cat] * count,
+        floor: Math.floor(genreWeights[cat] * count),
+        remainder: (genreWeights[cat] * count) % 1
+    }));
+
+    let allocated = rawSlots.reduce((sum, s) => sum + s.floor, 0);
+    // 나머지가 큰 순서대로 1씩 추가 (합이 count가 될 때까지)
+    const sorted = [...rawSlots].sort((a, b) => b.remainder - a.remainder);
+    for (const slot of sorted) {
+        if (allocated >= count) break;
+        slot.floor += 1;
+        allocated += 1;
+    }
+
+    const slotMap: Record<string, number> = {};
+    for (const s of rawSlots) {
+        slotMap[s.cat] = s.floor;
+    }
+
+    console.log(`📊 Slot distribution: ${Object.entries(slotMap).map(([k, v]) => `${k}=${v}`).join(', ')} (total=${count})`);
+
+    // 각 장르 풀에서 슬롯 수만큼 랜덤 선택
     const selected: PersonaDef[] = [];
+    const usedIds = new Set<string>();
 
-    // 필수: chaos 최소 1, casual 최소 1
-    const chaosPool = shuffled.filter(id => personaMap.get(id)?.callGroup === 'chaos');
-    const casualPool = shuffled.filter(id => personaMap.get(id)?.callGroup === 'casual');
-    const otherPool = shuffled.filter(id => {
-        const p = personaMap.get(id);
-        return p && p.callGroup !== 'chaos' && p.callGroup !== 'casual';
-    });
+    for (const [cat, slots] of Object.entries(slotMap)) {
+        if (slots === 0) continue;
+        const pool = GENRE_PERSONA_MAP[cat] || defaultPool;
+        const available = pool.filter(id => !usedIds.has(id));
+        const shuffled = [...available].sort(() => Math.random() - 0.5);
 
-    // chaos 1~2명
-    const chaosCount = Math.min(chaosPool.length, 1 + (Math.random() < 0.5 ? 1 : 0));
-    for (let i = 0; i < chaosCount; i++) {
-        const p = personaMap.get(chaosPool[i]);
-        if (p) selected.push(p);
+        for (let i = 0; i < Math.min(slots, shuffled.length); i++) {
+            const p = personaMap.get(shuffled[i]);
+            if (p) {
+                selected.push(p);
+                usedIds.add(shuffled[i]);
+            }
+        }
     }
 
-    // casual 1~2명
-    const casualCount = Math.min(casualPool.length, 1 + (Math.random() < 0.5 ? 1 : 0));
-    for (let i = 0; i < casualCount; i++) {
-        const p = personaMap.get(casualPool[i]);
-        if (p) selected.push(p);
+    // 부족하면 기본 풀에서 보충
+    if (selected.length < count) {
+        const fallback = defaultPool.filter(id => !usedIds.has(id)).sort(() => Math.random() - 0.5);
+        for (const id of fallback) {
+            if (selected.length >= count) break;
+            const p = personaMap.get(id);
+            if (p) {
+                selected.push(p);
+                usedIds.add(id);
+            }
+        }
     }
 
-    // 나머지를 immersed/overreactor에서 채움
-    for (const id of otherPool) {
-        if (selected.length >= count) break;
-        const p = personaMap.get(id);
-        if (p) selected.push(p);
+    // chaos/casual 최소 1명씩 보장
+    const hasChaos = selected.some(p => p.callGroup === 'chaos');
+    const hasCasual = selected.some(p => p.callGroup === 'casual');
+
+    if (!hasChaos && selected.length > 0) {
+        // 마지막 슬롯을 chaos로 교체
+        const chaosPersona = PERSONA_POOL.filter(p => p.callGroup === 'chaos' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (chaosPersona) selected[selected.length - 1] = chaosPersona;
+    }
+    if (!hasCasual && selected.length > 1) {
+        const casualPersona = PERSONA_POOL.filter(p => p.callGroup === 'casual' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (casualPersona) selected[selected.length - 2] = casualPersona;
     }
 
-    // 부족하면 chaos/casual에서 추가
-    const remaining = [...chaosPool.slice(chaosCount), ...casualPool.slice(casualCount)];
-    for (const id of remaining) {
-        if (selected.length >= count) break;
-        const p = personaMap.get(id);
-        if (p && !selected.includes(p)) selected.push(p);
-    }
-
-    console.log(`🎭 Genre "${genreCategory || 'default'}": selected ${selected.length} personas: [${selected.map(p => p.id + ' ' + p.name).join(', ')}]`);
+    console.log(`🎭 Weighted selection: ${selected.length} personas: [${selected.map(p => p.id + ' ' + p.name).join(', ')}]`);
     return selected.slice(0, count);
 }
 
@@ -1001,12 +1040,11 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
         : episodeContent;
 
     const prompt = `이 에피소드에서 독자가 반응할 핵심 사건 5~7개를 추출하고,
-이 에피소드의 지배적 감정 1개와 장르를 판단하라.
+이 에피소드의 지배적 감정 1개를 골라라.
 
 [출력 — 반드시 JSON]
 {
   "dominantEmotion": "긴장|슬픔|분노|웃김|소름|설렘|허탈|감동 중 1개",
-  "detectedGenre": "fantasy|romance|scifi|mystery|horror|historical|slice-of-life|action|comedy|regression 중 1개",
   "events": [
     { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
   ]
@@ -1016,21 +1054,20 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
 ${trimmed}`;
 
     const raw = await callAzureGPT(prompt);
-    if (!raw) return { events: [], dominantEmotion: '', detectedGenre: '' };
+    if (!raw) return { events: [], dominantEmotion: '' };
 
     try {
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         const data = JSON.parse(cleaned);
         if (data.events && Array.isArray(data.events)) {
             const emotion = data.dominantEmotion || '';
-            const genre = data.detectedGenre || '';
-            console.log(`📋 Events: ${data.events.length}, dominant emotion: "${emotion}", detected genre: "${genre}"`);
-            return { events: data.events, dominantEmotion: emotion, detectedGenre: genre };
+            console.log(`📋 Events: ${data.events.length}, dominant emotion: "${emotion}"`);
+            return { events: data.events, dominantEmotion: emotion };
         }
     } catch (e) {
         console.warn('⚠️ Event extraction parse failed');
     }
-    return { events: [], dominantEmotion: '', detectedGenre: '' };
+    return { events: [], dominantEmotion: '' };
 }
 
 // ========== Stage 2: Reader Profiles (페르소나 기반 + 감정 쏠림) ==========
@@ -1340,24 +1377,22 @@ function amplifyEmotions(comments: string[]): string[] {
 // ========== Stage 4: Comment Generation (4회 분리 호출 — 30 페르소나) ==========
 async function generateDeepContextComments(
     episodeContent: string,
-    genreCategory: string | null = null,
+    genreWeights: Record<string, number> = {},
     count: number = 8
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
 
     // ===== Stage 1: Event Extraction =====
     console.log('📋 Stage 1: Extracting events...');
     const extraction = await extractEvents(episodeContent);
-    const { events, dominantEmotion, detectedGenre } = extraction;
+    const { events, dominantEmotion } = extraction;
 
     if (events.length === 0) {
         console.warn('⚠️ No events extracted, falling back to old method');
         return { comments: [], detectedTags: [] };
     }
 
-    // ===== Stage 1.5: GPT 감지 장르로 페르소나 선택 =====
-    const effectiveGenre = detectedGenre || genreCategory;
-    console.log(`🎯 Genre: detected="${detectedGenre}", db="${genreCategory}", using="${effectiveGenre}"`);
-    const personas = selectPersonasForGenre(effectiveGenre, count);
+    // ===== Stage 1.5: DB 장르 가중치로 페르소나 선택 =====
+    const personas = selectPersonasForGenre(genreWeights, count);
 
     // ===== Stage 2: Reader Profiles =====
     console.log('👥 Stage 2: Generating reader profiles...');
@@ -2455,6 +2490,39 @@ function getGenreCategory(genreData: string | string[] | null): string | null {
 }
 
 /**
+ * 하위장르 개수 기반 상위 카테고리 가중치 계산
+ * 예: Romance×2, Regression×1 → { romance: 0.667, regression: 0.333 }
+ */
+function getGenreWeights(genreData: string | string[] | null): Record<string, number> {
+    if (!genreData) return {};
+
+    const genres = Array.isArray(genreData)
+        ? genreData
+        : genreData.split(',').map(g => g.trim());
+
+    // 상위 카테고리별 하위장르 개수 카운트
+    const counts: Record<string, number> = {};
+    for (const genre of genres) {
+        const category = GENRE_CATEGORY_MAP[genre];
+        if (category) {
+            counts[category] = (counts[category] || 0) + 1;
+        }
+    }
+
+    // 가중치 계산 (합 = 1.0)
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (total === 0) return {};
+
+    const weights: Record<string, number> = {};
+    for (const [cat, count] of Object.entries(counts)) {
+        weights[cat] = count / total;
+    }
+
+    console.log(`📊 Genre weights: ${Object.entries(weights).map(([k, v]) => `${k}=${Math.round(v * 100)}%`).join(', ')}`);
+    return weights;
+}
+
+/**
  * GPT로 에피소드 본문 기반 댓글 사전 생성 (with 장르 + 언어 힌트)
  */
 async function generateDeepContextCommentsWithGenre(
@@ -2644,7 +2712,8 @@ export async function GET(req: NextRequest) {
         );
         const genreData = novelResult.rows[0]?.genre;
         const sourceLanguage = novelResult.rows[0]?.source_language || 'ko'; // Default: Korean
-        const genreCategory = getGenreCategory(genreData);
+        const genreCategory = getGenreCategory(genreData); // legacy (for old single-call function)
+        const genreWeights = getGenreWeights(genreData);    // 가중치 기반
 
         console.log(`🌐 Source language: ${sourceLanguage}`);
         if (genreCategory) {
@@ -2668,7 +2737,7 @@ export async function GET(req: NextRequest) {
                 while (deepComments.length < totalCount && calls < 6) {
                     const result = await generateDeepContextComments(
                         episodeContent,
-                        genreCategory,
+                        genreWeights,
                         15              // count
                     );
                     deepComments.push(...result.comments);
