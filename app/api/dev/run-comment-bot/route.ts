@@ -931,6 +931,8 @@ const PERSONA_POOL: PersonaDef[] = [
 // 장르별 페르소나 풀 (이 중에서 랜덤 6~8명 선택)
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
     'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
     'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
     'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
     'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
@@ -1688,43 +1690,52 @@ ${commentList}
 // ============================================================
 
 const GENRE_CATEGORY_MAP: Record<string, string> = {
-    // Fantasy → game-fantasy
+    // === Fantasy → fantasy ===
+    'High Fantasy': 'fantasy',
+    'Dark Fantasy': 'fantasy',
+    'Urban Fantasy': 'fantasy',
+    'Mythology Retelling': 'fantasy',
+
+    // === Fantasy → game-fantasy ===
     'GameLit / LitRPG': 'game-fantasy',
-    'Progression': 'game-fantasy',
     'Cultivation': 'game-fantasy',
+    'Progression': 'game-fantasy',
     'Dungeon / Tower': 'game-fantasy',
 
-    // Fantasy → murim
+    // === Fantasy/Action → murim ===
     'Murim': 'murim',
     'Martial Arts': 'murim',
 
-    // Romance → romance
+    // === Romance → romance ===
     'Contemporary Romance': 'romance',
     'Historical Romance': 'romance',
     'Romantic Fantasy': 'romance',
+    'Paranormal Romance': 'romance',
+    'Romantic Comedy': 'romance',
+    // Tropes that map to romance
     'CEO / Billionaire': 'romance',
     'Enemies to Lovers': 'romance',
     'Forbidden Love': 'romance',
     'Omegaverse': 'romance',
-    'Paranormal Romance': 'romance',
-    'Romantic Comedy': 'romance',
+    'Slow Burn': 'romance',
 
-    // Isekai/Regression → regression
+    // === Narrative Devices → regression ===
     'Isekai': 'regression',
     'Regression': 'regression',
     'Reincarnation': 'regression',
     'Transmigration': 'regression',
+    'Time Travel': 'regression',
 
-    // Sci-Fi → sci-fi
-    'Space Opera': 'sci-fi',
-    'Cyberpunk': 'sci-fi',
-    'Post-Apocalyptic': 'sci-fi',
-    'Mecha': 'sci-fi',
-    'Virtual Reality': 'sci-fi',
-    'Hard Sci-Fi': 'sci-fi',
-    'Steampunk': 'sci-fi',
+    // === Sci-Fi → scifi ===
+    'Space Opera': 'scifi',
+    'Cyberpunk': 'scifi',
+    'Steampunk': 'scifi',
+    'Post-Apocalyptic': 'scifi',
+    'Hard Sci-Fi': 'scifi',
+    'Mecha': 'scifi',
+    'Virtual Reality': 'scifi',
 
-    // Mystery/Thriller → mystery
+    // === Mystery/Thriller → mystery ===
     'Psychological Thriller': 'mystery',
     'Crime': 'mystery',
     'Detective': 'mystery',
@@ -1733,48 +1744,63 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     'Espionage': 'mystery',
     'Whodunit': 'mystery',
 
-    // Horror → horror
+    // === Horror → horror ===
+    'Supernatural Horror': 'horror',
+    'Cosmic Horror': 'horror',
+    'Gothic': 'horror',
+    'Psychological Horror': 'horror',
+    'Zombie': 'horror',
+    // Legacy names (keep for backward compat)
     'Gothic Horror': 'horror',
     'Supernatural': 'horror',
-    'Zombie': 'horror',
     'Survival Horror': 'horror',
     'Body Horror': 'horror',
     'Folk Horror': 'horror',
 
-    // Historical → historical  
-    'Period Drama': 'historical',
+    // === Historical → historical ===
+    'Historical Fiction': 'historical',
     'Alternate History': 'historical',
+    'Period Drama': 'historical',
+    'War': 'historical',
+    // Legacy names
     'Historical Fantasy': 'historical',
     'Court Intrigue': 'historical',
     'War Epic': 'historical',
     'Dynasty': 'historical',
 
-    // Slice of Life / Contemporary → slice-of-life
-    'Contemporary': 'slice-of-life',
+    // === Contemporary → slice-of-life ===
+    'Slice of Life': 'slice-of-life',
     'Coming of Age': 'slice-of-life',
+    'Tragedy': 'slice-of-life',
     'School Life': 'slice-of-life',
     'Workplace': 'slice-of-life',
+    'Family': 'slice-of-life',
+    // Legacy names
+    'Contemporary': 'slice-of-life',
     'Family Drama': 'slice-of-life',
-    'Tragedy': 'slice-of-life',
     'Melodrama': 'slice-of-life',
 
-    // Action → action
+    // === Action → action ===
     'Superhero': 'action',
     'Military': 'action',
     'Survival': 'action',
+    'Apocalypse': 'action',
+    // Legacy names
     'Apocalyptic': 'action',
     'Battle Royale': 'action',
     'Sports': 'action',
 
-    // Comedy → comedy
-    'Parody': 'comedy',
+    // === Comedy → comedy ===
     'Satire': 'comedy',
+    'Parody': 'comedy',
+    // Legacy names
     'Slapstick': 'comedy',
     'Dark Comedy': 'comedy',
 
-    // Note: LGBTQ+ moved to Tropes (not genre-specific)
-    // Note: Time Travel moved to Narrative Devices (not genre-specific)
+    // Note: LGBTQ+, Cozy, Grimdark, Dark Academia, Werewolf/Vampire → tropes, no persona mapping
+    // Note: YA, New Adult, Adult → audience tier, no persona mapping
 };
+
 
 // ============================================================
 // 장르별 × 언어별 GPT 힌트 (Multilingual Genre Hints)
