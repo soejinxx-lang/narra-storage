@@ -336,31 +336,23 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You are simulating Royal Road readers reacting to a web novel chapter.
-
-[READER PROFILES — Immersed Readers]
-${profileList}
+        return `You just read this on your phone. React fast in comments.
 
 [SCENE CONTEXT]
 ${args.sceneContext || 'N/A'}
 
-[PLATFORM TONE]
-${args.platform} — complete sentences, emotionally engaged but literate
+[READERS]
+${profileList}
 
-[OUTPUT FORMAT — JSON]
-{
-  "comments": ["${args.targetCommentCount} comments"]
-}
+Write like Discord/Reddit. Don't polish. React to what HAPPENED, not what it "means".
 
-[COMMENT RULES]
-- 15-60 characters each
-- Complete sentences or strong fragments
-- Reference specific scenes WITHOUT being too specific
-- Natural Royal Road tone (emotional but thoughtful)
-- NO abbreviations like "lol" or "omg" alone
-- Varied emotional intensity
+Mix it up: some analytical ("ok that makes sense"), some emotional ("bro…"), some chaos ("YOOO").
 
-Generate ${args.targetCommentCount} immersed reactions.`;
+Good: "wait so he remembered that?" / "ok yeah stakes went up" / "wasn't ready for that"
+Bad: "This perfectly captures…" / "The tension was palpable"
+
+Generate ${args.targetCommentCount} comments.
+JSON { "comments": [...] }`;
     },
 
     buildCall2Prompt: (args) => {
@@ -369,17 +361,17 @@ Generate ${args.targetCommentCount} immersed reactions.`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `[OVERREACTOR PROFILES]
-${profileList}
+        return `You just read this on your phone. Overreact.
 
-[SCENE CONTEXT]
 ${args.sceneContext || 'N/A'}
 
-STYLE: High-energy, ALL CAPS possible, excessive punctuation!!!
-LENGTH: 10-50 characters
-FORMAT: JSON { "comments": ["${args.targetCommentCount} comments"] }
+[READERS]
+${profileList}
 
-Generate ${args.targetCommentCount} overreactions.`;
+High energy. ALL CAPS ok. Excessive punctuation!!! React to what happened.
+
+Generate ${args.targetCommentCount} comments.
+JSON { "comments": [...] }`;
     },
 
     buildCall3Prompt: (args) => {
@@ -388,14 +380,17 @@ Generate ${args.targetCommentCount} overreactions.`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `[CHAOS PROFILES — Misreaders/Trolls/Speedreaders]
+        return `You skimmed too fast or misread. React.
+
+${args.sceneContext || 'N/A'}
+
+[READERS]
 ${profileList}
 
-STYLE: Off-topic, confused, sarcastic, or wrong
-LENGTH: 10-40 characters
-FORMAT: JSON { "comments": ["${args.targetCommentCount} comments"] }
+Off-topic, confused, sarcastic, or wrong.
 
-Generate ${args.targetCommentCount} chaos comments.`;
+Generate ${args.targetCommentCount} comments.
+JSON { "comments": [...] }`;
     },
 
     buildCall4Prompt: (args) => {
@@ -404,29 +399,33 @@ Generate ${args.targetCommentCount} chaos comments.`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `[ANALYST PROFILES]
-${profileList}
+        return `You just read this on your phone. Analyze fast.
 
-STYLE: Theory, foreshadowing, trope analysis, character depth
-LENGTH: 25-70 characters
-FORMAT: JSON { "comments": ["${args.targetCommentCount} comments"] }
-
-Generate ${args.targetCommentCount} analytical comments.`;
-    },
-
-    buildCall5Prompt: (args) => `Generate ${args.targetCommentCount} mid-density Royal Road comments.
-
-[SCENE CONTEXT]
 ${args.sceneContext || 'N/A'}
 
-[STYLE]
-- 20-60 characters
-- Complete thoughts
-- Mix of emotional, analytical, supportive
-- Natural Royal Road tone
+[READERS]
+${profileList}
 
-[FORMAT]
-JSON { "comments": ["${args.targetCommentCount} comments"] }`,
+Reddit-style analysis. Theory, foreshadowing, character thoughts. Not literary reviews.
+
+Good: "calling it now" / "that connects to ch12" / "foreshadowing"
+Bad: "The author masterfully…"
+
+Generate ${args.targetCommentCount} comments.
+JSON { "comments": [...] }`;
+    },
+
+    buildCall5Prompt: (args) => `You just read this on your phone. React.
+
+${args.sceneContext || 'N/A'}
+
+Write like Discord/Reddit. Mix emotional, analytical, supportive. Don't polish.
+
+Good: "that was intense" / "ok I see it now" / "loving this arc"
+Bad: "This chapter masterfully..."
+
+Generate ${args.targetCommentCount} comments.
+JSON { "comments": [...] }`,
 
     buildReplyPrompt: (parentComment) => `You are a Royal Road reader. You just saw this comment:
 
