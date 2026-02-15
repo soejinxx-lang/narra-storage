@@ -1471,12 +1471,11 @@ async function generateDeepContextComments(
 
     // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
     const call1Prompt = immersedViews.length > 0 ? `${platform}
-생각 정리 안 한다. 설명하지 말아라. 정리하지 말아라.${moodHint}${genreHint}
+요약하지 마. 네가 읽은 장면에서 꼽힌 부분을 바로 말해.${moodHint}${genreHint}
 
-[이번 화 주요 장면 — 읽고 반응만 해라, 분석하지 말아라]
+[방금 읽은 장면]
 ${episodeExcerpt}
-${sceneContext ? `
-핵심 장면: ${sceneContext}` : ''}
+${sceneContext ? `핵심: ${sceneContext}` : ''}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
@@ -1489,12 +1488,12 @@ ${immersedViews.map((r, i) => {
     }).join('\n')}
 
 이런 톤이 섞여야 한다:
-"저 대사 일부러 넣은 거 같은데"
-"얘 속으로 뭔가 생각하고 있는 듯"
-"아까 그 장면이랑 연결되는 건가"
-"아 여기서 끊네 아 진짜"
-"이건 좀 뻔한데"
-⚠️ 위 문장을 그대로 반복하지 말고, 이번 화 내용을 넣어서 변형해라
+"아까 눈 마주친 거 그냥 넘어갈 리 없지"
+"저때 표정 봐 뭔가 알고 있었네"
+"담장 넘고 나서 첫마디가 저건가 ㅋㅋ"
+"카일 결단 빨랐는데 후회할 듯"
+"이건 좀 과한데"
+⚠️ 위 문장 그대로 쓰지 말고, 이번 화에서 네가 읽은 장면을 근거로 변형해라
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 8)}개"] }` : null;
@@ -1879,21 +1878,14 @@ const GENRE_HINTS: Record<string, Record<string, string>> = {
         'ko': `\n\n[장르: 판타지 | 한국어 댓글 스타일]
 - 짧은 문장 (5-15자)
 - 쉼표 거의 사용 안 함
-- "복선", "설정", "세계관", "각성", "서사" 자주 사용
-- 분석 + 감탄 + 비꼼 혼합
-
-예시 (이 문장을 그대로 쓰지 말고 비슷한 결로 변형):
-- 이거 나중에 터질 각
-- 설정 이거 말 됨?
-- 작가 일부러 여기서 끊은 거네
-- 복선 회수 ㅁㅊ
-- 아 또 여기서 끊네
-- 이건 좀 과한데
+- 방금 읽은 장면에서 인상 깊은 부분을 직접 언급해라
+- 캐릭터 이름, 대사, 행동을 구체적으로 넣어라
+- "복선", "설정" 같은 메타 용어보다 장면 자체를 말해라
 
 금지:
 - 로맨스 어휘 ("심쿵", "달달", "케미", "설렘")
 - 같은 키워드 조합 반복 (댓글마다 다른 단어 사용)
-- 위 예시 문장 그대로 복사`,
+- 장면을 다시 설명하지 말고, 그 장면에 대한 네 반응을 말해라`,
 
         'zh': `\n\n[类型：奇幻 | 中文评论风格]
 - 形容词夸张
