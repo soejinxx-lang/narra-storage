@@ -12,11 +12,11 @@ import { runCommentBotIntl } from "./engine";
 import type { LanguagePack } from "./types";
 
 // ============================================================
-// 언어팩 레지스트리 (Phase 2에서 구현)
+// 언어팩 레지스트리
 // ============================================================
 const LANGUAGE_PACKS: Record<string, () => Promise<LanguagePack>> = {
-    // Phase 2에서 추가:
-    // 'en': () => import('./lang/en').then(m => m.default),
+    'en': () => import('./lang/en').then(m => m.default),
+    // Phase 2 (remaining):
     // 'ja': () => import('./lang/ja').then(m => m.default),
     // 'zh': () => import('./lang/zh').then(m => m.default),
     // 'es': () => import('./lang/es').then(m => m.default),

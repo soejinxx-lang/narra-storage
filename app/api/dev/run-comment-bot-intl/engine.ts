@@ -990,18 +990,14 @@ export async function runCommentBotIntl(
         let lastCommentTime: Date | null = null;
 
         for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-            // 70/20/10 비율 시스템 (한국어 route.ts 동일)
+            // 100% deep context (영어 테스트용 — 원래는 70/20/10)
             const roll = Math.random();
             let content: string;
-            if (roll < 0.70 && deepComments.length > 0) {
+            if (roll < 1.00 && deepComments.length > 0) {
                 content = deepComments.pop()!;
-            } else if (roll < 0.90 && midDensityPool.length > 0) {
-                content = midDensityPool.pop()!;
             } else {
                 if (deepComments.length > 0) {
                     content = deepComments.pop()!;
-                } else if (midDensityPool.length > 0) {
-                    content = midDensityPool.pop()!;
                 } else {
                     break;
                 }
