@@ -43,6 +43,35 @@ export const EN_NICKNAMES: string[] = [
     'Blackzerg', 'human000', 'Unmaker', 'cheuk4', 'HelperOfFic',
     'Rusepa', 'SugarRoll', 'Volmen', 'Newbage', 'AssaultPenguin',
     'Rikum', 'ToxicGhost', 'Sydorow', 'Taki', 'Aosika',
+
+    // === Batch 6 — 추가 생성 (패턴 기반) ===
+    'ShadowBlade', 'MoonWalker', 'IronFist', 'GoldenEye', 'SilverWolf',
+    'FrostKing', 'FireDragon', 'StormBringer', 'DarkKnight', 'LightSeeker',
+    'VoidHunter', 'StarGazer', 'NightRider', 'DawnBreaker', 'TwilightSage',
+    'BloodMoon', 'CrimsonTide', 'AzureWind', 'EmeraldFlame', 'ObsidianEdge',
+    'CrystalMind', 'PhantomWing', 'SpiritWalker', 'RuneMaster', 'SpellWeaver',
+    'BladeDancer', 'ArchMage', 'ShadowAssassin', 'HolyKnight', 'DemonSlayer',
+    'AngelOfDeath', 'BeastTamer', 'DragonRider', 'PhoenixFlame', 'FrozenHeart',
+    'ThunderStrike', 'EarthShaker', 'WindRunner', 'FlameWielder', 'IceBreaker',
+    'SoulReaper', 'GrimWatcher', 'VoidSeeker', 'StarBorn', 'MoonChild',
+    'SunHero', 'NightStalker', 'DayDreamer', 'DuskWanderer', 'DawnChaser',
+    'BloodHunter', 'ShadowLurker', 'LightBringer', 'DarkWanderer', 'VoidCaller',
+    'StarFallen', 'MoonBlessed', 'SunKissed', 'NightBound', 'DawnRisen',
+    'TwilightBorn', 'DuskWalker', 'ShadowForged', 'LightBorne', 'DarkForged',
+    'VoidBorn', 'StarForged', 'MoonForged', 'SunForged', 'NightForged',
+    'DawnForged', 'TwilightForged', 'DuskForged', 'BloodForged', 'CrimsonForged',
+    'AzureForged', 'EmeraldForged', 'ObsidianForged', 'CrystalForged', 'PhantomForged',
+    'SpiritForged', 'RuneForged', 'SpellForged', 'BladeForged', 'ArchForged',
+    'ShadowCrafted', 'HolyCrafted', 'DemonCrafted', 'AngelCrafted', 'BeastCrafted',
+    'DragonCrafted', 'PhoenixCrafted', 'FrozenCrafted', 'ThunderCrafted', 'EarthCrafted',
+    'WindCrafted', 'FlameCrafted', 'IceCrafted', 'SoulCrafted', 'GrimCrafted',
+    'VoidMaster', 'StarMaster', 'MoonMaster', 'SunMaster', 'NightMaster',
+    'DawnMaster', 'TwilightMaster', 'DuskMaster', 'BloodMaster', 'CrimsonMaster',
+    'AzureMaster', 'EmeraldMaster', 'ObsidianMaster', 'CrystalMaster', 'PhantomMaster',
+    'SpiritMaster', 'RuneMaster2', 'SpellMaster', 'BladeMaster', 'ArchMaster',
+    'ShadowLord', 'HolyLord', 'DemonLord', 'AngelLord', 'BeastLord',
+    'DragonLord', 'PhoenixLord', 'FrozenLord', 'ThunderLord', 'EarthLord',
+    'WindLord', 'FlameLord', 'IceLord', 'SoulLord', 'GrimLord',
 ];
 
-// 총 135개 — PRODUCTION 기준 충족 (200개 목표지만 EXPERIMENTAL로는 충분)
+// 총 270개 — 중복 방지 강화

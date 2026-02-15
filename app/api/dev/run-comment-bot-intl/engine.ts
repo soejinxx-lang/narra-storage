@@ -953,6 +953,7 @@ export async function runCommentBotIntl(
 
     for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
         const nickname = pickNickname(lang.nicknamePool, usedNicknames);
+        console.log(`🎭 [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}" (pool=${lang.nicknamePool.length}, used=${usedNicknames.size})`);
         const tone = pickPersonalityTone(personalityWeights);
         let commentCount = pickCommentCount(lang.commentCountWeights);
 
