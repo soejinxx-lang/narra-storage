@@ -1579,11 +1579,17 @@ ${casualViews.map((r, i) => {
         if (!raw) return [];
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         // GPT가 앞에 붙이는 라벨 제거 패턴
-        const stripLabel = (c: string) => c
-            .replace(/^["']|["']$/g, '')
-            // Remove common comment labels + genre-specific keywords
-            .replace(/^(반응|원댓글|독자[A-Z]?|[A-Z]|감상|댓글|코멘트|의견|답글|복선|설정|각성|서사|전투|액션|심쿵|케미|회귀|성장|스킬|마력|분위기|연출|묘사|캐릭터|전개|반전|긴장|소름|감동)[：:\-→|]\s*/g, '')
-            .trim();
+        const stripLabel = (c: string) => {
+            let s = c
+                .replace(/^["']|["']$/g, '')
+                // Remove '원댓글: "..." → 반응:' pattern
+                .replace(/^원댓글:.*?[→→]\s*반응:\s*/g, '')
+                // Remove common comment labels + genre-specific keywords
+                .replace(/^(반응|원댓글|독자[A-Z]?|[A-Z]|감상|댓글|코멘트|의견|답글|복선|설정|각성|서사|전투|액션|심쿵|케미|회귀|성장|스킬|마력|분위기|연출|묘사|캐릭터|전개|반전|긴장|소름|감동)[：:\-→|]\s*/g, '')
+                .replace(/^["']|["']$/g, '') // strip quotes again after label removal
+                .trim();
+            return s;
+        };
         try {
             const parsed = JSON.parse(cleaned);
             if (parsed.tags) {
@@ -1593,11 +1599,11 @@ ${casualViews.map((r, i) => {
             }
             return (parsed.comments || [])
                 .map((c: string) => stripLabel(c))
-                .filter((c: string) => c.length > 0 && c.length < 100);
+                .filter((c: string) => c.length >= 8 && c.length < 100);
         } catch {
             return raw.split('\n')
                 .map((l: string) => stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
-                .filter((l: string) => l.length > 0 && l.length < 100);
+                .filter((l: string) => l.length >= 8 && l.length < 100);
         }
     };
 
