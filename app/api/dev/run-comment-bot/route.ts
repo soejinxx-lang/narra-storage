@@ -2923,14 +2923,10 @@ export async function GET(req: NextRequest) {
             let lastCommentTime: Date | null = null;
 
             for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-                // Deep Context 댓글 (실험: 100% deep 우선, 없으면 템플릿 fallback)
-                let content: string;
-                if (deepComments.length > 0) {
-                    content = deepComments.pop()!;
-                    content = humanize(content);
-                } else {
-                    content = pickComment(tone, usedTemplates, characterNames, sceneTags);
-                }
+                // Deep Context 댓글만 사용 (템플릿 fallback 비활성화)
+                if (deepComments.length === 0) break;
+                let content: string = deepComments.pop()!;
+                content = humanize(content);
                 let createdAt = randomTimestamp();
 
                 // 규칙 10: 같은 봇 댓글 간 5분~3시간 간격
