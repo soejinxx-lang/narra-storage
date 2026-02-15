@@ -3,7 +3,8 @@
  * 실제 수집 데이터 + 문화 분석 기반 생성
  */
 
-import type { PersonalityTone } from '../types';
+import type { PersonalityTone } from '../../types';
+
 
 // ============================================================
 // TEMPLATES — PersonalityTone별 범용 댓글
