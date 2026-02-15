@@ -2855,7 +2855,18 @@ export async function GET(req: NextRequest) {
 
         // 4. 봇 생성 & 댓글 작성
         const usedTemplates = new Set<string>();
-        const usedNicknames = new Set<string>();
+
+        // 기존 댓글 닉네임 조회 — 동일 닉네임 방지
+        const existingNicknameResult = await db.query(
+            `SELECT DISTINCT u.name FROM comments c
+             JOIN users u ON c.user_id = u.id
+             WHERE c.episode_id = $1`,
+            [episodeId]
+        );
+        const usedNicknames = new Set<string>(
+            existingNicknameResult.rows.map((r: { name: string }) => r.name)
+        );
+        console.log(`📛 Existing nicknames: ${usedNicknames.size} (excluded from pool)`);
         let totalCommentsPosted = 0;
         const botCount = Math.ceil(totalCount / 1.3);
 
