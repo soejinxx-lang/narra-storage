@@ -3,7 +3,7 @@
  * 실제 수집 데이터 + 문화 분석 기반 생성
  */
 
-import type { PersonalityTone, ContextTemplate } from '../types';
+import type { PersonalityTone } from '../types';
 
 // ============================================================
 // TEMPLATES — PersonalityTone별 범용 댓글
@@ -119,7 +119,7 @@ export const EN_TEMPLATES: Record<PersonalityTone, string[]> = {
         'you got a reader for life',
     ],
 
-    // === CRITIC (5%) — 건설적 비판 ===
+    // === CRITIC (5%) — 건설적 비판, 약간 공격성 ===
     critic: [
         // 실제 수집
         'damn is this how short chapters are? kinda discouraging',
@@ -140,33 +140,3 @@ export const EN_TEMPLATES: Record<PersonalityTone, string[]> = {
         'could be longer',
     ],
 };
-
-// ============================================================
-// CONTEXT TEMPLATES — {name1}/{name2} 치환형
-// ============================================================
-
-export const EN_CONTEXT_TEMPLATES: ContextTemplate[] = [
-    // 실제 데이터 기반
-    { template: '{name1} is back!!!', tone: 'emotional' },
-    { template: 'I missed {name1} so much', tone: 'emotional' },
-    { template: 'Can\'t wait to see more {name1}', tone: 'emotional' },
-    { template: 'Finally {name1} shows up', tone: 'short_reactor' },
-
-    // 재작성 (구조 다양화)
-    { template: '{name1} carried', tone: 'cheerleader' },
-    { template: '{name1} and {name2} dynamic hits', tone: 'emotional' },
-    { template: 'ok but {name1} tho', tone: 'short_reactor' },
-    { template: 'loving the {name1} arc', tone: 'cheerleader' },
-    { template: 'why is {name1} like this', tone: 'emotional' },
-    { template: '{name1} deserves sm better', tone: 'emotional' },
-    { template: 'the {name1} plot is heating up', tone: 'theorist' },
-    { template: '{name1} growth this chapter', tone: 'cheerleader' },
-    { template: '{name1} and {name2} interactions fr', tone: 'emotional' },
-    { template: 'here for {name1} content', tone: 'short_reactor' },
-    { template: '{name1} POV hits different', tone: 'emotional' },
-    { template: 'author writes {name1} so well', tone: 'cheerleader' },
-    { template: '{name1} lowkey best character', tone: 'theorist' },
-    { template: 'more {name1} pls', tone: 'short_reactor' },
-    { template: 'I ship {name1} and {name2}', tone: 'emotional' },
-    { template: 'wait is {name1} gonna...?', tone: 'theorist' },
-];

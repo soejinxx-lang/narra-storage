@@ -10,7 +10,7 @@
 
 import type { LanguagePack, PersonalityTone, CallPromptArgs } from '../types';
 import { EN_NICKNAMES } from './data/en_nicknames';
-import { EN_TEMPLATES, EN_CONTEXT_TEMPLATES } from './data/en_templates';
+import { EN_TEMPLATES } from './data/en_templates';
 
 // ============================================================
 // 장르별 가중치 (한국어 route.ts 동일)
@@ -56,7 +56,6 @@ const enLangPack: LanguagePack = {
     // === 데이터 풀 ===
     nicknamePool: EN_NICKNAMES,
     templates: EN_TEMPLATES,
-    contextTemplates: EN_CONTEXT_TEMPLATES,
     genreTemplates: {},  // Phase 3에서 추가
 
     // === 30 페르소나 (한국어 route.ts 완전 복제) ===
