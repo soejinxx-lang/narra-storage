@@ -1425,9 +1425,20 @@ async function generateDeepContextComments(
 
     console.log(`📊 Call groups: immersed=${immersedViews.length}, overreactor=${overreactorViews.length}, chaos=${chaosViews.length}, casual=${casualViews.length}`);
 
+    // Scene reference context (top 3 events for context-specific comments)
+    const sceneContext = events.slice(0, 3)
+        .filter(e => e.quote && e.quote.length > 0)
+        .map(e => `"${e.quote}" (${e.summary})`)
+        .join(', ');
+
     // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
     const call1Prompt = immersedViews.length > 0 ? `${platform}
 생각 정리 안 한다. 분석하려다 말아라.${moodHint}${genreHint}
+${sceneContext ? `
+[이번 화 핵심 장면]
+${sceneContext}
+
+⚠️ 댓글 중 최소 30%는 위 장면을 직접 언급하라.` : ''}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
@@ -1444,6 +1455,11 @@ ${immersedViews.map((r, i) => {
     // --- 호출 2: 감정폭발형 (페르소나별 말투 주입) ---
     const call2Prompt = overreactorViews.length > 0 ? `${platform}
 방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}${genreHint}
+${sceneContext ? `
+[이번 화 핵심 장면]
+${sceneContext}
+
+⚠️ 댓글 중 최소 30%는 위 장면을 직접 언급하라.` : ''}
 
 ${overreactorViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
