@@ -702,20 +702,368 @@ interface StoryEvent {
 
 interface EventExtraction {
     events: StoryEvent[];
-    dominantEmotion: string;  // 이 에피의 지배 감정
+    dominantEmotion: string;
 }
 
 type ReaderType = 'immersed' | 'skimmer' | 'overreactor' | 'analyst' | 'troll' | 'misreader' | 'lurker';
 
 interface ReaderProfile {
     type: ReaderType;
+    personaId: string;    // 30-persona ID (e.g. 'A1')
+    personaTone: string;  // 말투 설명
+    personaStyle: string; // 행동 패턴
+    personaEndings: string[]; // 어미 조각
+    personaCognitive: string; // 사고 초점 — 이 독자가 집착하는 대상
     attentionSpan: number;
     memoryNoise: number;
     emotionalIntensity: number;
     literacy: number;
     sarcasmLevel: number;
     bandwagonTarget?: string;
-    dominantEmotion?: string;  // 감정 쏠림 적용된 경우
+    dominantEmotion?: string;
+}
+
+// ============================================================
+// 30 페르소나 풀 — 장르별 배치 시스템
+// ============================================================
+interface PersonaDef {
+    id: string;
+    name: string;
+    baseType: ReaderType;
+    callGroup: 'immersed' | 'overreactor' | 'chaos' | 'casual';
+    tone: string;           // 말투 규칙
+    style: string;          // 행동 패턴 (완성 문장 아님)
+    endings: string[];      // 어미/조각 (조합용)
+    cognitiveFocus: string; // 사고 초점 — 이 독자가 집착하는 대상
+}
+
+const PERSONA_POOL: PersonaDef[] = [
+    // === A. 몰입형 (8개) ===
+    {
+        id: 'A1', name: '감정이입러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~미쳤다, ~좋음으로 끊음. ㅋㅋ와 ㅠㅠ 섞어 씀. 감정 표현 직설적',
+        style: '특정 장면에서 캐릭터 감정에 빙의. 직설적',
+        endings: ['~미쳤다', '~좋음', '~좋다', '~진짜'],
+        cognitiveFocus: '캐릭터의 표정, 대사, 행동 하나에 꽂혀서 거기만 본다'
+    },
+    {
+        id: 'A2', name: '분위기충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~미쳤다, ~좋음으로 끊음. ㅋㅋ와 ㅠㅠ 섞어 씀. 감정 표현 직설적',
+        style: '분위기/공간감/단어 선택에 반응. 비주얼 감탄',
+        endings: ['~미쳤다', '~좋음', '~좋다', '~진짜'],
+        cognitiveFocus: '장면의 분위기, 공간, 날씨, 색감, 연출에 집착한다'
+    },
+    {
+        id: 'A3', name: '커플러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~ㅠㅠ, ~제발로 끊음. 감정 강도 높음. 캐릭터 이름 직접 언급',
+        style: '관계/긴장감/고백에 반응. 캐릭터 이름 직접 사용',
+        endings: ['~ㅠㅠ', '~제발', '~언제', '~사귀어'],
+        cognitiveFocus: '두 캐릭터 사이의 거리감, 눈빛, 대화 뉘앙스에 집착한다'
+    },
+    {
+        id: 'A4', name: '전투몰입러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~ㅋㅋ, ~미쳤다로 끊음. ㅠㅠ 거의 안 씀. 감탄+약한 비속어',
+        style: '전투/각성/체급차에 감탄. 쾌감 위주',
+        endings: ['~미쳤다', '~개간지', '~ㅁㅊ', '~ㅋㅋ'],
+        cognitiveFocus: '전투 동작, 스킬 묘사, 체급 차이, 역전 순간에 꽂힌다'
+    },
+    {
+        id: 'A5', name: '서사충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~구나, ~거임으로 끊음. 차분한 관찰체. 과장 없음',
+        style: '성장/서사 흐름 관찰. 차분하게 정리',
+        endings: ['~구나', '~거임', '~좋다', '~가는'],
+        cognitiveFocus: '캐릭터의 성장 궤적, 이전과 달라진 점, 서사의 흐름에 집착한다'
+    },
+    {
+        id: 'A6', name: '공포체험러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: '~ㅅㅂ, ~진짜로 끊음. 짧은 공포 반응. ㅋㅋ는 자기방어용',
+        style: '공포에 직접 반응. 읽으면서 무서워함',
+        endings: ['~ㅅㅂ', '~진짜', '~소름', '~ㅋㅋ'],
+        cognitiveFocus: '무서운 장면, 불안한 분위기, 뒤에 뭐가 있을 것 같은 느낌에 반응한다'
+    },
+    {
+        id: 'A7', name: '감동충', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅠㅠ 도배 허용. 과장 감정 OK. 와/아 감탄사 많음',
+        style: '감동/슬픔에 과잉 반응. 눈물/심장 언급',
+        endings: ['~ㅠㅠ', '~뜯김', '~남', '~제발'],
+        cognitiveFocus: '캐릭터가 힘들어하거나 성장하는 구체적 순간에 감정이 터진다'
+    },
+    {
+        id: 'A8', name: '시대감성러', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~좋다, ~안타깝다로 끊음. 차분한 감탄체. 과장 적음',
+        style: '시대 분위기/운명에 감탄. 차분한 감상',
+        endings: ['~좋다', '~안타깝다', '~몰입됐음', '~그렇구나'],
+        cognitiveFocus: '시대적 배경, 운명의 무게, 인물이 처한 상황의 비극성에 집착한다'
+    },
+
+    // === B. 분석형 (7개) ===
+    {
+        id: 'B1', name: '복선추적러', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~임, ~100%로 끊음. 확신형 단정체. 근거 안 씀',
+        style: '복선/떡밥/연결점 단정. 근거 없이 확신',
+        endings: ['~임', '~100%', '~연결됨', '~회수'],
+        cognitiveFocus: '이전 화 장면, 숨겨진 떡밥, 구조적 반복에 집착한다'
+    },
+    {
+        id: 'B2', name: '세계관분석충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~인데로 끊음. 설명 없이 당연히 아는 것처럼',
+        style: '세계관/설정 정합성 판단. 아는 척',
+        endings: ['~맞음', '~인데', '~충돌', '~회수 각'],
+        cognitiveFocus: '세계관 규칙, 마법/물리 체계, 이전 설정과의 정합성에 집착한다'
+    },
+    {
+        id: 'B3', name: '추리광', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~임, ~밖에 없음으로 끊음. 틀려도 확신',
+        style: '범인/진범/시간선 추리. 틀려도 확신',
+        endings: ['~임', '~밖에 없음', '~안 맞음', '~의심'],
+        cognitiveFocus: '인물 동기, 시간선 앞뒤, 누가 거짓말하는지에 집착한다'
+    },
+    {
+        id: 'B4', name: '설정감시자', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~무리인데로 끊음. 냉정 단정체. 감탄 거의 없음',
+        style: '설정 구멍/물리적 모순 지적. 냉정',
+        endings: ['~맞음', '~무리인데', '~구멍임', '~좀'],
+        cognitiveFocus: '장면 속 물리/마법 규칙이 말이 되는지 따진다'
+    },
+    {
+        id: 'B5', name: '고증충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~맞음, ~했네로 끊음. 칭찬도 함. 약간 나이 든 느낌',
+        style: '역사적 고증 평가. 칭찬/지적 섞음',
+        endings: ['~맞음', '~했네', '~다른데', '~그렇지'],
+        cognitiveFocus: '역사적 사실, 시대 고증, 문화적 디테일의 정확성에 집착한다'
+    },
+    {
+        id: 'B6', name: '메타분석러', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~일부러, ~인듯으로 끊음. 작가 직접 언급. 관찰자 시점',
+        style: '작가 의도/연출 구조 분석. 관찰자 시점',
+        endings: ['~일부러', '~인듯', '~의도적', '~대비'],
+        cognitiveFocus: '작가의 연출 의도, 장면 배치 순서, 구조적 대비에 집착한다'
+    },
+    {
+        id: 'B7', name: '회귀규칙충', baseType: 'analyst', callGroup: 'immersed',
+        tone: '~갈림, ~올듯으로 끊음. 전생/현생 비교',
+        style: '회귀/전생 규칙 비교. 나비효과 추측',
+        endings: ['~갈림', '~올듯', '~안 되는데', '~달라짐'],
+        cognitiveFocus: '전생과 현생의 차이, 나비효과, 회귀 규칙의 변화에 집착한다'
+    },
+
+    // === C. 반응형 (5개) ===
+    {
+        id: 'C1', name: '감정폭발러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅋ 또는 ㅠ 반복. 대문자/초성 혼합. 문장 구조 파괴',
+        style: '감정 폭발로 문장 구조 파괴. 초성/반복',
+        endings: ['ㅋㅋㅋㅋ', 'ㅠㅠㅠ', '~진짜', '~뭐하냐'],
+        cognitiveFocus: '가장 자극적인 장면 하나에 감정이 폭발한다'
+    },
+    {
+        id: 'C2', name: '사이다중독자', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: '~ㅅㅂ, ~ㅋㅋ로 끊음. 쾌감 표현 특화',
+        style: '통쾌함/시원함에 반응. 응징/역전 쾌감',
+        endings: ['~ㅅㅂ', '~ㅋㅋ', '~시원', '~개꿀'],
+        cognitiveFocus: '악역이 당하는 장면, 역전, 통쾌한 순간에 꽂힌다'
+    },
+    {
+        id: 'C3', name: '웃음폭발러', baseType: 'overreactor', callGroup: 'overreactor',
+        tone: 'ㅋ 도배 최소 5개. ~미쳤냐, ~아프다로 끊음',
+        style: '웃김에 반응. ㅋ 도배+신체 반응 언급',
+        endings: ['ㅋㅋㅋㅋㅋ', '~미쳤냐', '~아프다', '~못 쉬겠음'],
+        cognitiveFocus: '웃긴 대사, 캐릭터 행동, 상황의 아이러니에 꽂힌다'
+    },
+    {
+        id: 'C4', name: '공감충', baseType: 'immersed', callGroup: 'immersed',
+        tone: '~임, ~됨으로 끊음. 짧은 공감형. 나 언급',
+        style: '자기 경험과 연결. "나"/"내" 자주 사용',
+        endings: ['~임', '~됨', '~나', '~찐'],
+        cognitiveFocus: '캐릭터 상황을 자기 경험과 연결한다'
+    },
+    {
+        id: 'C5', name: '단어투척러', baseType: 'lurker', callGroup: 'casual',
+        tone: '1~3단어만. 종결어미 없음. 마침표 없음',
+        style: '단어 1~3개만 던짐. 문장 구성 안 함',
+        endings: ['(종결어미 없음)', '(마침표 없음)', '(1~3단어)'],
+        cognitiveFocus: '가장 인상적인 단어 하나만 뽑아서 던진다'
+    },
+
+    // === D. 냉소형 (5개) ===
+    {
+        id: 'D1', name: '전개비꼼러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~느림으로 끊음. 세미콜론 자주. 하.. 한탄',
+        style: '전개 속도/반복에 불만. 한탄+비꼼',
+        endings: ['~이네;', '~느림', '하..', '~어쭌'],
+        cognitiveFocus: '스토리 전개의 느린 부분, 반복되는 패턴, 늘어지는 구간에 집착한다'
+    },
+    {
+        id: 'D2', name: '클리셰헌터', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~봤는데로 끊음. 또/어디서 자주 사용',
+        style: '클리셰/기시감 지적. "또" "어디서" 자주',
+        endings: ['~이네;', '~봤는데', '또~', '~풀코스'],
+        cognitiveFocus: '다른 작품에서 본 전개, 뻔한 패턴, 기시감 나는 장면에 집착한다'
+    },
+    {
+        id: 'D3', name: '파워밸런스충', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~붕괴로 끊음. 게임 용어 사용',
+        style: '파워밸런스/인플레 지적. 게임 용어 차용',
+        endings: ['~이네;', '~붕괴', '~너프', '~인플레'],
+        cognitiveFocus: '캐릭터 파워의 급격한 변화, 밸런스 붕괴, 설정 인플레에 집착한다'
+    },
+    {
+        id: 'D4', name: '작가비판러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네, ~좀..으로 끊음. 직설+세미콜론. 약간 윗사람 느낌',
+        style: '작가 구성력/전개에 직설적 비판',
+        endings: ['~이네', '~좀..', '~과한 듯', '~이런 식'],
+        cognitiveFocus: '작가의 구성력, 장면 전환, 대사 퀄리티에 불만을 느낀다'
+    },
+    {
+        id: 'D5', name: '공포비꼼러', baseType: 'troll', callGroup: 'chaos',
+        tone: '~이네;, ~진짜로 끊음. 왜 자주 사용',
+        style: '공포 상황의 비합리성 비꼼',
+        endings: ['~이네;', '~진짜', '왜~', '~죽는 거'],
+        cognitiveFocus: '공포 상황에서 캐릭터의 비합리적 행동, 뻔한 공포 클리셰에 집착한다'
+    },
+
+    // === E. 밈/드립형 (5개) ===
+    {
+        id: 'E1', name: '게임드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: 'SSS급, 치트키 등 게임 용어+ㅋㅋ. 과장 비유',
+        style: '상황을 게임 용어로 비유. 등급/스킬/치트',
+        endings: ['~SSS급', '~치트', '~ㅋㅋ', '~뉴게임'],
+        cognitiveFocus: '모든 상황을 게임 메커니즘으로 번역해서 본다'
+    },
+    {
+        id: 'E2', name: '밈장인', baseType: 'lurker', callGroup: 'casual',
+        tone: '시뮬레이터/다큐 등 장르 비유. 밈체+과장',
+        style: '상황을 다른 장르/밈으로 비유',
+        endings: ['~시뮬레이터', '~다큐', '~ㅋㅋ', '~가지고 놈'],
+        cognitiveFocus: '장면을 다른 장르, 밈, 인터넷 유행어로 비유한다'
+    },
+    {
+        id: 'E3', name: '연애드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: '작가 직접 언급. 드립+ㅋㅋ',
+        style: '연애를 드립으로 비유. 작가 직접 언급',
+        endings: ['~시뮬레이터', '~솔로', '~과다 섭취', '~ㅋㅋ'],
+        cognitiveFocus: '연애 요소를 현실/밈으로 비유해서 드립을 친다'
+    },
+    {
+        id: 'E4', name: '역사드립러', baseType: 'lurker', callGroup: 'casual',
+        tone: '시대극→현대 밈 비유. 드립+ㅋㅋ',
+        style: '역사→현대 감각으로 비유',
+        endings: ['~타고 싶다', '~재밌음', '~나올듯', '~ㅋㅋ'],
+        cognitiveFocus: '역사적 장면을 현대 감각으로 번역해서 드립을 친다'
+    },
+    {
+        id: 'E5', name: '오독러', baseType: 'misreader', callGroup: 'chaos',
+        tone: '~을걸, ~인듯으로 끊음. 확신형 (틀린 채로)',
+        style: '잘못 읽고 확신. 근거 없는 단정',
+        endings: ['~을걸', '~인듯', '~이었음', '~의심'],
+        cognitiveFocus: '잘못 이해한 정보를 기반으로 확신에 찬 해석을 한다'
+    },
+];
+
+// 장르별 페르소나 풀 (이 중에서 랜덤 6~8명 선택)
+const GENRE_PERSONA_MAP: Record<string, string[]> = {
+    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
+    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5'],
+    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5'],
+    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
+    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+};
+
+// 장르별 페르소나 풀에서 8명 선택
+function selectPersonasForGenre(genreWeights: Record<string, number>, count: number = 8): PersonaDef[] {
+    const personaMap = new Map(PERSONA_POOL.map(p => [p.id, p]));
+    const defaultPool = ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5'];
+
+    const categories = Object.keys(genreWeights);
+
+    // 가중치 없으면 기본 풀
+    if (categories.length === 0) {
+        const shuffled = [...defaultPool].sort(() => Math.random() - 0.5).slice(0, count);
+        const result = shuffled.map(id => personaMap.get(id)).filter(Boolean) as PersonaDef[];
+        console.log(`🎭 Genre "default": selected ${result.length} personas: [${result.map(p => p.id + ' ' + p.name).join(', ')}]`);
+        return result;
+    }
+
+    // 장르별 슬롯 수 계산 (Largest Remainder Method)
+    const rawSlots = categories.map(cat => ({
+        cat,
+        raw: genreWeights[cat] * count,
+        floor: Math.floor(genreWeights[cat] * count),
+        remainder: (genreWeights[cat] * count) % 1
+    }));
+
+    let allocated = rawSlots.reduce((sum, s) => sum + s.floor, 0);
+    // 나머지가 큰 순서대로 1씩 추가 (합이 count가 될 때까지)
+    const sorted = [...rawSlots].sort((a, b) => b.remainder - a.remainder);
+    for (const slot of sorted) {
+        if (allocated >= count) break;
+        slot.floor += 1;
+        allocated += 1;
+    }
+
+    const slotMap: Record<string, number> = {};
+    for (const s of rawSlots) {
+        slotMap[s.cat] = s.floor;
+    }
+
+    console.log(`📊 Slot distribution: ${Object.entries(slotMap).map(([k, v]) => `${k}=${v}`).join(', ')} (total=${count})`);
+
+    // 각 장르 풀에서 슬롯 수만큼 랜덤 선택
+    const selected: PersonaDef[] = [];
+    const usedIds = new Set<string>();
+
+    for (const [cat, slots] of Object.entries(slotMap)) {
+        if (slots === 0) continue;
+        const pool = GENRE_PERSONA_MAP[cat] || defaultPool;
+        const available = pool.filter(id => !usedIds.has(id));
+        const shuffled = [...available].sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < Math.min(slots, shuffled.length); i++) {
+            const p = personaMap.get(shuffled[i]);
+            if (p) {
+                selected.push(p);
+                usedIds.add(shuffled[i]);
+            }
+        }
+    }
+
+    // 부족하면 기본 풀에서 보충
+    if (selected.length < count) {
+        const fallback = defaultPool.filter(id => !usedIds.has(id)).sort(() => Math.random() - 0.5);
+        for (const id of fallback) {
+            if (selected.length >= count) break;
+            const p = personaMap.get(id);
+            if (p) {
+                selected.push(p);
+                usedIds.add(id);
+            }
+        }
+    }
+
+    // chaos/casual 최소 1명씩 보장
+    const hasChaos = selected.some(p => p.callGroup === 'chaos');
+    const hasCasual = selected.some(p => p.callGroup === 'casual');
+
+    if (!hasChaos && selected.length > 0) {
+        // 마지막 슬롯을 chaos로 교체
+        const chaosPersona = PERSONA_POOL.filter(p => p.callGroup === 'chaos' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (chaosPersona) selected[selected.length - 1] = chaosPersona;
+    }
+    if (!hasCasual && selected.length > 1) {
+        const casualPersona = PERSONA_POOL.filter(p => p.callGroup === 'casual' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (casualPersona) selected[selected.length - 2] = casualPersona;
+    }
+
+    console.log(`🎭 Weighted selection: ${selected.length} personas: [${selected.map(p => p.id + ' ' + p.name).join(', ')}]`);
+    return selected.slice(0, count);
 }
 
 // ========== Stage 1: Event Extractor + Dominant Emotion ==========
@@ -755,20 +1103,13 @@ ${trimmed}`;
     return { events: [], dominantEmotion: '' };
 }
 
-// ========== Stage 2: Reader Profiles (강제 분포 + 감정 쏠림) ==========
-function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominantEmotion: string = ''): ReaderProfile[] {
-    const typeQuota: { type: ReaderType; count: number }[] = [
-        { type: 'immersed', count: 2 },
-        { type: 'lurker', count: 1 },
-        { type: 'skimmer', count: 1 },
-        { type: 'overreactor', count: 1 },
-        { type: 'misreader', count: 1 },
-        { type: 'troll', count: 1 },
-        { type: 'analyst', count: 1 },
-    ];
+// ========== Stage 2: Reader Profiles (페르소나 기반 + 감정 쏠림) ==========
+function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], dominantEmotion: string = ''): ReaderProfile[] {
+    const count = personas.length;
 
     // 감정 강도 히스토그램
     const emotionSlots = [1.5, 3.5, 4.0, 5.5, 6.0, 7.5, 8.0, 9.5];
+    while (emotionSlots.length < count) emotionSlots.push(Math.random() * 10);
     for (let i = emotionSlots.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [emotionSlots[i], emotionSlots[j]] = [emotionSlots[j], emotionSlots[i]];
@@ -780,114 +1121,98 @@ function generateReaderProfiles(events: StoryEvent[], count: number = 8, dominan
         ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
         : null;
 
-    // 감정 쏠림: dominantRatio를 0.3~0.6 사이에서 랜덤 결정
-    const dominantRatio = dominantEmotion ? 0.3 + Math.random() * 0.3 : 0;
-    const dominantCount = Math.round(count * dominantRatio);
-    if (dominantEmotion) {
-        console.log(`🎭 Emotion skew: "${dominantEmotion}" → ${dominantCount}/${count} readers (${(dominantRatio * 100).toFixed(0)}%)`);
-    }
 
     const profiles: ReaderProfile[] = [];
-    let emotionIdx = 0;
-    let dominantApplied = 0;
     const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-    // 감정 전염 저항도 (유형별)
-    const emotionResistance: Record<ReaderType, number> = {
-        immersed: 0.2,     // 쉽게 전염됨
-        overreactor: 0.1,  // 가장 쉽게 전염
-        analyst: 0.5,      // 중간
-        skimmer: 0.6,      // 별로 영향 안 받음
-        misreader: 0.4,
-        lurker: 0.8,       // 거의 안 받음
-        troll: 0.7,        // 30% 확률로 역행
-    };
+    for (let i = 0; i < personas.length; i++) {
+        const persona = personas[i];
+        const emotion = i < emotionSlots.length ? emotionSlots[i] / 10 : Math.random();
 
-    for (const quota of typeQuota) {
-        for (let i = 0; i < quota.count; i++) {
-            const emotion = emotionIdx < emotionSlots.length
-                ? emotionSlots[emotionIdx++] / 10
-                : Math.random();
+        const profile: ReaderProfile = {
+            type: persona.baseType,
+            personaId: persona.id,
+            personaTone: persona.tone,
+            personaStyle: persona.style,
+            personaEndings: persona.endings,
+            personaCognitive: persona.cognitiveFocus,
+            attentionSpan: 0,
+            memoryNoise: 0,
+            emotionalIntensity: emotion,
+            literacy: 0,
+            sarcasmLevel: 0,
+        };
 
-            const profile: ReaderProfile = {
-                type: quota.type,
-                attentionSpan: 0,
-                memoryNoise: 0,
-                emotionalIntensity: emotion,
-                literacy: 0,
-                sarcasmLevel: 0,
-            };
-
-            switch (quota.type) {
-                case 'immersed':
-                    profile.attentionSpan = rand(0.8, 1.0);
-                    profile.memoryNoise = rand(0, 0.1);
-                    profile.literacy = rand(0.6, 1.0);
-                    break;
-                case 'skimmer':
-                    profile.attentionSpan = rand(0.2, 0.4);
-                    profile.memoryNoise = rand(0.3, 0.5);
-                    profile.literacy = rand(0.3, 0.6);
-                    break;
-                case 'overreactor':
-                    profile.attentionSpan = rand(0.5, 0.8);
-                    profile.memoryNoise = rand(0.1, 0.2);
-                    profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
-                    profile.literacy = rand(0.3, 0.5);
-                    break;
-                case 'analyst':
-                    profile.attentionSpan = rand(0.9, 1.0);
-                    profile.memoryNoise = 0;
-                    profile.literacy = rand(0.7, 1.0);
-                    break;
-                case 'troll':
-                    profile.attentionSpan = rand(0.3, 0.6);
-                    profile.memoryNoise = rand(0.3, 0.7);
-                    profile.sarcasmLevel = rand(0.6, 1.0);
-                    profile.literacy = rand(0.2, 0.5);
-                    break;
-                case 'misreader':
-                    profile.attentionSpan = rand(0.4, 0.6);
-                    profile.memoryNoise = rand(0.5, 0.8);
-                    profile.literacy = rand(0.4, 0.7);
-                    break;
-                case 'lurker':
-                    profile.attentionSpan = rand(0.1, 0.3);
-                    profile.memoryNoise = 0;
-                    profile.literacy = rand(0.1, 0.3);
-                    break;
-            }
-
-            // 캐릭터 동조
-            if (bandwagonChar && Math.random() < 0.4) {
-                profile.bandwagonTarget = bandwagonChar;
-            }
-
-            // 감정 쏠림 적용 (저항도에 따라)
-            if (dominantEmotion && dominantApplied < dominantCount) {
-                const resistance = emotionResistance[quota.type];
-                if (Math.random() > resistance) {
-                    // troll은 30% 확률로 역행
-                    if (quota.type === 'troll' && Math.random() < 0.3) {
-                        profile.dominantEmotion = '반감';  // 역행
-                    } else {
-                        profile.dominantEmotion = dominantEmotion;
-                    }
-                    dominantApplied++;
-                }
-            }
-
-            profiles.push(profile);
+        // baseType에 따른 수치 설정
+        switch (persona.baseType) {
+            case 'immersed':
+                profile.attentionSpan = rand(0.8, 1.0);
+                profile.memoryNoise = rand(0, 0.1);
+                profile.literacy = rand(0.6, 1.0);
+                break;
+            case 'skimmer':
+                profile.attentionSpan = rand(0.2, 0.4);
+                profile.memoryNoise = rand(0.3, 0.5);
+                profile.literacy = rand(0.3, 0.6);
+                break;
+            case 'overreactor':
+                profile.attentionSpan = rand(0.5, 0.8);
+                profile.memoryNoise = rand(0.1, 0.2);
+                profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
+                profile.literacy = rand(0.3, 0.5);
+                break;
+            case 'analyst':
+                profile.attentionSpan = rand(0.9, 1.0);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.7, 1.0);
+                break;
+            case 'troll':
+                profile.attentionSpan = rand(0.3, 0.6);
+                profile.memoryNoise = rand(0.3, 0.7);
+                profile.sarcasmLevel = rand(0.6, 1.0);
+                profile.literacy = rand(0.2, 0.5);
+                break;
+            case 'misreader':
+                profile.attentionSpan = rand(0.4, 0.6);
+                profile.memoryNoise = rand(0.5, 0.8);
+                profile.literacy = rand(0.4, 0.7);
+                break;
+            case 'lurker':
+                profile.attentionSpan = rand(0.1, 0.3);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.1, 0.3);
+                break;
         }
+
+        // 캐릭터 동조
+        if (bandwagonChar && Math.random() < 0.4) {
+            profile.bandwagonTarget = bandwagonChar;
+        }
+
+        // Conservative intensity boost based on episode mood (not vocabulary)
+        // Affects expression strength only, not word choice
+        if (dominantEmotion) {
+            const moodIntensityBoost: Record<string, number> = {
+                '슬픔': 1.08, '소름': 1.06, '감동': 1.06,
+                '긴장': 1.04, '분노': 1.05,
+                '설렘': 1.0,  // No boost - this was causing romance overflow
+                '웃김': 1.0, '허탈': 1.0
+            };
+            const boost = moodIntensityBoost[dominantEmotion] || 1.0;
+            profile.emotionalIntensity *= boost;
+        }
+
+        profiles.push(profile);
     }
 
     if (bandwagonChar) {
         console.log(`👥 Bandwagon: ${profiles.filter(p => p.bandwagonTarget).length} readers on "${bandwagonChar}"`);
     }
-    console.log(`🎭 Emotion infected: ${profiles.filter(p => p.dominantEmotion).length}/${profiles.length}`);
+
 
     return profiles;
 }
+
 
 // ========== Stage 3: Info Restriction + 해석 왜곡 ==========
 function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
@@ -1066,10 +1391,12 @@ function amplifyEmotions(comments: string[]): string[] {
     return result;
 }
 
-// ========== Stage 4: Comment Generation (4회 분리 호출) ==========
+// ========== Stage 4: Comment Generation (4회 분리 호출 — 30 페르소나) ==========
 async function generateDeepContextComments(
     episodeContent: string,
-    count: number = 8
+    genreWeights: Record<string, number> = {},
+    count: number = 8,
+    sourceLanguage: string = 'ko'
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
 
     // ===== Stage 1: Event Extraction =====
@@ -1082,11 +1409,14 @@ async function generateDeepContextComments(
         return { comments: [], detectedTags: [] };
     }
 
+    // ===== Stage 1.5: DB 장르 가중치로 페르소나 선택 =====
+    const personas = selectPersonasForGenre(genreWeights, count);
+
     // ===== Stage 2: Reader Profiles =====
     console.log('👥 Stage 2: Generating reader profiles...');
-    const profiles = generateReaderProfiles(events, count, dominantEmotion);
+    const profiles = generateReaderProfiles(events, personas, dominantEmotion);
     for (const p of profiles) {
-        console.log(`  ${p.type}: attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}${p.dominantEmotion ? `, mood=${p.dominantEmotion}` : ''}`);
+        console.log(`  ${p.personaId}(${p.type}): attention=${p.attentionSpan.toFixed(2)}, noise=${p.memoryNoise.toFixed(2)}, emotion=${p.emotionalIntensity.toFixed(2)}${p.bandwagonTarget ? `, bandwagon=${p.bandwagonTarget}` : ''}${p.dominantEmotion ? `, mood=${p.dominantEmotion}` : ''}`);
     }
 
     // ===== Stage 3: Info Restriction =====
@@ -1096,94 +1426,140 @@ async function generateDeepContextComments(
         view: buildReaderView(events, p),
     }));
 
-    // ===== Stage 4: 4회 분리 GPT 호출 (상황 기반) =====
+    // ===== Stage 4: callGroup별 분리 GPT 호출 =====
     const moodHint = dominantEmotion ? `\n분위기: 이 화는 전체적으로 "${dominantEmotion}" 느낌이 강하다.` : '';
 
-    // 호출 1: 몰입형 + 분석형
-    const immersedViews = readerViews.filter(r => r.profile.type === 'immersed' || r.profile.type === 'analyst');
-    const call1Prompt = `한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.
-생각 정리 안 하고 먼저 느낌이 나온다. 근거 설명 안 한다. 분석하려다 말아라.${moodHint}
+    // 장르 힌트 주입 (GENRE_HINTS에서 가져옴)
+    const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const genreHintText = GENRE_HINTS[primaryGenre]?.[sourceLanguage] || GENRE_HINTS[primaryGenre]?.['ko'] || '';
+    const genreHint = genreHintText ? `\n${genreHintText}` : '';
+    if (primaryGenre) console.log(`📖 Genre hint applied: ${primaryGenre} (${sourceLanguage})`);
+
+    const platform = '한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.';
+
+    // callGroup별 분류
+    const immersedViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'immersed';
+    });
+    const overreactorViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'overreactor';
+    });
+    const chaosViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'chaos';
+    });
+    const casualViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'casual';
+    });
+
+    console.log(`📊 Call groups: immersed=${immersedViews.length}, overreactor=${overreactorViews.length}, chaos=${chaosViews.length}, casual=${casualViews.length}`);
+
+    // Scene reference context (top 3 events for context-specific comments)
+    const sceneContext = events.slice(0, 3)
+        .filter(e => e.quote && e.quote.length > 0)
+        .map(e => `"${e.quote}" (${e.summary})`)
+        .join(', ');
+
+    // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
+    const call1Prompt = immersedViews.length > 0 ? `${platform}
+생각 정리 안 한다. 분석하려다 말아라.${moodHint}${genreHint}
+${sceneContext ? `
+[이번 화 핵심 장면]
+${sceneContext}
+
+댓글 대부분이 위 장면을 직접 언급해야 한다.` : ''}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
         return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
-기억: ${r.view}${bandwagon}`;
+기억: ${r.view}${bandwagon}
+사고 초점: ${r.profile.personaCognitive}
+말투: ${r.profile.personaTone}
+행동: ${r.profile.personaStyle}
+어미: ${r.profile.personaEndings.join(', ')}`;
     }).join('\n')}
 
-이런 톤이 섞여야 한다:
-"이거 나중에 돌아온다 100%"
-"저거 복선 맞음 ㅋㅋ"
-"작가 일부러 여기서 끊었네"
-"아 여기서 끊네 미쳤냐"
-"이건 좀 뻔한데"
-"솔직히 좀 과한 듯"
-"왜 저러는 거임 이해 안 됨"
+[출력 — JSON]
+{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 8)}개"] }` : null;
+
+    // --- 호출 2: 감정폭발형 (페르소나별 말투 주입) ---
+    const call2Prompt = overreactorViews.length > 0 ? `${platform}
+방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}${genreHint}
+${sceneContext ? `
+[이번 화 핵심 장면]
+${sceneContext}
+
+장면을 언급해도 된다.` : ''}
+
+${overreactorViews.map((r, i) => {
+        const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
+        return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
+장면: ${r.view}${bandwagon}
+사고 초점: ${r.profile.personaCognitive}
+말투: ${r.profile.personaTone}
+행동: ${r.profile.personaStyle}
+어미: ${r.profile.personaEndings.join(', ')}`;
+    }).join('\n')}
 
 [출력 — JSON]
-{ "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 6)}개"] }`;
+{ "comments": ["${Math.min(overreactorViews.length * 2, 6)}개"] }` : null;
 
-    // 호출 2: 감정과잉형
-    const overreactorViews = readerViews.filter(r => r.profile.type === 'overreactor');
-    const call2Prompt = `한국 웹소설 모바일 댓글. 방금 읽고 폰 던질 뻔한 사람. 감정이 앞서서 타이핑 엉망.${moodHint}
+    // --- 호출 3: 냉소형 + 오독형 — 🔒 보호 영역 ---
+    const call3Prompt = chaosViews.length > 0 ? `${platform}
+이 독자들은 호의적이지 않거나 잘못 이해하고 있다.${moodHint}${genreHint}
 
-장면: ${overreactorViews.map(r => r.view).join('\n')}
-${overreactorViews[0]?.profile.bandwagonTarget ? `"${overreactorViews[0].profile.bandwagonTarget}"한테 감정이입 심함.` : ''}
-
-이런 톤:
-"아니 ㅋㅋㅋㅋ 미쳤냐 진짜"
-"와씨 개쫄림"
-"ㅠㅠㅠㅠㅠ 안돼"
-
-[출력 — JSON]
-{ "comments": ["3개"] }`;
-
-    // 호출 3: 짜증형 + 오독형 — 🔒 보호 영역
-    const chaosViews = readerViews.filter(r => r.profile.type === 'troll' || r.profile.type === 'misreader');
-    const call3Prompt = `한국 웹소설 모바일 댓글. 2명의 독자. 둘 다 호의적이지 않다.
-
-[A: 짜증남] 불만 많고 비꼼. 칭찬 안 함.
-기억: ${chaosViews.find(r => r.profile.type === 'troll')?.view || '대충 기억남'}
-${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget}" 싫어함.` : ''}
-이런 톤: "또 도망이네", "전개 느림", "답답", "이거 어디서 봤는데"
-
-[B: 대충 읽음] 잘못 이해하고 있음. 본인은 모름.
-기억(틀림): ${chaosViews.find(r => r.profile.type === 'misreader')?.view || '뭔가 잘못 기억'}
-이런 톤: "얘 죽은 거 아님?", "저거 배신하려는 거지", "아까 그 장면 뭐였지"
+${chaosViews.map((r, i) => {
+        const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}" 싫어함.` : '';
+        const memoryLabel = r.profile.type === 'misreader' ? '기억(틀림)' : '기억';
+        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'misreader' ? '잘못 이해' : '짜증/비꼼'}]${bandwagon}
+${memoryLabel}: ${r.view}
+사고 초점: ${r.profile.personaCognitive}
+말투: ${r.profile.personaTone}
+행동: ${r.profile.personaStyle}
+어미: ${r.profile.personaEndings.join(', ')}`;
+    }).join('\n')}
 
 [출력 — JSON]
-{ "comments": ["A 2개 + B 2개 = 4개"] }`;
+{ "comments": ["${Math.min(chaosViews.length * 2, 4)}개"] }` : null;
 
-    // 호출 4: 대충형 + 관망형
-    const casualViews = readerViews.filter(r => r.profile.type === 'skimmer' || r.profile.type === 'lurker');
-    const call4Prompt = `한국 웹소설 모바일 댓글. 2명. 관심 별로 없다.
+    // --- 호출 4: 밈/드립형 + 단어투척 ---
+    const call4Prompt = casualViews.length > 0 ? `${platform}
+이 독자들은 대충 읽거나 밈으로 반응한다.${moodHint}${genreHint}
 
-[A] 앞부분만 훑어봄. 뒤는 모름.
-기억: ${casualViews.find(r => r.profile.type === 'skimmer')?.view || '거의 없음'}
-이런 톤: "뭔가 도망치는 거?", "잘 모르겠는데 재밌긴"
-
-[B] 거의 안 읽음. 5자 이하만 씀.
-이런 톤: ㅇㅇ, 1, ㄷㄷ, 와, 굿, 보는중
+${casualViews.map((r, i) => {
+        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밈형' : '대충 반응'}]
+기억: ${r.view}
+사고 초점: ${r.profile.personaCognitive}
+말투: ${r.profile.personaTone}
+행동: ${r.profile.personaStyle}
+어미: ${r.profile.personaEndings.join(', ')}`;
+    }).join('\n')}
 
 [출력 — JSON]
-{ "comments": ["A 2개 + B 2개 = 4개"] }`;
+{ "comments": ["${Math.min(casualViews.length * 2, 4)}개"] }` : null;
 
-    // ===== 4회 병렬 호출 =====
-    console.log('🧠 Stage 4: 4 separate cognitive calls...');
-    const [raw1, raw2, raw3, raw4] = await Promise.all([
-        callAzureGPT(call1Prompt),
-        callAzureGPT(call2Prompt),
-        callAzureGPT(call3Prompt),
-        callAzureGPT(call4Prompt),
-    ]);
+    // ===== 4회 병렬 호출 (빈 그룹은 skip) =====
+    console.log('🧠 Stage 4: Persona-based cognitive calls...');
+    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt].filter(Boolean) as string[];
+    const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
 
-    // ===== 결과 합치기 (call3 보호 분리) =====
-    const safeComments: string[] = [];  // call1,2,4 → 큐레이터로
-    const chaosComments: string[] = []; // call3 → 보호 영역
+    // ===== 결과 합치기 (chaos 보호 분리) =====
+    const safeComments: string[] = [];
+    const chaosComments: string[] = [];
     let detectedTags: string[] = [];
 
     const parseComments = (raw: string | null): string[] => {
         if (!raw) return [];
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        // GPT가 앞에 붙이는 라벨 제거 패턴
+        const stripLabel = (c: string) => c
+            .replace(/^["']|["']$/g, '')
+            // Remove common comment labels + genre-specific keywords
+            .replace(/^(반응|원댓글|독자[A-Z]?|[A-Z]|감상|댓글|코멘트|의견|답글|복선|설정|각성|서사|전투|액션|심쿵|케미|회귀|성장|스킬|마력|분위기|연출|묘사|캐릭터|전개|반전|긴장|소름|감동)[：:\-→|]\s*/g, '')
+            .trim();
         try {
             const parsed = JSON.parse(cleaned);
             if (parsed.tags) {
@@ -1192,19 +1568,21 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
                 );
             }
             return (parsed.comments || [])
-                .map((c: string) => c.replace(/^["']|["']$/g, '').replace(/^(반응|원댓글|독자[AB]?|[AB]):\s*/g, '').trim())
+                .map((c: string) => stripLabel(c))
                 .filter((c: string) => c.length > 0 && c.length < 100);
         } catch {
             return raw.split('\n')
-                .map((l: string) => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
+                .map((l: string) => stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
                 .filter((l: string) => l.length > 0 && l.length < 100);
         }
     };
 
-    safeComments.push(...parseComments(raw1));
-    safeComments.push(...parseComments(raw2));
-    chaosComments.push(...parseComments(raw3));  // 🔒 분리
-    safeComments.push(...parseComments(raw4));
+    // 프롬프트 순서에 맞게 결과 분배
+    let resultIdx = 0;
+    if (call1Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call2Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call3Prompt) chaosComments.push(...parseComments(rawResults[resultIdx++] || null)); // 🔒 보호
+    if (call4Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
 
     console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}`);
 
@@ -1219,7 +1597,6 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
     console.log(`📊 After social dynamics: ${safeComments.length} → ${withEmotion.length}`);
 
     // ===== Stage 7: GPT-5 큐레이터 (safe만, chaos 제외) =====
-    // chaos 삽입 수: 0(10%), 1(50%), 2(40%)
     const chaosRoll = Math.random();
     const chaosInsertCount = Math.min(chaosComments.length, chaosRoll < 0.1 ? 0 : chaosRoll < 0.6 ? 1 : 2);
     const curatorTarget = Math.max(1, count - chaosInsertCount);
@@ -1236,6 +1613,7 @@ ${chaosViews.find(r => r.profile.type === 'troll')?.profile.bandwagonTarget ? `"
     console.log(`🧠 Final: ${filtered.length} curated + ${selectedChaos.length} chaos = ${finalMerged.length}, tags: [${detectedTags.join(', ')}]`);
     return { comments: finalMerged, detectedTags };
 }
+
 
 // ========== Stage 5: GPT-5 Statistical Curator ==========
 async function curateWithGPT5(comments: string[], targetCount: number = 8): Promise<string[]> {
@@ -1325,7 +1703,7 @@ ${commentList}
         // 마침표 제거
         text = text.replace(/\.$/, '').replace(/\.\s/g, ' ').trim();
         // 40% 확률로 물음표 댓글을 단정형으로 변환
-        if (text.includes('?') && Math.random() < 0.4) {
+        if (text.includes('?') && Math.random() < 0.5) {
             text = text.replace(/\?+$/, '')
                 .replace(/(일|는 건|는거|는걸|를|을)\s*(까|가)$/, '$1듯')
                 .replace(/(럼|처럼)$/, '인듯');
@@ -1361,43 +1739,52 @@ ${commentList}
 // ============================================================
 
 const GENRE_CATEGORY_MAP: Record<string, string> = {
-    // Fantasy → game-fantasy
+    // === Fantasy → fantasy ===
+    'High Fantasy': 'fantasy',
+    'Dark Fantasy': 'fantasy',
+    'Urban Fantasy': 'fantasy',
+    'Mythology Retelling': 'fantasy',
+
+    // === Fantasy → game-fantasy ===
     'GameLit / LitRPG': 'game-fantasy',
-    'Progression': 'game-fantasy',
     'Cultivation': 'game-fantasy',
+    'Progression': 'game-fantasy',
     'Dungeon / Tower': 'game-fantasy',
 
-    // Fantasy → murim
+    // === Fantasy/Action → murim ===
     'Murim': 'murim',
     'Martial Arts': 'murim',
 
-    // Romance → romance
+    // === Romance → romance ===
     'Contemporary Romance': 'romance',
     'Historical Romance': 'romance',
     'Romantic Fantasy': 'romance',
+    'Paranormal Romance': 'romance',
+    'Romantic Comedy': 'romance',
+    // Tropes that map to romance
     'CEO / Billionaire': 'romance',
     'Enemies to Lovers': 'romance',
     'Forbidden Love': 'romance',
     'Omegaverse': 'romance',
-    'Paranormal Romance': 'romance',
-    'Romantic Comedy': 'romance',
+    'Slow Burn': 'romance',
 
-    // Isekai/Regression → regression
+    // === Narrative Devices → regression ===
     'Isekai': 'regression',
     'Regression': 'regression',
     'Reincarnation': 'regression',
     'Transmigration': 'regression',
+    'Time Travel': 'regression',
 
-    // Sci-Fi → sci-fi
-    'Space Opera': 'sci-fi',
-    'Cyberpunk': 'sci-fi',
-    'Post-Apocalyptic': 'sci-fi',
-    'Mecha': 'sci-fi',
-    'Virtual Reality': 'sci-fi',
-    'Hard Sci-Fi': 'sci-fi',
-    'Steampunk': 'sci-fi',
+    // === Sci-Fi → scifi ===
+    'Space Opera': 'scifi',
+    'Cyberpunk': 'scifi',
+    'Steampunk': 'scifi',
+    'Post-Apocalyptic': 'scifi',
+    'Hard Sci-Fi': 'scifi',
+    'Mecha': 'scifi',
+    'Virtual Reality': 'scifi',
 
-    // Mystery/Thriller → mystery
+    // === Mystery/Thriller → mystery ===
     'Psychological Thriller': 'mystery',
     'Crime': 'mystery',
     'Detective': 'mystery',
@@ -1406,48 +1793,63 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
     'Espionage': 'mystery',
     'Whodunit': 'mystery',
 
-    // Horror → horror
+    // === Horror → horror ===
+    'Supernatural Horror': 'horror',
+    'Cosmic Horror': 'horror',
+    'Gothic': 'horror',
+    'Psychological Horror': 'horror',
+    'Zombie': 'horror',
+    // Legacy names (keep for backward compat)
     'Gothic Horror': 'horror',
     'Supernatural': 'horror',
-    'Zombie': 'horror',
     'Survival Horror': 'horror',
     'Body Horror': 'horror',
     'Folk Horror': 'horror',
 
-    // Historical → historical  
-    'Period Drama': 'historical',
+    // === Historical → historical ===
+    'Historical Fiction': 'historical',
     'Alternate History': 'historical',
+    'Period Drama': 'historical',
+    'War': 'historical',
+    // Legacy names
     'Historical Fantasy': 'historical',
     'Court Intrigue': 'historical',
     'War Epic': 'historical',
     'Dynasty': 'historical',
 
-    // Slice of Life / Contemporary → slice-of-life
-    'Contemporary': 'slice-of-life',
+    // === Contemporary → slice-of-life ===
+    'Slice of Life': 'slice-of-life',
     'Coming of Age': 'slice-of-life',
+    'Tragedy': 'slice-of-life',
     'School Life': 'slice-of-life',
     'Workplace': 'slice-of-life',
+    'Family': 'slice-of-life',
+    // Legacy names
+    'Contemporary': 'slice-of-life',
     'Family Drama': 'slice-of-life',
-    'Tragedy': 'slice-of-life',
     'Melodrama': 'slice-of-life',
 
-    // Action → action
+    // === Action → action ===
     'Superhero': 'action',
     'Military': 'action',
     'Survival': 'action',
+    'Apocalypse': 'action',
+    // Legacy names
     'Apocalyptic': 'action',
     'Battle Royale': 'action',
     'Sports': 'action',
 
-    // Comedy → comedy
-    'Parody': 'comedy',
+    // === Comedy → comedy ===
     'Satire': 'comedy',
+    'Parody': 'comedy',
+    // Legacy names
     'Slapstick': 'comedy',
     'Dark Comedy': 'comedy',
 
-    // Note: LGBTQ+ moved to Tropes (not genre-specific)
-    // Note: Time Travel moved to Narrative Devices (not genre-specific)
+    // Note: LGBTQ+, Cozy, Grimdark, Dark Academia, Werewolf/Vampire → tropes, no persona mapping
+    // Note: YA, New Adult, Adult → audience tier, no persona mapping
 };
+
 
 // ============================================================
 // 장르별 × 언어별 GPT 힌트 (Multilingual Genre Hints)
@@ -1456,17 +1858,23 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
 const GENRE_HINTS: Record<string, Record<string, string>> = {
     'fantasy': {
         'ko': `\n\n[장르: 판타지 | 한국어 댓글 스타일]
-- 짧은 문장 (5-15자)
-- 쉼표 거의 사용 안 함
-- "복선", "설정", "세계관", "각성", "서사" 자주 사용
-- 분석 + 감탄 혼합
-- 감정 비율: 계산 40%, 감정 30%, 응원 15%, 무의미(ㅋㅋ/출첵) 10%, 비판 5%
 
-예시:
-- 복선 회수 ㅁㅊ
-- 설정 이거 말 됨?
-- 각성 장면 소름
-- 진짜 서사 쩔어`,
+어휘:
+- 핵심 키워드: "복선", "설정", "각성", "서사", "세계관", "마나", "스킬", "전개", "반전"
+- 평가 강도: 약함(괜찮네, 좋음) → 중간(쩔어, 쩐다) → 강함(ㅁㅊ, 개오바, 소름)
+- 구조: [키워드 1-2개] + [평가 표현] (총 5-12자)
+
+톤:
+- 분석적 어투 60% (설정/복선 파고들기)
+- 감탄/흥분 30% (ㅁㅊ, 쩔어, 소름)
+- 응원 10% (기대됨, 다음화 빨리)
+- 쉼표 거의 없음, 끊는 말투 ("~인듯", "~네", "ㄷㄷ", "ㅁㅊ")
+
+금지:
+- 로맨스 어휘 ("심쿵", "달달", "케미", "설렘")
+- 3줄 이상 문장
+- 같은 키워드 조합 반복 (댓글마다 다른 단어 사용)
+- 프롬프트에 나온 문구 그대로 복사`,
 
         'zh': `\n\n[类型：奇幻 | 中文评论风格]
 - 形容词夸张
@@ -1530,7 +1938,7 @@ Ejemplos:
     },
 
     'romance': {
-        'ko': `\n\n[장르: 로맨스 | 한국어 댓글 스타일]\n- 짧은 문장, 쉼표 거의 없음\n- ㅠㅠ / ㅋㅋ 많음\n- "각", "레전드", "서브남" 축약어\n- 감정 비율: 감정 폭발 50%, 커플링 논쟁 20%, 비난 15%, 응원 10%\n\n집착 포인트: 남주 태도, 질투 장면, 답답함, 후회각\n행동 패턴: 스킨십 → 댓글 몰림, 질투 장면 → 밀도 3배\n\n예시:\n- 남주 진짜 답답함\n- 저러다 후회각\n- 왜 이제야 고백함\n- 키스각ㅠㅠ`,
+        'ko': `\n\n[장르: 로맨스 | 한국어 댓글 스타일]\n\n어휘:\n- 핵심: "각", "케미", "심쿵", "답답", "후회각", "질투", "레전드"\n- 평가: 약함(좋음, 달달) → 중간(쩔어, 미쳤다) → 강함(ㅁㅊ, 심장 터짐)\n- 구조: [감정/상황] + [평가/반응] (5-15자)\n\n톤:\n- 감정 폭발 50% (ㅠㅠ, 심쿵, 미쳤다)\n- 답답함/비판 20% (왜 저래, 답답)\n- 커플 응원 20% (케미 쩔어, 빨리)\n- 쉼표 거의 없음\n\n금지:\n- 판타지 어휘 ("복선", "각성", "설정", "전투")\n- 3줄 이상 문장\n- 같은 패턴 반복 ("~각" 연속 사용 금지)\n- 프롬프트 문구 그대로 복사`,
         'zh': `\n\n[类型：言情 | 中文评论风格]\n- 过度形容词, 哈哈哈/？？？？\n- "甜死了", "虐死我了", "磕到了" 常用\n- 情感比例：情感夸张 60%, CP应援 20%, 分析 10%\n\n关注点：男主霸道/宠溺, 权力差, "虐"文化\n行动模式：CP应援集体化, 男主权力性正面消费\n\n示例:\n- 甜死了！！！\n- 男主太宠了哈哈哈\n- 虐死我了求作者手下留情\n- 这CP我磕了`,
         'ja': `\n\n[ジャンル：ロマンス | 日本語コメントスタイル]\n- 完結形文章, 丁寧語\n- ｗ使用, 過激語なし\n- 感情比率：個人感想 60%, 応援 20%, 分析 15%\n\n注目点：感情の繊細さ, 小さな仕草, 日常交流\n行動パターン：感情分析多い, 攻撃性低い, 静かな応援\n\n例:\n- この空気好きです\n- キュンとしましたｗ\n- 告白シーン良かった\n- 二人の関係が素敵`,
         'en': `\n\n[Genre: Romance | English comment style]\n- Natural comma usage\n- "lol", "omg", "girl", "bro"\n- Sarcasm/irony acceptable\n- Emotion mix: Analysis 40%, Emotion 30%, Discussion 20%\n\nFocus: Character psychology, relationship health, red flags\nBehavioral: Toxic analysis, "He's a red flag" common\n\nExamples:\n- Finally but he needs therapy lol\n- This relationship is toxic ngl\n- She deserves better\n- The slow burn is killing me`,
@@ -1619,7 +2027,7 @@ Ejemplos:
 - JAJAJA qué poder`,
     },
 
-    'sci-fi': {
+    'scifi': {
         'ko': `\n\n[장르: SF | 한국어 댓글 스타일]
 - 짧은 분석 단문
 - 쉼표 거의 없음
@@ -1996,20 +2404,22 @@ Ejemplos:
 
     'action': {
         'ko': `\n\n[장르: 액션 | 한국어 댓글 스타일]
-- 짧음 (초단문 비율 높음)
-- "개간지", "체급차", "사이다"
-- ㅋㅋ은 긴장 해소
-- 감정 비율: 반응 40%, 체급 언급 25%, 전략 15%
 
-집착 포인트: 체급, 사이다, 전략, 설정 합리성
-행동 패턴: 전투화 → 댓글 폭증, 주인공 강하면 바로 찬양
+어휘:
+- 핵심: "체급", "간지", "사이다", "전투", "연출", "스킬", "각도"
+- 평가: 약함(괜찮네, 좋음) → 중간(쩔어, 쩐다) → 강함(ㅁㅊ, 개간지, 소름)
+- 구조: [동작/상황] + [짧은 평가] (3-10자)
 
-예시:
-- 개간지
-- 체급차 ㅁㅊ
-- 사이다네ㅋㅋ
-- 전투 연출 좋음
-- 저기서 왜 저래`,
+톤:
+- 흥분/감탄 40% (개간지, ㅁㅊ, 소름)
+- 분석/전략 25% (체급차, 저기서 왜)
+- 사이다 반응 25% (사이다네ㅋㅋ)
+- 초단문 비율 높음 (3-5자)
+
+금지:
+- 로맨스 어휘 ("심쿵", "케미", "달달")
+- 장황한 설명 (2줄 이상)
+- 같은 패턴 연속 (체급 2회 이상 연속 금지)`,
 
         'zh': `\n\n[类型：武侠/动作 | 中文评论风格 - 武侠特别强]
 - 过度表达, "太强了", "牛逼"
@@ -2160,6 +2570,39 @@ function getGenreCategory(genreData: string | string[] | null): string | null {
     }
 
     return null;
+}
+
+/**
+ * 하위장르 개수 기반 상위 카테고리 가중치 계산
+ * 예: Romance×2, Regression×1 → { romance: 0.667, regression: 0.333 }
+ */
+function getGenreWeights(genreData: string | string[] | null): Record<string, number> {
+    if (!genreData) return {};
+
+    const genres = Array.isArray(genreData)
+        ? genreData
+        : genreData.split(',').map(g => g.trim());
+
+    // 상위 카테고리별 하위장르 개수 카운트
+    const counts: Record<string, number> = {};
+    for (const genre of genres) {
+        const category = GENRE_CATEGORY_MAP[genre];
+        if (category) {
+            counts[category] = (counts[category] || 0) + 1;
+        }
+    }
+
+    // 가중치 계산 (합 = 1.0)
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (total === 0) return {};
+
+    const weights: Record<string, number> = {};
+    for (const [cat, count] of Object.entries(counts)) {
+        weights[cat] = count / total;
+    }
+
+    console.log(`📊 Genre weights: ${Object.entries(weights).map(([k, v]) => `${k}=${Math.round(v * 100)}%`).join(', ')}`);
+    return weights;
 }
 
 /**
@@ -2352,7 +2795,8 @@ export async function GET(req: NextRequest) {
         );
         const genreData = novelResult.rows[0]?.genre;
         const sourceLanguage = novelResult.rows[0]?.source_language || 'ko'; // Default: Korean
-        const genreCategory = getGenreCategory(genreData);
+        const genreCategory = getGenreCategory(genreData); // legacy (for old single-call function)
+        const genreWeights = getGenreWeights(genreData);    // 가중치 기반
 
         console.log(`🌐 Source language: ${sourceLanguage}`);
         if (genreCategory) {
@@ -2374,11 +2818,11 @@ export async function GET(req: NextRequest) {
 
                 let calls = 0;
                 while (deepComments.length < totalCount && calls < 6) {
-                    const result = await generateDeepContextCommentsWithGenre(
+                    const result = await generateDeepContextComments(
                         episodeContent,
-                        genreCategory,
-                        sourceLanguage, // Use novel's source language
-                        15              // count
+                        genreWeights,
+                        15,             // count
+                        sourceLanguage
                     );
                     deepComments.push(...result.comments);
                     if (calls === 0) sceneTags = result.detectedTags;
