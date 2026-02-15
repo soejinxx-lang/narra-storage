@@ -1460,7 +1460,7 @@ ${immersedViews.map((r, i) => {
 
     // --- 호출 2: 감정폭발형 (페르소나별 말투 주입) ---
     const call2Prompt = overreactorViews.length > 0 ? `${platform}
-방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}
+방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}${genreHint}
 
 ${overreactorViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
@@ -1476,7 +1476,7 @@ ${overreactorViews.map((r, i) => {
 
     // --- 호출 3: 냉소형 + 오독형 — 🔒 보호 영역 ---
     const call3Prompt = chaosViews.length > 0 ? `${platform}
-이 독자들은 호의적이지 않거나 잘못 이해하고 있다.${moodHint}
+이 독자들은 호의적이지 않거나 잘못 이해하고 있다.${moodHint}${genreHint}
 
 ${chaosViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}" 싫어함.` : '';
@@ -1493,7 +1493,7 @@ ${memoryLabel}: ${r.view}
 
     // --- 호출 4: 밈/드립형 + 단어투척 ---
     const call4Prompt = casualViews.length > 0 ? `${platform}
-이 독자들은 대충 읽거나 밈으로 반응한다.${moodHint}
+이 독자들은 대충 읽거나 밈으로 반응한다.${moodHint}${genreHint}
 
 ${casualViews.map((r, i) => {
         return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밈형' : '대충 반응'}]
