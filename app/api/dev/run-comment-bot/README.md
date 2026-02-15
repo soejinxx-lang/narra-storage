@@ -1,412 +1,467 @@
-# Comment Bot System Documentation
+# Comment Bot System — 완전 문서
 
-## Overview
-
-AI 기반 가짜 댓글 생성 시스템. 30개의 독자 페르소나를 사용하여 장르별로 현실적이고 다양한 댓글을 생성한다.
-
-**핵심 원칙:**
-- **페르소나 기반**: 각 독자는 고유한 성격, 말투, 행동 패턴을 가짐
-- **장르 가중치**: DB에 저장된 장르 데이터를 기반으로 페르소나 풀 비율을 동적으로 조정
-- **4-Call 인지 분리**: 독자 유형별로 프롬프트를 분리하여 GPT 출력 품질 향상
-- **단계별 파이프라인**: 이벤트 추출 → 페르소나 선택 → 뷰 제한 → GPT 호출 → 큐레이션
+> **최종 태그**: `한국어시스템완전한완성` (2026-02-16)
+> **파일**: `narra-storage/app/api/dev/run-comment-bot/route.ts` (~3050줄)
 
 ---
 
-## 1. 핵심 데이터 구조
+## 0. 전체 거시 구조
 
-### 1.1 PERSONA_POOL (30명)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Comment Bot API                          │
+│  POST /api/dev/run-comment-bot                              │
+│                                                             │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  1. 입력 처리                                          │ │
+│  │     novelId, episodeId, totalCount, deep, etc.         │ │
+│  └────────────────────┬───────────────────────────────────┘ │
+│                       ▼                                     │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  2. 장르 분석                                          │ │
+│  │     DB genre → getGenreWeights() → { fantasy: 0.5 }   │ │
+│  │     DB genre → getGenreCategory() → "fantasy"          │ │
+│  └────────────────────┬───────────────────────────────────┘ │
+│                       ▼                                     │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  3. 댓글 생성 (70/20/10 비율)                          │ │
+│  │                                                        │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │ │
+│  │  │ 딥컨텍스트   │  │ 중간밀도     │  │ 템플릿       │ │ │
+│  │  │ 70%          │  │ 20%          │  │ 10%          │ │ │
+│  │  │ 7-Stage      │  │ call5        │  │ fallback     │ │ │
+│  │  │ Pipeline     │  │ 7~18자       │  │              │ │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘ │ │
+│  └────────────────────┬───────────────────────────────────┘ │
+│                       ▼                                     │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  4. 봇 계정 생성 + 댓글 DB 삽입                        │ │
+│  │     닉네임 풀 → 유저 생성 → 댓글 삽입 → 타임스탬프     │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
 
-5개 그룹으로 분류:
+---
 
-#### A. 진성독자형 (8명)
-- `A1` 찐팬: 응원/기대 중심
-- `A2` 설정덕후: 세계관 분석
-- `A3` 감수성: 감정 묘사
-- `A4` 전투광: 액션 선호
-- `A5` 복선러: 떡밥 분석
-- `A6` 공포좋아: 호러 반응
-- `A7` 연애뇌: 로맨스 집중
-- `A8` 역덕: 역사 정확도
+## 1. 70/20/10 비율 시스템
 
-#### B. 분석러 (7명)
-- `B1` 논리파: 인과관계 분석
-- `B2` 설정매니아: 설정구멍 지적
-- `B3` 추리형: 추론/예측
-- `B4` SF사고: 과학적 분석
-- `B5` 역사고증: 시대고증
-- `B6` 캐릭터분석가: 성장궤적
-- `B7` 회귀통: 회귀물 전문
+각 댓글을 할당할 때 확률적으로 풀을 선택한다:
 
-#### C. 감정형 (5명)
-- `C1` 감정폭발러: 대문자/과장
-- `C2` 액션중독: 전투 흥분
-- `C3` 유머러: 웃긴 반응
-- `C4` 로맨틱: 멜로 집중
-- `C5` 공감왕: 깊은 공감
-
-#### D. 트롤/냉소형 (5명)
-- `D1` 인내심제로: 전개 비판
-- `D2` 클리셰헌터: 뻔함 지적
-- `D3` 파워밸런스충: 밸런스 붕괴
-- `D4` 작가비판러: 구성력 비판
-- `D5` 공포비꼼러: 호러 비합리성
-
-#### E. 밈/드립형 (5명)
-- `E1` 게임드립러: 게임 용어
-- `E2` 밈장인: 장르 비유
-- `E3` 연애드립러: 연애 밈
-- `E4` 역사드립러: 역사→현대 비유
-- `E5` 오독러: 잘못 읽고 확신
-
-**속성:**
 ```typescript
-{
-    id: string;           // 'A1', 'B2' 등
-    name: string;         // '찐팬', '설정매니아' 등
-    baseType: string;     // 'fan', 'analyzer', 'troll', 'lurker', 'misreader'
-    callGroup: string;    // 'immersed', 'overreactor', 'chaos', 'casual'
-    tone: string;         // 말투 설명
-    style: string;        // 작성 스타일 패턴
-    endings: string[];    // 어미 예시 (4개)
+const roll = Math.random();
+if (roll < 0.70 && deepComments.length > 0) {
+    content = deepComments.pop()!;        // 딥컨텍스트 (70%)
+} else if (roll < 0.90 && midDensityPool.length > 0) {
+    content = midDensityPool.pop()!;      // 중간밀도 (20%)
+} else {
+    // 템플릿 (10%) 또는 fallback
 }
 ```
 
----
+### 딥컨텍스트 (70%)
+- 7-Stage Pipeline 거쳐 생성
+- 페르소나 기반 인지 분리
+- 장면 기반 구체적 반응
+- 예: `"소월이 검 뽑는 순간 소름 돋았다ㅋㅋ"`
 
-### 1.2 GENRE_PERSONA_MAP
+### 중간밀도 (20%)
+- call5에서 생성 (7~18자)
+- 장면 언급하되 분석 안 함
+- 예: `"여기서 각성하네ㅋㅋ"`, `"이 장면 소름"`, `"드디어 만났다ㅠ"`
 
-장르별 페르소나 풀 (12개 장르):
-
-```typescript
-{
-    'fantasy': ['A1','A2','A4','A5','A7','B1','B2','B6','C1','C5','D1','D2','D3','E1','E2','E5'],
-    'game-fantasy': ['A1','A4','A5','B1','B2','B6','C1','C2','C5','D1','D2','D3','E1','E2','E5'],
-    'murim': ['A1','A4','A5','B1','B2','C1','C2','C5','D1','D3','E1','E2','E5'],
-    'romance': ['A1','A3','A7','B1','B6','C1','C4','C5','D1','D2','D4','E2','E3','E5'],
-    'scifi': ['A2','B1','B2','B4','B6','C1','C5','D1','D4','E2','E5'],
-    'mystery': ['A1','B1','B3','B6','C5','D1','D4','E2','E5'],
-    'horror': ['A1','A2','A6','C1','C5','D1','D5','E2','E5'],
-    'historical': ['A2','A5','A8','B1','B5','B6','C5','D1','D4','E4','E5'],
-    'slice-of-life': ['A1','A5','A7','C4','C5','D1','D4','E2','E5'],
-    'action': ['A4','B1','C1','C2','C5','D1','D3','E1','E2','E5'],
-    'comedy': ['A1','C1','C3','C5','D1','D4','E1','E2','E5'],
-    'regression': ['A4','A5','B1','B7','C2','C5','D1','D2','D3','E1','E2','E5']
-}
-```
+### 템플릿 (10%)
+- GPT 없이 정적 풀에서 선택
+- 극저밀도 반응
+- 예: `"ㅋㅋㅋ"`, `"ㄷㄷ"`, `"대박"`, `"ㅇㅈ"`
+- (현재 풀 소진 시 deep/mid로 fallback)
 
 ---
 
-### 1.3 GENRE_CATEGORY_MAP
+## 2. 딥컨텍스트 7-Stage Pipeline
 
-Admin 하위장르 → 상위 카테고리 매핑 (57개):
-
-**매핑 예시:**
-```
-High Fantasy → fantasy
-Dark Fantasy → fantasy
-GameLit / LitRPG → game-fantasy
-Cultivation → game-fantasy
-Murim → murim
-Contemporary Romance → romance
-CEO / Billionaire → romance  (Trope이지만 romance로 매핑)
-Isekai → regression
-Regression → regression
-Space Opera → scifi
-...
-```
-
-**의도적 미매핑 (10개):**
-- Tropes: `Werewolf/Vampire`, `LGBTQ+`, `Cozy`, `Grimdark`, `Dark Academia`
-- Audience: `YA`, `New Adult`, `Adult`
-- Other: `Fanfiction`, `Paranormal`
-
----
-
-### 1.4 GENRE_HINTS
-
-장르별 × 언어별 댓글 스타일 가이드 (12 genre × 5 lang):
-
-**구조:**
-```typescript
-GENRE_HINTS[genre][language]: string
-```
-
-**예시 (fantasy × ko):**
-```
-[장르: 판타지 | 한국어 댓글 스타일]
-- 짧은 문장 (5-15자)
-- 쉼표 거의 사용 안 함
-- "복선", "설정", "세계관", "각성", "서사" 자주 사용
-- 분석 + 감탄 혼합
-- 감정 비율: 계산 40%, 감정 30%, 응원 15%, 무의미(ㅋㅋ/출첵) 10%, 비판 5%
-
-예시:
-- 복선 회수 ㅁㅊ
-- 설정 이거 말 됨?
-- 세계관 개오바네
-...
-```
-
-**역할:**
-- **페르소나**: 말투/스타일 (`~인듯`, 대문자, 이모지)
-- **장르 힌트**: 어휘/주제 (`"복선"`, `"각성"` vs `"심쿵"`, `"케미"`)
-
-둘 다 필요. 페르소나만 주면 GPT가 "무엇에 대해" 쓸지 몰라 디폴트(로맨스)로 빠짐.
-
----
-
-## 2. 댓글 생성 파이프라인 (7단계)
+`generateDeepContextComments()` 함수 내부 구조:
 
 ### Stage 1: Event Extraction
 ```
-에피소드 본문 → GPT → { events[], dominantEmotion }
+에피소드 본문 (최대 2000자) → GPT
+→ { events: StoryEvent[], dominantEmotion: string }
 ```
 - 5~7개 핵심 사건 추출
-- 지배 감정 1개 (긴장/슬픔/분노/웃김/소름/설렘/허탈/감동)
+- 지배 감정 1개 판별 (긴장/슬픔/분노/웃김/소름/설렘/허탈/감동)
 
 ### Stage 1.5: Genre-based Persona Selection
 ```
-DB genre → getGenreWeights() → { fantasy: 0.5, romance: 0.5 }
-genreWeights → selectPersonasForGenre() → [A1, A4, C1, ...] (8명)
+DB genre data → getGenreWeights() → { fantasy: 0.5, romance: 0.5 }
+→ selectPersonasForGenre(weights, count=8)
+→ [A1, A4, B1, C1, D1, E1, A3, C4]  (8명)
 ```
-- **가중치 계산**: 하위장르 개수로 비율 산출
-  - 예: `[High Fantasy, Romantic Fantasy]` → `{fantasy: 0.5, romance: 0.5}`
 - **Largest Remainder Method**로 슬롯 배분
-- `chaos` 최소 1명, `casual` 최소 1명 강제
+- chaos 최소 1명, casual 최소 1명 강제
 
 ### Stage 2: Reader Profile Generation
 ```
 events + personas + dominantEmotion → generateReaderProfiles()
-→ [{ personaId, type, attentionSpan, memoryNoise, emotionalIntensity, bandwagonTarget, ... }]
+→ ReaderProfile[] (attentionSpan, memoryNoise, emotionalIntensity, bandwagonTarget...)
 ```
-- 각 페르소나에 확률적 특성 부여
-- `bandwagonTarget`: 편애/혐오 대상 (30% 확률)
 
 ### Stage 3: Info Restriction (View Building)
 ```
 profiles → buildReaderView(events, profile)
-→ "주인공이 검을 휘두르자 적이 쓰러졌다" (attentionSpan, memoryNoise 반영)
-```
-- 주의력·기억력에 따라 이벤트 선택
-- 감정 강도에 따라 필터링/과장
-
-### Stage 4: 4-Call Cognitive Separation
-```
-callGroup별 분류:
-- immersed (몰입형) → call1
-- overreactor (감정폭발) → call2
-- chaos (냉소/오독) → call3
-- casual (밈/드립) → call4
-
-각 call마다:
-platform + moodHint + genreHint + 페르소나별 view/말투/어미 → GPT
-→ { comments: [...] }
+→ "주인공이 검을 휘두르자 적이 쓰러졌다" (필터링 + 과장)
 ```
 
-**프롬프트 구조 (call1 예시):**
+### Stage 4: 5-Call Cognitive Separation
+
+| call | callGroup | 대상 | 설명 |
+|------|-----------|------|------|
+| call1 | immersed | 몰입형 (A그룹) | 감정이입, 분위기, 서사 |
+| call2 | overreactor | 감정폭발 (C그룹) | ㅋㅋ, ㅠㅠ, 대문자 |
+| call3 | chaos | 냉소/오독 (D+E5) | 🔒 보호 영역 |
+| call4 | casual | 밈/드립 (E그룹) | 가벼운 반응 |
+| call5 | — | 중간밀도 | 7~18자, 분석 없음 |
+
+**프롬프트 구조 예시 (call1):**
 ```
 한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.
-생각 정리 안 한다. 분석하려다 말아라.
-분위기: 이 화는 전체적으로 "긴장" 느낌이 강하다.
+[장르: 판타지 | 한국어 댓글 스타일] ...
 
-[장르: 판타지 | 한국어 댓글 스타일]
-- 짧은 문장 (5-15자)
-- "복선", "설정", "세계관", "각성" 자주 사용
-...
-
-[A: 설정덕후]
-기억: 주인공이 마나를 각성했다
-말투: 분석적, ~인듯/~네로 끊음
-행동: 설정 파고들기. 질문형 많음
-어미: ~인듯, ~네, ~구나, 잠깐
-
-[B: 찐팬]
-기억: 주인공이 강해졌다
-말투: 응원 중심, 짧은 문장
-행동: 기대/응원. 다음화 갈망
-어미: ㅠㅠ, ㅁㅊ, 가즈아, 제발
-
-[출력 — JSON]
-{ "tags": ["battle/romance/.../reunion 중 해당"], "comments": ["8개"] }
+[1번 독자: 감정강도 8/10]
+기억: 주인공이 검을 휘둘렀다
+사고 초점: 캐릭터의 표정, 대사, 행동 하나에 꽂혀서 거기만 본다
+말투: ~미쳤다, ~좋음으로 끊음
+어미: ~미쳤다, ~좋음, ~좋다, ~진짜
 ```
 
-### Stage 5: Herd Effect (safe comments만)
+### Stage 5: Herd Effect
 - 20% 댓글에 "나도", "ㄹㅇ", "와 진짜" 추가
 
 ### Stage 6: Emotion Amplification
 - 15% 댓글 대문자 변환
 - 12% ㅋㅋ/ㅠㅠ 추가
 
-### Stage 7: GPT-5 Curator (safe comments만)
-- 최종 품질 필터링
-- chaos comments는 보호 (1~2개만 랜덤 삽입)
+### Stage 7: GPT-5 Curator
+- AI 티 나는 댓글 필터링 (소유격 과다, 추상어, 해설 톤, 설명형)
+- chaos comments 보호 (1~2개만 랜덤 위치 삽입)
+
+**반환값:**
+```typescript
+{ comments: string[], midComments: string[], detectedTags: string[] }
+```
 
 ---
 
-## 3. 핵심 함수
+## 3. 페르소나 시스템 (30명)
 
-### 3.1 `getGenreWeights(genreData: string | string[])`
+### PERSONA_POOL
+
+| 그룹 | ID | 이름 | baseType | callGroup | 사고 초점 |
+|------|-----|------|----------|-----------|----------|
+| **A. 몰입형 (8)** | | | | | |
+| | A1 | 감정이입러 | immersed | immersed | 캐릭터 표정/대사/행동 |
+| | A2 | 분위기충 | immersed | immersed | 공간감/색감/연출 |
+| | A3 | 커플러 | immersed | immersed | 두 캐릭터 거리감/눈빛 |
+| | A4 | 전투몰입러 | immersed | immersed | 전투 동작/역전 |
+| | A5 | 서사충 | immersed | immersed | 성장 궤적/서사 흐름 |
+| | A6 | 공포체험러 | immersed | immersed | 무서운 장면/불안 |
+| | A7 | 감동충 | immersed | immersed | 캐릭터가 힘들어하는 순간 |
+| | A8 | 시대감성러 | immersed | immersed | 시대 배경/운명의 무게 |
+| **B. 분석형 (7)** | | | | | |
+| | B1 | 복선추적러 | analyst | immersed | 떡밥/구조적 반복 |
+| | B2 | 세계관분석충 | analyst | immersed | 세계관 규칙/정합성 |
+| | B3 | 추리광 | analyst | immersed | 범인/시간선 추리 |
+| | B4 | 설정감시자 | analyst | immersed | 물리/마법 규칙 모순 |
+| | B5 | 고증충 | analyst | immersed | 역사적 고증 |
+| | B6 | 메타분석러 | analyst | immersed | 작가 의도/연출 구조 |
+| | B7 | 회귀규칙충 | analyst | immersed | 전생/현생 비교 |
+| **C. 반응형 (5)** | | | | | |
+| | C1 | 감정폭발러 | overreactor | overreactor | 가장 자극적 장면 |
+| | C2 | 사이다중독자 | overreactor | overreactor | 통쾌함/역전 |
+| | C3 | 웃음폭발러 | overreactor | overreactor | 웃긴 대사/아이러니 |
+| | C4 | 공감충 | overreactor | overreactor | 자기 경험과 연결 |
+| | C5 | 단어투척러 | overreactor | overreactor | 인상적 단어 1개만 |
+| **D. 냉소형 (5)** | | | | | |
+| | D1 | 전개비꼼러 | troll | chaos | 느린 전개/반복 |
+| | D2 | 클리셰헌터 | troll | chaos | 뻔한 패턴/기시감 |
+| | D3 | 파워밸런스충 | troll | chaos | 파워 인플레/밸런스 |
+| | D4 | 작가비판러 | troll | chaos | 구성력/대사 퀄리티 |
+| | D5 | 공포비꼼러 | troll | chaos | 공포 클리셰 비꼼 |
+| **E. 밈/드립형 (5)** | | | | | |
+| | E1 | 게임드립러 | lurker | casual | 게임 메커니즘으로 번역 |
+| | E2 | 밈장인 | lurker | casual | 다른 장르/밈 비유 |
+| | E3 | 연애드립러 | lurker | casual | 연애 요소 드립 |
+| | E4 | 역사드립러 | lurker | casual | 역사→현대 감각 |
+| | E5 | 오독러 | misreader | chaos | 잘못 읽고 확신 |
+
+### PersonaDef 속성
 ```typescript
-// Input: "High Fantasy,Romantic Fantasy"
+interface PersonaDef {
+    id: string;           // 'A1', 'B2' 등
+    name: string;         // '감정이입러', '복선추적러' 등
+    baseType: ReaderType; // 'immersed' | 'analyst' | 'overreactor' | 'troll' | 'lurker' | 'misreader'
+    callGroup: string;    // 'immersed' | 'overreactor' | 'chaos' | 'casual'
+    tone: string;         // 말투 규칙
+    style: string;        // 행동 패턴
+    endings: string[];    // 어미/조각 (조합용)
+    cognitiveFocus: string; // 사고 초점 — 이 독자가 집착하는 대상
+}
+```
+
+---
+
+## 4. 장르 시스템
+
+### 4.1 GENRE_CATEGORY_MAP (57개 하위장르 → 12개 카테고리)
+```
+Admin 하위장르          →  상위 카테고리
+─────────────────────────────────────
+High Fantasy            →  fantasy
+Dark Fantasy            →  fantasy
+Urban Fantasy           →  fantasy
+GameLit / LitRPG        →  game-fantasy
+Cultivation             →  game-fantasy
+Murim                   →  murim
+Contemporary Romance    →  romance
+CEO / Billionaire       →  romance
+Supernatural Horror     →  horror
+Cosmic Horror           →  horror
+Space Opera             →  scifi
+Cyberpunk               →  scifi
+Wuxia / Xianxia         →  murim
+Isekai                  →  regression
+Regression              →  regression
+...
+```
+
+### 4.2 getGenreWeights()
+```typescript
+// Input: "High Fantasy,Romantic Fantasy" (DB에서)
 // Output: { fantasy: 0.5, romance: 0.5 }
-
-하위장르 → GENRE_CATEGORY_MAP → 상위 카테고리
-카테고리별 개수 카운트 → 비율 계산
+// 하위장르 개수 비율로 가중치 산출
 ```
 
-### 3.2 `selectPersonasForGenre(genreWeights, count)`
+### 4.3 GENRE_PERSONA_MAP (장르별 사용 가능 페르소나)
 ```typescript
-// Input: { fantasy: 0.5, romance: 0.5 }, count=8
-// Output: [A1, A2, C1, ...] (fantasy 4슬롯, romance 4슬롯)
-
-Largest Remainder Method로 슬롯 배분
-각 카테고리 풀에서 랜덤 선택
-chaos>=1, casual>=1 강제
-```
-
-### 3.3 `generateDeepContextComments(episodeContent, genreWeights, count, sourceLanguage)`
-7단계 파이프라인 실행.
-
-### 3.4 `parseComments(raw: string)`
-```typescript
-// GPT 응답 파싱 + 라벨 제거
-.replace(/^(반응|원댓글|독자[A-Z]?|감상|댓글|코멘트)[：:]\s*/g, '')
-// JSON 성공/실패 양쪽 경로 모두 적용
-```
-
----
-
-## 4. 디버깅 가이드
-
-### 4.1 로그 확인
-
-**정상 플로우 로그:**
-```
-POST /api/dev/run-comment-bot
-📊 Genre weights: fantasy=100%
-📖 Genre hint applied: fantasy (ko)
-📋 Stage 1: Extracting events...
-👥 Stage 2: Generating reader profiles...
-  A1(fan): attention=0.85, noise=0.12, emotion=0.78
-  B2(analyzer): attention=0.92, noise=0.05, emotion=0.34
-🔒 Stage 3: Building reader views...
-🧠 Stage 4: Persona-based cognitive calls...
-📊 Call groups: immersed=3, overreactor=2, chaos=2, casual=1
-📊 Raw: safe=24, chaos=6
-👥 Stage 5: Herd effect...
-🔥 Stage 6: Emotion amplification...
-📊 After social dynamics: 24 → 28
-🎨 Stage 7: GPT-5 Curator...
-```
-
-### 4.2 문제 패턴
-
-#### ❌ "로맨스 댓글만 나온다"
-**원인 1**: `genreWeights = {}`
-- DB에 장르 저장 안 됨
-- Admin에서 "Save Settings" 클릭 → 장르 재저장
-
-**원인 2**: `📖 Genre hint applied` 로그 없음
-- 최신 코드 배포 안 됨
-- `git push` 확인
-
-**원인 3**: `GENRE_CATEGORY_MAP`에 장르 이름 없음
-- Admin 하위장르 이름과 MAP 키 일치 확인
-- 예: `"High Fantasy"` → `GENRE_CATEGORY_MAP["High Fantasy"]` 있어야 함
-
-#### ❌ "댓글에 '반응:' 라벨 포함"
-**원인**: `parseComments` fallback 경로 미작동
-- JSON 파싱 실패 시 라벨 제거 안 됨
-- 최신 코드 배포 확인 (stripLabel 양쪽 경로 적용)
-
-#### ❌ "ㅠㅠ가 너무 많다"
-**원인**: 장르 힌트 미적용
-- 로그에서 `📖 Genre hint applied` 확인
-- 장르 힌트가 없으면 GPT가 범용 한국 웹소설 = 감정 위주 = ㅠㅠ
-
----
-
-## 5. 최근 수정 이력 (2026-02-15)
-
-### 5.1 장르 매핑 갭 수정
-- `GENRE_CATEGORY_MAP` — Admin 장르 57개 전부 동기화
-- `High Fantasy`, `Dark Fantasy`, `Urban Fantasy` → `fantasy` 추가
-- `Supernatural Horror`, `Cosmic Horror`, `Gothic` → `horror` 추가
-- `sci-fi` → `scifi` 키 통일
-
-### 5.2 장르 힌트 주입
-- `GENRE_HINTS` 정의만 있고 실제 프롬프트에 안 들어갔음 ← **핵심 버그**
-- `generateDeepContextComments`에 `sourceLanguage` 파라미터 추가
-- `call1/2/3/4` 모두에 `${genreHint}` 주입
-
-### 5.3 라벨 릭 방지
-- `parseComments`의 fallback 경로에도 라벨 제거 로직 추가
-- `반응`, `감상`, `댓글`, `코멘트`, `의견`, `답글` + 전각 콜론 포함
-
-### 5.4 페르소나 풀 추가
-- `GENRE_PERSONA_MAP`에 `game-fantasy`, `murim` 추가
-
----
-
-## 6. API 사용법
-
-### 6.1 엔드포인트
-```
-POST /api/dev/run-comment-bot
-```
-
-### 6.2 요청 예시
-```json
 {
-  "novelId": "novel-1770910615867",
-  "episodeId": "ep-123",
-  "totalCount": 60,
-  "deep": true,
-  "sceneCommentRatio": 40
+    'fantasy':       ['A1','A2','A4','A5','A7','B1','B2','B6','C1','C5','D1','D2','D3','E1','E2','E5'],
+    'game-fantasy':  ['A1','A4','A5','B1','B2','B6','C1','C2','C5','D1','D2','D3','E1','E2','E5'],
+    'murim':         ['A1','A4','A5','B1','B2','C1','C2','C5','D1','D3','E1','E2','E5'],
+    'romance':       ['A1','A3','A7','B1','B6','C1','C4','C5','D1','D2','D4','E2','E3','E5'],
+    'horror':        ['A1','A2','A6','C1','C5','D1','D5','E2','E5'],
+    'historical':    ['A2','A5','A8','B1','B5','B6','C5','D1','D4','E4','E5'],
+    'regression':    ['A4','A5','B1','B7','C2','C5','D1','D2','D3','E1','E2','E5'],
+    ...
 }
 ```
 
-### 6.3 응답
+### 4.4 GENRE_HINTS (12 장르 × 5 언어)
+```typescript
+GENRE_HINTS[genre][language]: string
+// 예: GENRE_HINTS['fantasy']['ko']
+// "[장르: 판타지 | 한국어 댓글 스타일]
+//  - 짧은 문장 (5-15자)
+//  - '복선', '설정', '세계관', '각성' 자주 사용
+//  ..."
+```
+
+---
+
+## 5. 메인 핸들러 흐름 (POST 처리)
+
+```
+1. 입력 파싱 (novelId, episodeId, totalCount, deep, etc.)
+2. 기존 댓글 삭제 (해당 에피소드 봇 댓글)
+3. DB에서 장르 조회 → genreWeights, genreCategory
+4. 에피소드 본문 조회
+5. generateDeepContextComments() 호출 (반복 최대 6회)
+   → deepComments[] + midDensityPool[] + sceneTags[]
+6. 봇 계정 생성 루프:
+   a. 닉네임 선택 (중복 방지)
+   b. 유저 계정 생성 (username: bot_timestamp_i)
+   c. 각 봇이 1~3개 댓글 작성 (15% 확률로 2~3개)
+   d. 70/20/10 비율로 댓글 풀 선택
+   e. humanize() 후처리
+   f. 5% 확률로 답글 (기존 댓글에)
+   g. 랜덤 타임스탬프 부여
+7. 결과 반환
+```
+
+### 닉네임 풀
+- `pickNickname()`: 한국 웹소설 독자 닉네임 풀에서 랜덤 선택
+- 기존 에피소드 댓글 닉과 중복 방지
+
+### 타이밍
+- 봇 내 댓글 간격: 5분~3시간
+- `randomTimestamp()`: 에피소드 게시 후 현실적 시간 분포
+
+---
+
+## 6. 품질 제어 시스템
+
+### 6.1 중간밀도 품질 필터 (midDensityQualityScore)
+```typescript
+// 길이 7~18자 벗어나면 -4
+// "것 같다", "느껴졌다" → -3
+// 마침표 끝 → -2
+// 존댓말 → -2
+// 메타 단어 (각성, 복선, 설정) → -1
+// 장르 톤 보너스: ㅠ(로판)+1, ㅋㅋ(게임판타지)+1
+// threshold: score >= 6
+```
+
+### 6.2 GPT-5 큐레이터 (curateWithGPT5)
+```typescript
+// AI 티 감점:
+// - 소유격 과다 ("마음의 변화가") → -15
+// - 추상명사 (관계, 심리, 마음...) → 개당 -10
+// - 해설 톤 (묘사, 인상적, 여운...) → 개당 -12
+// - 설명형 종결 → -10
+// - 쉼표 → 개당 -15
+// - 감정 설명형 (것 같다, 느껴졌...) → -20
+```
+
+### 6.3 humanize() 후처리
+- 마침표 제거, 쉼표→자연스러운 연결, ㅋ/ㅠ 정규화 등
+
+### 6.4 chaos 보호
+- call3 결과는 `chaosComments[]`로 분리
+- 큐레이터에 안 넣고, 최종 결과에 1~2개만 랜덤 삽입
+- 40% 확률로 0개, 50% 확률로 1개, 10% 확률로 2개
+
+---
+
+## 7. 핵심 함수 목록
+
+| 함수 | 위치 | 역할 |
+|------|------|------|
+| `getGenreWeights()` | ~L248 | DB 장르 → 가중치 맵 |
+| `getGenreCategory()` | ~L195 | DB 장르 → 단일 카테고리 (legacy) |
+| `selectPersonasForGenre()` | ~L938 | 가중치 → 페르소나 8명 선택 |
+| `generateReaderProfiles()` | ~L1091 | 페르소나 → ReaderProfile 생성 |
+| `buildReaderView()` | ~L1170 | 이벤트 → 독자 시점 문장 |
+| `extractEvents()` | ~L1290 | 본문 → 사건 추출 (GPT) |
+| `generateDeepContextComments()` | ~L1354 | 7-Stage 메인 파이프라인 |
+| `curateWithGPT5()` | ~L1670 | 품질 필터링 |
+| `callAzureGPT()` | ~L1260 | Azure OpenAI 호출 래퍼 |
+| `humanize()` | ~L2800 | 후처리 |
+| `pickNickname()` | ~L2750 | 닉네임 선택 |
+| `randomTimestamp()` | ~L2780 | 타임스탬프 생성 |
+
+---
+
+## 8. API 사용법
+
+### 엔드포인트
+```
+POST /api/dev/run-comment-bot
+```
+
+### 요청
 ```json
 {
-  "ok": true,
-  "inserted": 60,
-  "cached": 0,
-  "deepCount": 24,
-  "templateCount": 36
+    "novelId": "novel-1770910615867",
+    "episodeId": "ep-123",
+    "totalCount": 30,
+    "deep": true,
+    "sceneCommentRatio": 40
+}
+```
+
+### 응답
+```json
+{
+    "ok": true,
+    "inserted": 30,
+    "cached": 0,
+    "deepCount": 21,
+    "templateCount": 9
 }
 ```
 
 ---
 
-## 7. 알려진 제약
+## 9. 디버깅 가이드
 
-### 7.1 중복 댓글
-- 6회 배치 호출 시 동일 페르소나 재사용 → 유사 댓글 발생 가능
-- **해결 방안 (미구현)**: 이전 생성 댓글을 GPT에게 보여주기
+### ❌ "로맨스 댓글만 나온다"
+1. DB에 장르 저장 안 됨 → `genreWeights = {}` → Admin에서 장르 재저장
+2. `GENRE_CATEGORY_MAP`에 해당 장르명 없음 → 매핑 추가
+3. 소설이 로판인데 `fantasy`로만 태그됨 → `romance_fantasy`로 변경
+4. GPT 자체 편향 → 두 캐릭터 상호작용 = 로맨스로 해석하는 경향
 
-### 7.2 GPT 학습 편향
-- "한국 웹소설"만 보면 GPT가 로맨스·감정 위주로 추론
-- **해결**: 장르 힌트 필수 주입
+### ❌ "댓글에 '반응:' 라벨 포함"
+- `parseComments`의 `stripLabel`에 해당 라벨 패턴 없음
+- 장르 키워드 추가 필요
 
-### 7.3 장르 태그 품질
-- DB에 장르 없으면 default pool → 범용 댓글
-- Admin에서 장르 필수 저장 필요
+### ❌ "ㅠㅠ가 너무 많다"
+- 장르 힌트 미적용 → 로그에서 `📖 Genre hint applied` 확인
+- 장르 힌트 없으면 GPT 디폴트 = 감정 위주 = ㅠㅠ
+
+### ❌ "댓글이 전부 비슷하다"
+- 한 call에 너무 많은 페르소나 → GPT 평균화
+- count=8이 적절 (15 이상은 수렴 위험)
 
 ---
 
-## 8. 향후 개선 방향
+## 10. Git 태그 이력
+
+| 태그 | 내용 |
+|------|------|
+| `here` | 초기 안전 지점 |
+| `before-30persona` | 30페르소나 변경 직전 |
+| `한국어시스템완전한완성` | **현재** — 70/20/10 비율 시스템 완성 |
+
+---
+
+## 11. 전체 수정 이력
+
+### 2026-02-15 ~ 02-16
+
+1. **장르 매핑 갭 수정**
+   - `GENRE_CATEGORY_MAP` 57개 Admin 장르 전부 동기화
+   - `sci-fi` → `scifi` 키 통일
+
+2. **장르 힌트 주입 (핵심 버그)**
+   - `GENRE_HINTS` 정의만 있고 프롬프트에 안 들어갔음
+   - call1/2/3/4 모두에 `${genreHint}` 삽입
+   - `sourceLanguage` 파라미터 추가
+
+3. **라벨 릭 방지**
+   - `parseComments` fallback 경로에도 `stripLabel` 적용
+   - 장르 키워드 라벨 제거 (각성, 서사, 전투, 액션, 심쿵, 케미...)
+
+4. **중간밀도 call5 추가**
+   - 7~18자 짧은 댓글 전용 프롬프트
+   - `midDensityQualityScore`로 품질 필터링
+
+5. **70/20/10 비율 시스템**
+   - 딥컨텍스트 70%, 중간밀도 20%, 템플릿 10%
+   - `midComments`를 `generateDeepContextComments` 반환값에 분리
+   - 메인 핸들러에서 확률 기반 풀 선택
+
+---
+
+## 12. 알려진 제약
+
+1. **중복 댓글**: 6회 배치 시 동일 페르소나 재사용 → 유사 댓글 가능
+2. **GPT 학습 편향**: 장르 힌트 없으면 로맨스/감정 편중
+3. **장르 태그 의존**: DB에 장르 없으면 default pool → 범용 댓글
+4. **수렴 위험**: 한 call에 15명 이상 넣으면 GPT 평균화
+
+---
+
+## 13. 향후 개선 방향
 
 1. **중복 방지**: 생성된 댓글 히스토리를 프롬프트에 포함
 2. **언어별 페르소나**: 중국어·일본어 독자 특성 반영
 3. **실시간 트렌드**: 최신 밈·드립 주기적 업데이트
-4. **A/B 테스팅**: 장르 힌트 on/off 비교 실험
+4. **A/B 테스팅**: 비율 on/off 비교 실험
 5. **감정 다양성**: ㅠㅠ 사용 확률 동적 조정
+6. **페르소나 출력 제약 (constraint)**: 각 페르소나에 언어 습관 강제 (검토 완료, 미구현)
 
 ---
 
-## 9. 참고 자료
+## 14. 참고 자료
 
-- **코드 위치**: `narra-storage/app/api/dev/run-comment-bot/route.ts`
-- **Admin 장르 정의**: `업로드용 웹사이트/app/novel/[id]/page.tsx` (GENRE_CATEGORIES)
+- **코드**: `narra-storage/app/api/dev/run-comment-bot/route.ts`
+- **Admin 장르**: `업로드용 웹사이트/app/novel/[id]/page.tsx` (GENRE_CATEGORIES)
 - **DB 스키마**: `novels.genre`, `novels.genre_taxonomy`
+- **컨트롤러**: `comment-bot-controller.html` (브라우저 UI)
