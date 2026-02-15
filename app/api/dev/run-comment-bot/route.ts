@@ -1670,6 +1670,24 @@ async function curateWithGPT5(comments: string[], targetCount: number = 8): Prom
         const commaCount = (cleaned.match(/,/g) || []).length;
         score -= commaCount * 15;
 
+        // 🆕 감정 설명형 패턴 (-20) — 감상문 톤
+        if (/(것\s*같다|느껴졌|전달되|인상\s*깊|압도적|몰입된|와닿|여운이)/.test(cleaned)) score -= 20;
+
+        // 🆕 소유격 체인 2개 이상 (-30) — 사실상 컷
+        const possessiveCount = (cleaned.match(/의\s/g) || []).length;
+        if (possessiveCount >= 2) score -= 30;
+
+        // 🆕 같은 단어 3회 이상 반복 (-15) — AI 패턴
+        const wordCounts: Record<string, number> = {};
+        cleaned.split(/\s+/).forEach(w => {
+            if (w.length >= 2) {
+                const stem = w.replace(/[이가은는의을를에서도]$/, '');
+                if (stem.length >= 2) wordCounts[stem] = (wordCounts[stem] || 0) + 1;
+            }
+        });
+        const maxRepeat = Math.max(0, ...Object.values(wordCounts));
+        if (maxRepeat >= 3) score -= 15;
+
         // 가점 (인간적 특징)
         if (cleaned.length <= 5) score += 20;
         if (cleaned.includes('?') || /[뭐왜뭔어떻]/.test(cleaned)) score += 10;  // 줄임 (15→10)
