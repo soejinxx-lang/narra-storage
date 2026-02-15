@@ -1,0 +1,1067 @@
+/**
+ * 다국어 댓글봇 엔진 — engine.ts
+ * 
+ * 한국어 route.ts의 구조를 정확히 따름.
+ * 숫자/구조 로직은 여기, 문자열 로직은 LanguagePack.
+ * 
+ * 7-Stage Pipeline:
+ *   1. Event Extraction (GPT)
+ *   1.5. Genre-based Persona Selection
+ *   2. Reader Profiles
+ *   3. Info Restriction + 왜곡
+ *   4. Comment Generation (4+1 GPT calls)
+ *   5. Herd Effect (집단 동조)
+ *   6. Emotion Amplification
+ *   7. GPT-5 Curator
+ * 
+ * + 70/20/10 비율 시스템
+ * + 봇 생성 & 댓글 작성
+ */
+
+import db from "../../../db";
+import type {
+    LanguagePack,
+    PersonalityTone,
+    StoryEvent,
+    EventExtraction,
+    ReaderProfile,
+    PersonaDef,
+    CallPromptArgs,
+    CommentBotResult,
+} from "./types";
+
+// ============================================================
+// 장르 → 상위 카테고리 매핑 (언어 무관 — 공유)
+// ============================================================
+const GENRE_CATEGORY_MAP: Record<string, string> = {
+    'High Fantasy': 'fantasy', 'Dark Fantasy': 'fantasy',
+    'Urban Fantasy': 'fantasy', 'Mythology Retelling': 'fantasy',
+    'GameLit / LitRPG': 'game-fantasy', 'Cultivation': 'game-fantasy',
+    'Progression': 'game-fantasy', 'Dungeon / Tower': 'game-fantasy',
+    'Murim': 'murim', 'Martial Arts': 'murim',
+    'Contemporary Romance': 'romance', 'Historical Romance': 'romance',
+    'Romantic Fantasy': 'romance', 'Paranormal Romance': 'romance',
+    'Romantic Comedy': 'romance', 'CEO / Billionaire': 'romance',
+    'Enemies to Lovers': 'romance', 'Forbidden Love': 'romance',
+    'Omegaverse': 'romance', 'Slow Burn': 'romance',
+    'Isekai': 'regression', 'Regression': 'regression',
+    'Reincarnation': 'regression', 'Transmigration': 'regression',
+    'Time Travel': 'regression',
+    'Space Opera': 'scifi', 'Cyberpunk': 'scifi', 'Steampunk': 'scifi',
+    'Post-Apocalyptic': 'scifi', 'Hard Sci-Fi': 'scifi',
+    'Mecha': 'scifi', 'Virtual Reality': 'scifi',
+    'Psychological Thriller': 'mystery', 'Crime': 'mystery',
+    'Detective': 'mystery', 'Cozy Mystery': 'mystery',
+    'Revenge': 'mystery', 'Espionage': 'mystery', 'Whodunit': 'mystery',
+    'Supernatural Horror': 'horror', 'Cosmic Horror': 'horror',
+    'Gothic': 'horror', 'Psychological Horror': 'horror',
+    'Zombie': 'horror', 'Gothic Horror': 'horror',
+    'Supernatural': 'horror', 'Survival Horror': 'horror',
+    'Body Horror': 'horror', 'Folk Horror': 'horror',
+    'Historical Fiction': 'historical', 'Alternate History': 'historical',
+    'Period Drama': 'historical', 'War': 'historical',
+    'Historical Fantasy': 'historical', 'Court Intrigue': 'historical',
+    'War Epic': 'historical', 'Dynasty': 'historical',
+    'Slice of Life': 'slice-of-life', 'Coming of Age': 'slice-of-life',
+    'Tragedy': 'slice-of-life', 'School Life': 'slice-of-life',
+    'Workplace': 'slice-of-life', 'Family': 'slice-of-life',
+    'Contemporary': 'slice-of-life', 'Family Drama': 'slice-of-life',
+    'Melodrama': 'slice-of-life',
+    'Superhero': 'action', 'Military': 'action',
+    'Survival': 'action', 'Apocalypse': 'action',
+    'Apocalyptic': 'action', 'Battle Royale': 'action', 'Sports': 'action',
+    'Satire': 'comedy', 'Parody': 'comedy',
+    'Slapstick': 'comedy', 'Dark Comedy': 'comedy',
+};
+
+// ============================================================
+// 장르별 페르소나 풀 매핑 (구조 동일, 언어 무관)
+// ============================================================
+const GENRE_PERSONA_MAP: Record<string, string[]> = {
+    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
+    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5'],
+    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5'],
+    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
+    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+};
+
+// ============================================================
+// 유틸리티 함수 (한국어 route.ts 동일)
+// ============================================================
+
+export function weightedRandom<T>(items: { item: T; weight: number }[]): T {
+    const totalWeight = items.reduce((sum, i) => sum + i.weight, 0);
+    let random = Math.random() * totalWeight;
+    for (const item of items) {
+        if (random < item.weight) return item.item;
+        random -= item.weight;
+    }
+    return items[items.length - 1].item;
+}
+
+function pickPersonalityTone(weights: { tone: PersonalityTone; weight: number }[]): PersonalityTone {
+    return weightedRandom(weights.map(pw => ({ item: pw.tone, weight: pw.weight })));
+}
+
+function pickCommentCount(weights: { count: number; weight: number }[]): number {
+    return weightedRandom(weights.map(cw => ({ item: cw.count, weight: cw.weight })));
+}
+
+function pickNickname(pool: string[], usedNicknames: Set<string>): string {
+    const available = pool.filter(n => !usedNicknames.has(n));
+    if (available.length === 0) {
+        const base = pool[Math.floor(Math.random() * pool.length)];
+        const suffix = Math.floor(Math.random() * 999) + 1;
+        const nn = `${base}_${suffix}`;
+        usedNicknames.add(nn);
+        return nn;
+    }
+    const selected = available[Math.floor(Math.random() * available.length)];
+    usedNicknames.add(selected);
+    return selected;
+}
+
+// ============================================================
+// 시간 분산 (한국어 route.ts 동일)
+// ============================================================
+function randomTimestamp(): Date {
+    const now = Date.now();
+    const rand = Math.random();
+    let offset: number;
+    if (rand < 0.60) {
+        offset = Math.random() * 24 * 60 * 60 * 1000;
+    } else if (rand < 0.85) {
+        offset = (1 + Math.random() * 2) * 24 * 60 * 60 * 1000;
+    } else {
+        offset = (3 + Math.random() * 4) * 24 * 60 * 60 * 1000;
+    }
+    return new Date(now - offset);
+}
+
+// ============================================================
+// Azure GPT / OpenAI Review 호출 (한국어 route.ts 동일)
+// ============================================================
+async function callAzureGPT(prompt: string): Promise<string> {
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const apiKey = process.env.AZURE_OPENAI_API_KEY;
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-10-01-preview';
+    const deployment = 'gpt-4omini';
+
+    if (!endpoint || !apiKey) {
+        console.warn('⚠️ Azure OpenAI not configured, skipping deep context');
+        return '';
+    }
+
+    try {
+        let url: string;
+        if (endpoint.includes('/deployments/')) {
+            url = endpoint;
+        } else {
+            const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
+            url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.8,
+                max_tokens: 1200,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error(`❌ Azure GPT error: ${response.status} — ${errorBody.substring(0, 200)}`);
+            return '';
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || '';
+    } catch (err) {
+        console.error('❌ Azure GPT call failed:', err);
+        return '';
+    }
+}
+
+async function callOpenAIReview(prompt: string): Promise<string> {
+    const apiKey = process.env.OPENAI_REVIEW_API_KEY;
+    const model = process.env.OPENAI_REVIEW_MODEL || 'o3-mini';
+
+    if (!apiKey) {
+        console.warn('⚠️ OpenAI Review API key not configured');
+        return '';
+    }
+
+    try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                max_tokens: 800,
+            }),
+        });
+
+        if (!response.ok) return '';
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || '';
+    } catch (err) {
+        console.error('❌ OpenAI Review call failed:', err);
+        return '';
+    }
+}
+
+// ============================================================
+// getEpisodeContent — 타겟 언어 우선 + 한국어 fallback
+// ============================================================
+async function getEpisodeContent(
+    episodeId: string,
+    targetLang: string
+): Promise<{ content: string; contentLanguage: string }> {
+    // 1차: episode_translations에서 타겟 언어 번역본 시도
+    if (targetLang !== 'ko') {
+        try {
+            const translationResult = await db.query(
+                `SELECT translated_text, status FROM episode_translations 
+                 WHERE episode_id = $1 AND language = $2 LIMIT 1`,
+                [episodeId, targetLang]
+            );
+            const row = translationResult.rows[0];
+            if (row && row.status === 'DONE' && row.translated_text && row.translated_text.length > 50) {
+                console.log(`📖 [intl] Using ${targetLang} translation (${row.translated_text.length} chars)`);
+                return { content: row.translated_text, contentLanguage: targetLang };
+            }
+        } catch (e) {
+            console.warn(`⚠️ [intl] Translation table query failed, falling back to Korean`);
+        }
+    }
+
+    // 2차: 원본 한국어
+    const contentResult = await db.query(
+        `SELECT content FROM episodes WHERE id = $1`, [episodeId]
+    );
+    const content = contentResult.rows[0]?.content || '';
+    console.log(`📖 [intl] Using Korean original (${content.length} chars)`);
+    return { content, contentLanguage: 'ko' };
+}
+
+// ============================================================
+// 장르 유틸 (한국어 route.ts 동일)
+// ============================================================
+function getGenreWeights(genreData: string | string[] | null): Record<string, number> {
+    if (!genreData) return {};
+    const genres = Array.isArray(genreData)
+        ? genreData
+        : genreData.split(',').map(g => g.trim());
+
+    const counts: Record<string, number> = {};
+    for (const genre of genres) {
+        const category = GENRE_CATEGORY_MAP[genre];
+        if (category) counts[category] = (counts[category] || 0) + 1;
+    }
+
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (total === 0) return {};
+
+    const weights: Record<string, number> = {};
+    for (const [cat, count] of Object.entries(counts)) {
+        weights[cat] = count / total;
+    }
+    return weights;
+}
+
+// ============================================================
+// 페르소나 선택 (한국어 route.ts 동일 구조, 언어팩 페르소나 사용)
+// ============================================================
+function selectPersonasForGenre(
+    genreWeights: Record<string, number>,
+    lang: LanguagePack,
+    count: number = 8
+): PersonaDef[] {
+    const personaMap = new Map(lang.personas.map(p => [p.id, p]));
+    const defaultPool = ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5'];
+
+    const categories = Object.keys(genreWeights);
+    if (categories.length === 0) {
+        const shuffled = [...defaultPool].sort(() => Math.random() - 0.5).slice(0, count);
+        return shuffled.map(id => personaMap.get(id)).filter(Boolean) as PersonaDef[];
+    }
+
+    // Largest Remainder Method (한국어 route.ts 동일)
+    const rawSlots = categories.map(cat => ({
+        cat,
+        raw: genreWeights[cat] * count,
+        floor: Math.floor(genreWeights[cat] * count),
+        remainder: (genreWeights[cat] * count) % 1
+    }));
+
+    let allocated = rawSlots.reduce((sum, s) => sum + s.floor, 0);
+    const sorted = [...rawSlots].sort((a, b) => b.remainder - a.remainder);
+    for (const slot of sorted) {
+        if (allocated >= count) break;
+        slot.floor += 1;
+        allocated += 1;
+    }
+
+    const slotMap: Record<string, number> = {};
+    for (const s of rawSlots) slotMap[s.cat] = s.floor;
+
+    const selected: PersonaDef[] = [];
+    const usedIds = new Set<string>();
+
+    for (const [cat, slots] of Object.entries(slotMap)) {
+        if (slots === 0) continue;
+        const pool = GENRE_PERSONA_MAP[cat] || defaultPool;
+        const available = pool.filter(id => !usedIds.has(id));
+        const shuffled = [...available].sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < Math.min(slots, shuffled.length); i++) {
+            const p = personaMap.get(shuffled[i]);
+            if (p) { selected.push(p); usedIds.add(shuffled[i]); }
+        }
+    }
+
+    // 부족하면 기본 풀에서 보충
+    if (selected.length < count) {
+        const fallback = defaultPool.filter(id => !usedIds.has(id)).sort(() => Math.random() - 0.5);
+        for (const id of fallback) {
+            if (selected.length >= count) break;
+            const p = personaMap.get(id);
+            if (p) { selected.push(p); usedIds.add(id); }
+        }
+    }
+
+    // chaos/casual 최소 1명씩 보장
+    const hasChaos = selected.some(p => p.callGroup === 'chaos');
+    const hasCasual = selected.some(p => p.callGroup === 'casual');
+    if (!hasChaos && selected.length > 0) {
+        const chaosPersona = lang.personas.filter(p => p.callGroup === 'chaos' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (chaosPersona) selected[selected.length - 1] = chaosPersona;
+    }
+    if (!hasCasual && selected.length > 1) {
+        const casualPersona = lang.personas.filter(p => p.callGroup === 'casual' && !usedIds.has(p.id))
+            .sort(() => Math.random() - 0.5)[0];
+        if (casualPersona) selected[selected.length - 2] = casualPersona;
+    }
+
+    return selected.slice(0, count);
+}
+
+// ============================================================
+// Stage 1: Event Extraction (언어팩 프롬프트 사용)
+// ============================================================
+async function extractEvents(content: string, lang: LanguagePack): Promise<EventExtraction> {
+    const trimmed = content.length > 3000 ? content.slice(-3000) : content;
+    const prompt = lang.extractEventsPrompt(trimmed);
+    const raw = await callAzureGPT(prompt);
+    if (!raw) return { events: [], dominantEmotion: '' };
+
+    try {
+        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const data = JSON.parse(cleaned);
+        if (data.events && Array.isArray(data.events)) {
+            return { events: data.events, dominantEmotion: data.dominantEmotion || '' };
+        }
+    } catch (e) {
+        console.warn('⚠️ [intl] Event extraction parse failed');
+    }
+    return { events: [], dominantEmotion: '' };
+}
+
+// ============================================================
+// Stage 2: Reader Profiles (한국어 route.ts 동일 — 숫자 구조)
+// ============================================================
+function generateReaderProfiles(
+    events: StoryEvent[], personas: PersonaDef[], dominantEmotion: string = ''
+): ReaderProfile[] {
+    const count = personas.length;
+    const emotionSlots = [1.5, 3.5, 4.0, 5.5, 6.0, 7.5, 8.0, 9.5];
+    while (emotionSlots.length < count) emotionSlots.push(Math.random() * 10);
+    for (let i = emotionSlots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [emotionSlots[i], emotionSlots[j]] = [emotionSlots[j], emotionSlots[i]];
+    }
+
+    const allCharacters = [...new Set(events.flatMap(e => e.characters))];
+    const bandwagonChar = Math.random() < 0.2 && allCharacters.length > 0
+        ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
+        : null;
+
+    const profiles: ReaderProfile[] = [];
+    const rand = (min: number, max: number) => min + Math.random() * (max - min);
+
+    for (let i = 0; i < personas.length; i++) {
+        const persona = personas[i];
+        const emotion = i < emotionSlots.length ? emotionSlots[i] / 10 : Math.random();
+
+        const profile: ReaderProfile = {
+            type: persona.baseType,
+            personaId: persona.id,
+            personaTone: persona.tone,
+            personaStyle: persona.style,
+            personaEndings: persona.endings,
+            personaCognitive: persona.cognitiveFocus,
+            attentionSpan: 0,
+            memoryNoise: 0,
+            emotionalIntensity: emotion,
+            literacy: 0,
+            sarcasmLevel: 0,
+        };
+
+        switch (persona.baseType) {
+            case 'immersed':
+                profile.attentionSpan = rand(0.8, 1.0);
+                profile.memoryNoise = rand(0, 0.1);
+                profile.literacy = rand(0.6, 1.0);
+                break;
+            case 'skimmer':
+                profile.attentionSpan = rand(0.2, 0.4);
+                profile.memoryNoise = rand(0.3, 0.5);
+                profile.literacy = rand(0.3, 0.6);
+                break;
+            case 'overreactor':
+                profile.attentionSpan = rand(0.5, 0.8);
+                profile.memoryNoise = rand(0.1, 0.2);
+                profile.emotionalIntensity = Math.max(profile.emotionalIntensity, 0.8);
+                profile.literacy = rand(0.3, 0.5);
+                break;
+            case 'analyst':
+                profile.attentionSpan = rand(0.9, 1.0);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.7, 1.0);
+                break;
+            case 'troll':
+                profile.attentionSpan = rand(0.3, 0.6);
+                profile.memoryNoise = rand(0.3, 0.7);
+                profile.sarcasmLevel = rand(0.6, 1.0);
+                profile.literacy = rand(0.2, 0.5);
+                break;
+            case 'misreader':
+                profile.attentionSpan = rand(0.4, 0.6);
+                profile.memoryNoise = rand(0.5, 0.8);
+                profile.literacy = rand(0.4, 0.7);
+                break;
+            case 'lurker':
+                profile.attentionSpan = rand(0.1, 0.3);
+                profile.memoryNoise = 0;
+                profile.literacy = rand(0.1, 0.3);
+                break;
+        }
+
+        if (bandwagonChar && Math.random() < 0.4) {
+            profile.bandwagonTarget = bandwagonChar;
+        }
+
+        // 감정 부스트 (구조 동일, 감정 키워드는 추후 언어팩으로 이동 가능)
+        if (dominantEmotion) {
+            const moodIntensityBoost: Record<string, number> = {
+                '슬픔': 1.08, '소름': 1.06, '감동': 1.06,
+                '긴장': 1.04, '분노': 1.05,
+                '설렘': 1.0, '웃김': 1.0, '허탈': 1.0,
+                // English
+                'tension': 1.04, 'sadness': 1.08, 'anger': 1.05,
+                'humor': 1.0, 'thrill': 1.06, 'romance': 1.0,
+                'shock': 1.06, 'touching': 1.06,
+            };
+            const boost = moodIntensityBoost[dominantEmotion] || 1.0;
+            profile.emotionalIntensity *= boost;
+        }
+
+        profiles.push(profile);
+    }
+
+    return profiles;
+}
+
+// ============================================================
+// Stage 3: Info Restriction (한국어 route.ts 구조 동일)
+// ============================================================
+function buildReaderView(events: StoryEvent[], profile: ReaderProfile, lang: LanguagePack): string {
+    const visibleCount = Math.max(1, Math.round(events.length * profile.attentionSpan));
+
+    let visibleEvents: StoryEvent[];
+    if (profile.type === 'skimmer') {
+        visibleEvents = events.slice(0, visibleCount);
+    } else if (profile.type === 'overreactor') {
+        visibleEvents = [...events].sort((a, b) => b.importance - a.importance).slice(0, visibleCount);
+    } else {
+        const shuffled = [...events].sort(() => Math.random() - 0.5);
+        visibleEvents = shuffled.slice(0, visibleCount);
+    }
+
+    // misreader 왜곡 (언어팩 distort 함수 사용)
+    if (profile.type === 'misreader' && profile.memoryNoise > 0.3) {
+        visibleEvents = visibleEvents.map(e => {
+            if (Math.random() < profile.memoryNoise) {
+                const useTextDistort = Math.random() < 0.4;
+                return {
+                    ...e,
+                    summary: useTextDistort
+                        ? lang.distortEventText(e.summary)
+                        : lang.distortInterpretation(e.summary, e.characters),
+                };
+            }
+            return e;
+        });
+    }
+
+    switch (profile.type) {
+        case 'lurker':
+            return visibleEvents.map(e => e.characters.join('/') + ': ' + e.type).join(', ');
+        case 'troll':
+            return visibleEvents.map(e => `${e.characters[0] || '?'} — ${e.summary}`).join('\n');
+        case 'analyst':
+            return visibleEvents.map(e =>
+                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` [${e.detail}]` : ''}`
+            ).join('\n');
+        default:
+            return visibleEvents.map(e =>
+                `${e.summary}${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` (${e.detail})` : ''}`
+            ).join('\n');
+    }
+}
+
+// ============================================================
+// Stage 5: 집단 동조 파동 (언어팩 문자열 사용)
+// ============================================================
+function injectHerdEffect(comments: string[], lang: LanguagePack): string[] {
+    if (Math.random() > 0.3 || comments.length < 4) return comments;
+
+    const candidates = comments.filter(c => c.length >= 5);
+    if (candidates.length === 0) return comments;
+
+    const seedIdx = Math.floor(Math.random() * candidates.length);
+    const seed = candidates[seedIdx];
+    const keyword = lang.extractKeyword(seed);
+    if (!keyword) return comments;
+
+    console.log(`👥 [intl] Herd: seed="${seed}", keyword="${keyword}"`);
+
+    const echoTemplates = lang.herdEchoTemplates(keyword);
+    const counterTemplates = lang.herdCounterTemplates(keyword);
+
+    const echoCount = 2 + Math.floor(Math.random() * 2);
+    const echoes = echoTemplates.sort(() => Math.random() - 0.5).slice(0, echoCount);
+    const counter = counterTemplates[Math.floor(Math.random() * counterTemplates.length)];
+
+    const result = [...comments];
+    const seedPosition = result.indexOf(seed);
+    const insertAt = seedPosition >= 0 ? seedPosition + 1 : result.length;
+
+    const cluster: string[] = [];
+    cluster.push(echoes[0]);
+    if (echoes.length >= 2) cluster.push(echoes[1]);
+    cluster.push(counter);
+    if (echoes.length >= 3) cluster.push(echoes[2]);
+
+    result.splice(insertAt, 0, ...cluster);
+    return result;
+}
+
+// ============================================================
+// Stage 6: 감정 증폭 (언어팩 패턴 사용)
+// ============================================================
+function amplifyEmotions(comments: string[], lang: LanguagePack): string[] {
+    const result = [...comments];
+
+    const highEmotionIdx: number[] = [];
+    result.forEach((c, i) => {
+        if (lang.highEmotionPattern.test(c)) highEmotionIdx.push(i);
+    });
+
+    if (highEmotionIdx.length === 0) return result;
+
+    let inserted = 0;
+    for (const idx of highEmotionIdx) {
+        if (Math.random() < 0.5 && inserted < 2) {
+            const booster = lang.emotionBoosters[Math.floor(Math.random() * lang.emotionBoosters.length)];
+            result.splice(idx + 1 + inserted, 0, booster);
+            inserted++;
+        }
+    }
+
+    return result;
+}
+
+// ============================================================
+// Stage 7: Curator (언어팩 curateScoring + GPT-5)
+// ============================================================
+async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCount: number = 8): Promise<string[]> {
+    // 코드 사전필터: 언어팩 기반 AI 티 감점
+    const scored = comments.map(comment => {
+        const cleaned = comment.replace(/\.$/g, '').trim();
+        const { score } = lang.curateScoring(cleaned);
+        return { text: cleaned, score };
+    });
+
+    // 하위 20%만 제거 (한국어 route.ts 동일)
+    scored.sort((a, b) => b.score - a.score);
+    const preFiltered = scored.slice(0, Math.ceil(scored.length * 0.8));
+    const preDropped = scored.slice(Math.ceil(scored.length * 0.8));
+    for (const d of preDropped) {
+        console.log(`🔪 [intl] AI-tell filter (${d.score}): "${d.text}"`);
+    }
+
+    // GPT-5 큐레이터 (구조 동일)
+    const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
+    const curatorPrompt = `Pick ${targetCount} comments from ${preFiltered.length}.
+A set that looks too clean or organized is fake. Different lengths and tones are natural.
+
+${commentList}
+
+[Output — JSON]
+{ "selected": [${targetCount} indices] }`;
+
+    const curatorRaw = await callOpenAIReview(curatorPrompt);
+    let finalComments: string[] = [];
+
+    if (curatorRaw) {
+        try {
+            const cleaned = curatorRaw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+            const curatorData = JSON.parse(cleaned);
+            if (curatorData.selected && Array.isArray(curatorData.selected)) {
+                finalComments = curatorData.selected
+                    .filter((idx: number) => idx >= 0 && idx < preFiltered.length)
+                    .map((idx: number) => preFiltered[idx].text);
+            }
+        } catch (e) {
+            console.warn('⚠️ [intl] GPT-5 curator parse failed');
+        }
+    }
+
+    if (finalComments.length < targetCount) {
+        finalComments = preFiltered.slice(0, targetCount).map(s => s.text);
+    }
+
+    // 후처리 노이즈 (언어팩)
+    const noised = finalComments.map(text => lang.applyPostNoise(text));
+
+    // 셔플 (70% 랜덤)
+    for (let i = noised.length - 1; i > 0; i--) {
+        if (Math.random() < 0.7) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [noised[i], noised[j]] = [noised[j], noised[i]];
+        }
+    }
+
+    return noised;
+}
+
+// ============================================================
+// 7-Stage Pipeline 메인 함수
+// ============================================================
+async function generateDeepContextComments(
+    episodeContent: string,
+    genreWeights: Record<string, number>,
+    lang: LanguagePack,
+    count: number = 8,
+    sourceLanguage: string = 'ko'
+): Promise<{ comments: string[]; midComments: string[]; detectedTags: string[] }> {
+    // Stage 1: Event Extraction
+    console.log('📋 [intl] Stage 1: Extracting events...');
+    const extraction = await extractEvents(episodeContent, lang);
+    const { events, dominantEmotion } = extraction;
+
+    if (events.length === 0) {
+        console.warn('⚠️ [intl] No events extracted');
+        return { comments: [], midComments: [], detectedTags: [] };
+    }
+
+    // Stage 1.5: Persona Selection
+    const personas = selectPersonasForGenre(genreWeights, lang, count);
+
+    // Stage 2: Reader Profiles
+    console.log('👥 [intl] Stage 2: Reader profiles...');
+    const profiles = generateReaderProfiles(events, personas, dominantEmotion);
+
+    // Stage 3: Info Restriction
+    console.log('🔒 [intl] Stage 3: Reader views...');
+    const readerViews = profiles.map(p => ({
+        profile: p,
+        view: buildReaderView(events, p, lang),
+    }));
+
+    // Stage 4: callGroup별 분리 GPT 호출
+    const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const moodHint = dominantEmotion ? `\nMood: "${dominantEmotion}"` : '';
+    const genreHint = ''; // 언어팩 프롬프트 빌더가 처리
+
+    const sceneContext = events.slice(0, 3)
+        .filter(e => e.quote && e.quote.length > 0)
+        .map(e => `"${e.quote}" (${e.summary})`)
+        .join(', ');
+
+    const episodeExcerpt = episodeContent.length > 500
+        ? episodeContent.slice(-500)
+        : episodeContent;
+
+    const immersedViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'immersed';
+    });
+    const overreactorViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'overreactor';
+    });
+    const chaosViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'chaos';
+    });
+    const casualViews = readerViews.filter(r => {
+        const persona = personas.find(p => p.id === r.profile.personaId);
+        return persona?.callGroup === 'casual';
+    });
+
+    const promptArgs: CallPromptArgs = {
+        platform: lang.platformString,
+        moodHint,
+        genreHint,
+        episodeExcerpt,
+        sceneContext,
+        readerViews: [],  // filled per call
+        primaryGenre,
+        targetCommentCount: 0,  // filled per call
+    };
+
+    // Build prompts via LanguagePack
+    const call1 = lang.buildCall1Prompt({ ...promptArgs, readerViews: immersedViews, targetCommentCount: Math.min(immersedViews.length * 2, 8) });
+    const call2 = lang.buildCall2Prompt({ ...promptArgs, readerViews: overreactorViews, targetCommentCount: Math.min(overreactorViews.length * 2, 6) });
+    const call3 = lang.buildCall3Prompt({ ...promptArgs, readerViews: chaosViews, targetCommentCount: Math.min(chaosViews.length * 2, 4) });
+    const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length * 2, 4) });
+    const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 15 });
+
+    // 5회 병렬 호출
+    console.log('🧠 [intl] Stage 4: Persona-based GPT calls...');
+    const prompts = [call1, call2, call3, call4, call5].filter(Boolean) as string[];
+    const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
+
+    // 결과 합치기
+    const safeComments: string[] = [];
+    const chaosComments: string[] = [];
+    let detectedTags: string[] = [];
+
+    const parseComments = (raw: string | null): string[] => {
+        if (!raw) return [];
+        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (parsed.tags) {
+                detectedTags = (parsed.tags || []).filter((t: string) =>
+                    ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+                );
+            }
+            return (parsed.comments || [])
+                .map((c: string) => lang.stripLabel(c))
+                .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength);
+        } catch {
+            return raw.split('\n')
+                .map((l: string) => lang.stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
+                .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength);
+        }
+    };
+
+    let resultIdx = 0;
+    if (call1) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call2) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call3) chaosComments.push(...parseComments(rawResults[resultIdx++] || null));
+    if (call4) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+
+    // 중간밀도
+    const midComments: string[] = parseComments(rawResults[resultIdx++] || null)
+        .filter(c => c.length >= lang.midDensityRange[0] && c.length <= lang.midDensityRange[1]);
+
+    console.log(`📊 [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
+
+    // Stage 5: Herd Effect (safe만)
+    const withHerd = injectHerdEffect(safeComments, lang);
+
+    // Stage 6: Emotion Amplification
+    const withEmotion = amplifyEmotions(withHerd, lang);
+
+    // Stage 7: Curator
+    const chaosRoll = Math.random();
+    const chaosInsertCount = Math.min(chaosComments.length, chaosRoll < 0.1 ? 0 : chaosRoll < 0.6 ? 1 : 2);
+    const curatorTarget = Math.max(1, count - chaosInsertCount);
+    const filtered = await curateWithGPT5(withEmotion, lang, curatorTarget);
+
+    // chaos 삽입
+    const selectedChaos = chaosComments.sort(() => Math.random() - 0.5).slice(0, chaosInsertCount);
+    const finalMerged = [...filtered];
+    for (const chaos of selectedChaos) {
+        const pos = Math.floor(Math.random() * (finalMerged.length + 1));
+        finalMerged.splice(pos, 0, chaos);
+    }
+
+    return { comments: finalMerged, midComments, detectedTags };
+}
+
+// ============================================================
+// pickComment — 템플릿 기반 댓글 선택 (한국어 route.ts 동일 구조)
+// ============================================================
+function pickComment(
+    tone: PersonalityTone,
+    lang: LanguagePack,
+    usedTemplates: Set<string>,
+    characterNames: string[],
+    genreKey: string = ''
+): string {
+    // 25% 장르 템플릿
+    if (genreKey && Math.random() < 0.25) {
+        const genrePool = lang.genreTemplates[genreKey];
+        if (genrePool && genrePool.length > 0) {
+            const available = genrePool.filter(t => !usedTemplates.has(t));
+            let selected = available.length === 0
+                ? genrePool[Math.floor(Math.random() * genrePool.length)]
+                : available[Math.floor(Math.random() * available.length)];
+            usedTemplates.add(selected);
+            selected = lang.applyDynamicVariations(selected);
+            selected = lang.humanize(selected);
+            return selected;
+        }
+    }
+
+    // 15% context template
+    if (characterNames.length > 0 && Math.random() < 0.15) {
+        const contextPool = lang.contextTemplates.filter(t => t.tone === tone);
+        if (contextPool.length > 0) {
+            const ct = contextPool[Math.floor(Math.random() * contextPool.length)];
+            let text = ct.template;
+            const shuffled = [...characterNames].sort(() => Math.random() - 0.5);
+            text = text.replace(/\{name1\}/g, shuffled[0] || 'protagonist');
+            text = text.replace(/\{name2\}/g, shuffled[1] || shuffled[0] || 'protagonist');
+            text = text.replace(/\{author\}/g, 'author');
+            text = lang.applyDynamicVariations(text);
+            text = lang.humanize(text);
+            usedTemplates.add(ct.template);
+            return text;
+        }
+    }
+
+    // Universal 템플릿
+    const pool = lang.templates[tone];
+    const available = pool.filter(t => !usedTemplates.has(t));
+    let selected: string;
+    if (available.length === 0) {
+        usedTemplates.clear();
+        selected = pool[Math.floor(Math.random() * pool.length)];
+    } else {
+        selected = available[Math.floor(Math.random() * available.length)];
+    }
+    usedTemplates.add(selected);
+    selected = lang.applyDynamicVariations(selected);
+    selected = lang.humanize(selected);
+    return selected;
+}
+
+// ============================================================
+// 메인 실행 함수 — 한국어 GET handler의 내부 로직 추출
+// ============================================================
+export async function runCommentBotIntl(
+    novelId: string,
+    lang: LanguagePack,
+    baseCount: number = 60,
+    density: number = 1.0,
+    useDeep: boolean = true,
+): Promise<CommentBotResult> {
+    const totalCount = Math.round(baseCount * density);
+    let personalityWeights = lang.defaultWeights;
+
+    console.log(`🤖[intl] Starting comment bot for ${novelId} (lang=${lang.code})...`);
+
+    // 1. 에피소드 ID 조회
+    const episodeResult = await db.query(
+        `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
+        [novelId]
+    );
+    if (episodeResult.rows.length === 0) {
+        throw new Error(`No episodes found for ${novelId}`);
+    }
+    const episodeId = episodeResult.rows[0].id;
+    const episodeIds = [episodeId];
+
+    // 1.5. 캐릭터 이름 로딩
+    const entityResult = await db.query(
+        `SELECT source_text FROM entities WHERE novel_id = $1 AND (category = 'character' OR category IS NULL) LIMIT 20`,
+        [novelId]
+    );
+    const characterNames: string[] = entityResult.rows.map((r: { source_text: string }) => r.source_text);
+
+    // 2. 기존 댓글 캐싱 (답글 가중치용)
+    const existingResult = await db.query(
+        `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content
+         FROM comments c
+         LEFT JOIN comments r ON r.parent_id = c.id
+         WHERE c.episode_id = $1
+         GROUP BY c.id`,
+        [episodeId]
+    );
+    const commentPool: { id: string; content: string; reply_count: number }[] = existingResult.rows.map(
+        (r: { id: string; content: string; reply_count: string }) => ({
+            id: r.id, content: r.content, reply_count: parseInt(r.reply_count) || 0,
+        })
+    );
+
+    // 3. 소설 장르 조회
+    const novelResult = await db.query(
+        `SELECT genre, source_language FROM novels WHERE id = $1`, [novelId]
+    );
+    const genreData = novelResult.rows[0]?.genre;
+    const genreWeights = getGenreWeights(genreData);
+
+    // 장르 기반 personalityWeights 덮어쓰기
+    const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    if (primaryGenre && lang.genreWeights[primaryGenre]) {
+        personalityWeights = lang.genreWeights[primaryGenre];
+    }
+
+    // 4. Deep Context GPT 댓글 생성
+    let deepComments: string[] = [];
+    let midDensityPool: string[] = [];
+    let sceneTags: string[] = [];
+    let contentLanguage = lang.code;
+
+    if (useDeep) {
+        const { content: episodeContent, contentLanguage: cl } = await getEpisodeContent(episodeId, lang.code);
+        contentLanguage = cl;
+
+        if (episodeContent && episodeContent.length > 50) {
+            let calls = 0;
+            while (deepComments.length < totalCount && calls < 6) {
+                const result = await generateDeepContextComments(
+                    episodeContent, genreWeights, lang, 15, contentLanguage
+                );
+                deepComments.push(...result.comments);
+                midDensityPool.push(...result.midComments);
+                if (calls === 0) sceneTags = result.detectedTags;
+                calls++;
+                console.log(`   → [intl] Batch ${calls}: +${result.comments.length} (total ${deepComments.length}/${totalCount})`);
+            }
+        }
+    }
+
+    // 5. 봇 생성 & 댓글 작성
+    const usedTemplates = new Set<string>();
+    const existingNicknameResult = await db.query(
+        `SELECT DISTINCT u.name FROM comments c JOIN users u ON c.user_id = u.id WHERE c.episode_id = $1`,
+        [episodeId]
+    );
+    const usedNicknames = new Set<string>(
+        existingNicknameResult.rows.map((r: { name: string }) => r.name)
+    );
+
+    let totalCommentsPosted = 0;
+    const botCount = Math.ceil(totalCount / 1.3);
+
+    for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
+        const nickname = pickNickname(lang.nicknamePool, usedNicknames);
+        const tone = pickPersonalityTone(personalityWeights);
+        let commentCount = pickCommentCount(lang.commentCountWeights);
+
+        // 동일 유저 연속 댓글 15%
+        if (Math.random() < 0.15) {
+            commentCount = 2 + Math.floor(Math.random() * 2);
+        }
+
+        // 봇 계정 생성
+        const timestamp = Date.now();
+        const username = `bot_${timestamp}_${i}`;
+        const userResult = await db.query(
+            `INSERT INTO users(username, password_hash, name, is_hidden)
+             VALUES($1, '', $2, FALSE) RETURNING id`,
+            [username, nickname]
+        );
+        const userId = userResult.rows[0].id;
+
+        let lastCommentTime: Date | null = null;
+
+        for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
+            // 70/20/10 비율 시스템 (한국어 route.ts 동일)
+            const roll = Math.random();
+            let content: string;
+            if (roll < 0.70 && deepComments.length > 0) {
+                content = deepComments.pop()!;
+            } else if (roll < 0.90 && midDensityPool.length > 0) {
+                content = midDensityPool.pop()!;
+            } else {
+                if (deepComments.length > 0) {
+                    content = deepComments.pop()!;
+                } else if (midDensityPool.length > 0) {
+                    content = midDensityPool.pop()!;
+                } else {
+                    break;
+                }
+            }
+            content = lang.humanize(content);
+            let createdAt = randomTimestamp();
+
+            // 같은 봇 댓글 간 5분~3시간 간격
+            if (lastCommentTime) {
+                const minGap = 5 * 60 * 1000;
+                const maxGap = 3 * 60 * 60 * 1000;
+                const gap = Math.random() * (maxGap - minGap) + minGap;
+                createdAt = new Date(lastCommentTime.getTime() + gap);
+            }
+            lastCommentTime = createdAt;
+
+            // 답글 5%
+            let parentId: string | null = null;
+            if (Math.random() < 0.05 && commentPool.length > 0) {
+                const parentCommentId = weightedRandom(
+                    commentPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
+                );
+                parentId = parentCommentId;
+
+                const parentComment = commentPool.find(c => c.id === parentCommentId);
+                if (parentComment) {
+                    const replyPrompt = lang.buildReplyPrompt(parentComment.content);
+                    const replyRaw = await callAzureGPT(replyPrompt);
+                    if (replyRaw) {
+                        const replyClean = replyRaw.trim()
+                            .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
+                            .replace(/^["']|["']$/g, '').trim();
+                        if (replyClean.length > 0 && replyClean.length <= 50) {
+                            content = replyClean;
+                        }
+                    }
+                }
+            }
+
+            const insertResult = await db.query(
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at)
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt]
+            );
+
+            commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
+            totalCommentsPosted++;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 30));
+    }
+
+    console.log(`✅ [intl] Posted ${totalCommentsPosted} comments from ${botCount} bots (lang=${lang.code})`);
+
+    return {
+        inserted: totalCommentsPosted,
+        episodeIds,
+        deepContextUsed: useDeep,
+        detectedTags: sceneTags,
+        language: lang.code,
+        contentLanguage,
+    };
+}
