@@ -1972,7 +1972,7 @@ Ejemplos:
 - JAJAJA qué poder`,
     },
 
-    'sci-fi': {
+    'scifi': {
         'ko': `\n\n[장르: SF | 한국어 댓글 스타일]
 - 짧은 분석 단문
 - 쉼표 거의 없음
