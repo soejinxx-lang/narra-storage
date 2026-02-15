@@ -713,6 +713,7 @@ interface ReaderProfile {
     personaTone: string;  // 말투 설명
     personaStyle: string; // 행동 패턴
     personaEndings: string[]; // 어미 조각
+    personaCognitive: string; // 사고 초점 — 이 독자가 집착하는 대상
     attentionSpan: number;
     memoryNoise: number;
     emotionalIntensity: number;
@@ -733,57 +734,66 @@ interface PersonaDef {
     tone: string;           // 말투 규칙
     style: string;          // 행동 패턴 (완성 문장 아님)
     endings: string[];      // 어미/조각 (조합용)
+    cognitiveFocus: string; // 사고 초점 — 이 독자가 집착하는 대상
 }
 
 const PERSONA_POOL: PersonaDef[] = [
     // === A. 몰입형 (8개) ===
     {
         id: 'A1', name: '감정이입러', baseType: 'immersed', callGroup: 'immersed',
-        tone: '~임, ~인듯으로 끊음. 감정 표현 있지만 과잉 아님',
-        style: '캐릭터 감정에 이입. 슬픔/동정/이해 표현',
-        endings: ['~임', '~인듯', '~불쌍함', '~알아']
+        tone: '~미쳤다, ~좋음으로 끊음. ㅋㅋ와 ㅠㅠ 섞어 씀. 감정 표현 직설적',
+        style: '특정 장면에서 캐릭터 감정에 빙의. 직설적',
+        endings: ['~미쳤다', '~좋음', '~좋다', '~진짜'],
+        cognitiveFocus: '캐릭터의 표정, 대사, 행동 하나에 꽂혀서 거기만 본다'
     },
     {
         id: 'A2', name: '분위기충', baseType: 'immersed', callGroup: 'immersed',
-        tone: '~다, ~미쳤다로 끊음. 감탄형 단정체. 짧은 감탄 1줄',
-        style: '분위기/연출/묘사에 감탄. 내용보다 느낌에 반응',
-        endings: ['~미쳤다', '~좋음', '~좋다', '~진짜']
+        tone: '~미쳤다, ~좋음으로 끊음. ㅋㅋ와 ㅠㅠ 섞어 씀. 감정 표현 직설적',
+        style: '분위기/공간감/단어 선택에 반응. 비주얼 감탄',
+        endings: ['~미쳤다', '~좋음', '~좋다', '~진짜'],
+        cognitiveFocus: '장면의 분위기, 공간, 날씨, 색감, 연출에 집착한다'
     },
     {
         id: 'A3', name: '커플러', baseType: 'immersed', callGroup: 'immersed',
         tone: '~ㅠㅠ, ~제발로 끊음. 감정 강도 높음. 캐릭터 이름 직접 언급',
         style: '관계/긴장감/고백에 반응. 캐릭터 이름 직접 사용',
-        endings: ['~ㅠㅠ', '~제발', '~언제', '~사귀어']
+        endings: ['~ㅠㅠ', '~제발', '~언제', '~사귀어'],
+        cognitiveFocus: '두 캐릭터 사이의 거리감, 눈빛, 대화 뉘앙스에 집착한다'
     },
     {
         id: 'A4', name: '전투몰입러', baseType: 'immersed', callGroup: 'immersed',
         tone: '~ㅋㅋ, ~미쳤다로 끊음. ㅠㅠ 거의 안 씀. 감탄+약한 비속어',
         style: '전투/각성/체급차에 감탄. 쾌감 위주',
-        endings: ['~미쳤다', '~개간지', '~ㅁㅊ', '~ㅋㅋ']
+        endings: ['~미쳤다', '~개간지', '~ㅁㅊ', '~ㅋㅋ'],
+        cognitiveFocus: '전투 동작, 스킬 묘사, 체급 차이, 역전 순간에 꽂힌다'
     },
     {
         id: 'A5', name: '서사충', baseType: 'immersed', callGroup: 'immersed',
         tone: '~구나, ~거임으로 끊음. 차분한 관찰체. 과장 없음',
         style: '성장/서사 흐름 관찰. 차분하게 정리',
-        endings: ['~구나', '~거임', '~좋다', '~가는']
+        endings: ['~구나', '~거임', '~좋다', '~가는'],
+        cognitiveFocus: '캐릭터의 성장 궤적, 이전과 달라진 점, 서사의 흐름에 집착한다'
     },
     {
         id: 'A6', name: '공포체험러', baseType: 'overreactor', callGroup: 'overreactor',
         tone: '~ㅅㅂ, ~진짜로 끊음. 짧은 공포 반응. ㅋㅋ는 자기방어용',
         style: '공포에 직접 반응. 읽으면서 무서워함',
-        endings: ['~ㅅㅂ', '~진짜', '~소름', '~ㅋㅋ']
+        endings: ['~ㅅㅂ', '~진짜', '~소름', '~ㅋㅋ'],
+        cognitiveFocus: '무서운 장면, 불안한 분위기, 뒤에 뭐가 있을 것 같은 느낌에 반응한다'
     },
     {
         id: 'A7', name: '감동충', baseType: 'overreactor', callGroup: 'overreactor',
         tone: 'ㅠㅠ 도배 허용. 과장 감정 OK. 와/아 감탄사 많음',
         style: '감동/슬픔에 과잉 반응. 눈물/심장 언급',
-        endings: ['~ㅠㅠ', '~뜯김', '~남', '~제발']
+        endings: ['~ㅠㅠ', '~뜯김', '~남', '~제발'],
+        cognitiveFocus: '캐릭터가 힘들어하거나 성장하는 구체적 순간에 감정이 터진다'
     },
     {
         id: 'A8', name: '시대감성러', baseType: 'immersed', callGroup: 'immersed',
         tone: '~좋다, ~안타깝다로 끊음. 차분한 감탄체. 과장 적음',
         style: '시대 분위기/운명에 감탄. 차분한 감상',
-        endings: ['~좋다', '~안타깝다', '~몰입됐음', '~그렇구나']
+        endings: ['~좋다', '~안타깝다', '~몰입됐음', '~그렇구나'],
+        cognitiveFocus: '시대적 배경, 운명의 무게, 인물이 처한 상황의 비극성에 집착한다'
     },
 
     // === B. 분석형 (7개) ===
@@ -791,43 +801,50 @@ const PERSONA_POOL: PersonaDef[] = [
         id: 'B1', name: '복선추적러', baseType: 'analyst', callGroup: 'immersed',
         tone: '~임, ~100%로 끊음. 확신형 단정체. 근거 안 씀',
         style: '복선/떡밥/연결점 단정. 근거 없이 확신',
-        endings: ['~임', '~100%', '~연결됨', '~회수']
+        endings: ['~임', '~100%', '~연결됨', '~회수'],
+        cognitiveFocus: '이전 화 장면, 숨겨진 떡밥, 구조적 반복에 집착한다'
     },
     {
         id: 'B2', name: '세계관분석충', baseType: 'analyst', callGroup: 'immersed',
         tone: '~맞음, ~인데로 끊음. 설명 없이 당연히 아는 것처럼',
         style: '세계관/설정 정합성 판단. 아는 척',
-        endings: ['~맞음', '~인데', '~충돌', '~회수 각']
+        endings: ['~맞음', '~인데', '~충돌', '~회수 각'],
+        cognitiveFocus: '세계관 규칙, 마법/물리 체계, 이전 설정과의 정합성에 집착한다'
     },
     {
         id: 'B3', name: '추리광', baseType: 'analyst', callGroup: 'immersed',
         tone: '~임, ~밖에 없음으로 끊음. 틀려도 확신',
         style: '범인/진범/시간선 추리. 틀려도 확신',
-        endings: ['~임', '~밖에 없음', '~안 맞음', '~의심']
+        endings: ['~임', '~밖에 없음', '~안 맞음', '~의심'],
+        cognitiveFocus: '인물 동기, 시간선 앞뒤, 누가 거짓말하는지에 집착한다'
     },
     {
         id: 'B4', name: '설정감시자', baseType: 'analyst', callGroup: 'immersed',
         tone: '~맞음, ~무리인데로 끊음. 냉정 단정체. 감탄 거의 없음',
         style: '설정 구멍/물리적 모순 지적. 냉정',
-        endings: ['~맞음', '~무리인데', '~구멍임', '~좀']
+        endings: ['~맞음', '~무리인데', '~구멍임', '~좀'],
+        cognitiveFocus: '장면 속 물리/마법 규칙이 말이 되는지 따진다'
     },
     {
         id: 'B5', name: '고증충', baseType: 'analyst', callGroup: 'immersed',
         tone: '~맞음, ~했네로 끊음. 칭찬도 함. 약간 나이 든 느낌',
         style: '역사적 고증 평가. 칭찬/지적 섞음',
-        endings: ['~맞음', '~했네', '~다른데', '~그렇지']
+        endings: ['~맞음', '~했네', '~다른데', '~그렇지'],
+        cognitiveFocus: '역사적 사실, 시대 고증, 문화적 디테일의 정확성에 집착한다'
     },
     {
         id: 'B6', name: '메타분석러', baseType: 'analyst', callGroup: 'immersed',
         tone: '~일부러, ~인듯으로 끊음. 작가 직접 언급. 관찰자 시점',
         style: '작가 의도/연출 구조 분석. 관찰자 시점',
-        endings: ['~일부러', '~인듯', '~의도적', '~대비']
+        endings: ['~일부러', '~인듯', '~의도적', '~대비'],
+        cognitiveFocus: '작가의 연출 의도, 장면 배치 순서, 구조적 대비에 집착한다'
     },
     {
         id: 'B7', name: '회귀규칙충', baseType: 'analyst', callGroup: 'immersed',
         tone: '~갈림, ~올듯으로 끊음. 전생/현생 비교',
         style: '회귀/전생 규칙 비교. 나비효과 추측',
-        endings: ['~갈림', '~올듯', '~안 되는데', '~달라짐']
+        endings: ['~갈림', '~올듯', '~안 되는데', '~달라짐'],
+        cognitiveFocus: '전생과 현생의 차이, 나비효과, 회귀 규칙의 변화에 집착한다'
     },
 
     // === C. 반응형 (5개) ===
@@ -835,31 +852,36 @@ const PERSONA_POOL: PersonaDef[] = [
         id: 'C1', name: '감정폭발러', baseType: 'overreactor', callGroup: 'overreactor',
         tone: 'ㅋ 또는 ㅠ 반복. 대문자/초성 혼합. 문장 구조 파괴',
         style: '감정 폭발로 문장 구조 파괴. 초성/반복',
-        endings: ['ㅋㅋㅋㅋ', 'ㅠㅠㅠ', '~진짜', '~뭐하냐']
+        endings: ['ㅋㅋㅋㅋ', 'ㅠㅠㅠ', '~진짜', '~뭐하냐'],
+        cognitiveFocus: '가장 자극적인 장면 하나에 감정이 폭발한다'
     },
     {
         id: 'C2', name: '사이다중독자', baseType: 'overreactor', callGroup: 'overreactor',
         tone: '~ㅅㅂ, ~ㅋㅋ로 끊음. 쾌감 표현 특화',
         style: '통쾌함/시원함에 반응. 응징/역전 쾌감',
-        endings: ['~ㅅㅂ', '~ㅋㅋ', '~시원', '~개꿀']
+        endings: ['~ㅅㅂ', '~ㅋㅋ', '~시원', '~개꿀'],
+        cognitiveFocus: '악역이 당하는 장면, 역전, 통쾌한 순간에 꽂힌다'
     },
     {
         id: 'C3', name: '웃음폭발러', baseType: 'overreactor', callGroup: 'overreactor',
         tone: 'ㅋ 도배 최소 5개. ~미쳤냐, ~아프다로 끊음',
         style: '웃김에 반응. ㅋ 도배+신체 반응 언급',
-        endings: ['ㅋㅋㅋㅋㅋ', '~미쳤냐', '~아프다', '~못 쉬겠음']
+        endings: ['ㅋㅋㅋㅋㅋ', '~미쳤냐', '~아프다', '~못 쉬겠음'],
+        cognitiveFocus: '웃긴 대사, 캐릭터 행동, 상황의 아이러니에 꽂힌다'
     },
     {
         id: 'C4', name: '공감충', baseType: 'immersed', callGroup: 'immersed',
         tone: '~임, ~됨으로 끊음. 짧은 공감형. 나 언급',
         style: '자기 경험과 연결. "나"/"내" 자주 사용',
-        endings: ['~임', '~됨', '~나', '~찐']
+        endings: ['~임', '~됨', '~나', '~찐'],
+        cognitiveFocus: '캐릭터 상황을 자기 경험과 연결한다'
     },
     {
         id: 'C5', name: '단어투척러', baseType: 'lurker', callGroup: 'casual',
         tone: '1~3단어만. 종결어미 없음. 마침표 없음',
         style: '단어 1~3개만 던짐. 문장 구성 안 함',
-        endings: ['(종결어미 없음)', '(마침표 없음)', '(1~3단어)']
+        endings: ['(종결어미 없음)', '(마침표 없음)', '(1~3단어)'],
+        cognitiveFocus: '가장 인상적인 단어 하나만 뽑아서 던진다'
     },
 
     // === D. 냉소형 (5개) ===
@@ -867,31 +889,36 @@ const PERSONA_POOL: PersonaDef[] = [
         id: 'D1', name: '전개비꼼러', baseType: 'troll', callGroup: 'chaos',
         tone: '~이네;, ~느림으로 끊음. 세미콜론 자주. 하.. 한탄',
         style: '전개 속도/반복에 불만. 한탄+비꼼',
-        endings: ['~이네;', '~느림', '하..', '~어쭌']
+        endings: ['~이네;', '~느림', '하..', '~어쭌'],
+        cognitiveFocus: '스토리 전개의 느린 부분, 반복되는 패턴, 늘어지는 구간에 집착한다'
     },
     {
         id: 'D2', name: '클리셰헌터', baseType: 'troll', callGroup: 'chaos',
         tone: '~이네;, ~봤는데로 끊음. 또/어디서 자주 사용',
         style: '클리셰/기시감 지적. "또" "어디서" 자주',
-        endings: ['~이네;', '~봤는데', '또~', '~풀코스']
+        endings: ['~이네;', '~봤는데', '또~', '~풀코스'],
+        cognitiveFocus: '다른 작품에서 본 전개, 뻔한 패턴, 기시감 나는 장면에 집착한다'
     },
     {
         id: 'D3', name: '파워밸런스충', baseType: 'troll', callGroup: 'chaos',
         tone: '~이네;, ~붕괴로 끊음. 게임 용어 사용',
         style: '파워밸런스/인플레 지적. 게임 용어 차용',
-        endings: ['~이네;', '~붕괴', '~너프', '~인플레']
+        endings: ['~이네;', '~붕괴', '~너프', '~인플레'],
+        cognitiveFocus: '캐릭터 파워의 급격한 변화, 밸런스 붕괴, 설정 인플레에 집착한다'
     },
     {
         id: 'D4', name: '작가비판러', baseType: 'troll', callGroup: 'chaos',
         tone: '~이네, ~좀..으로 끊음. 직설+세미콜론. 약간 윗사람 느낌',
         style: '작가 구성력/전개에 직설적 비판',
-        endings: ['~이네', '~좀..', '~과한 듯', '~이런 식']
+        endings: ['~이네', '~좀..', '~과한 듯', '~이런 식'],
+        cognitiveFocus: '작가의 구성력, 장면 전환, 대사 퀄리티에 불만을 느낀다'
     },
     {
         id: 'D5', name: '공포비꼼러', baseType: 'troll', callGroup: 'chaos',
         tone: '~이네;, ~진짜로 끊음. 왜 자주 사용',
         style: '공포 상황의 비합리성 비꼼',
-        endings: ['~이네;', '~진짜', '왜~', '~죽는 거']
+        endings: ['~이네;', '~진짜', '왜~', '~죽는 거'],
+        cognitiveFocus: '공포 상황에서 캐릭터의 비합리적 행동, 뻔한 공포 클리셰에 집착한다'
     },
 
     // === E. 밈/드립형 (5개) ===
@@ -899,34 +926,38 @@ const PERSONA_POOL: PersonaDef[] = [
         id: 'E1', name: '게임드립러', baseType: 'lurker', callGroup: 'casual',
         tone: 'SSS급, 치트키 등 게임 용어+ㅋㅋ. 과장 비유',
         style: '상황을 게임 용어로 비유. 등급/스킬/치트',
-        endings: ['~SSS급', '~치트', '~ㅋㅋ', '~뉴게임']
+        endings: ['~SSS급', '~치트', '~ㅋㅋ', '~뉴게임'],
+        cognitiveFocus: '모든 상황을 게임 메커니즘으로 번역해서 본다'
     },
     {
         id: 'E2', name: '밈장인', baseType: 'lurker', callGroup: 'casual',
         tone: '시뮬레이터/다큐 등 장르 비유. 밈체+과장',
         style: '상황을 다른 장르/밈으로 비유',
-        endings: ['~시뮬레이터', '~다큐', '~ㅋㅋ', '~가지고 놈']
+        endings: ['~시뮬레이터', '~다큐', '~ㅋㅋ', '~가지고 놈'],
+        cognitiveFocus: '장면을 다른 장르, 밈, 인터넷 유행어로 비유한다'
     },
     {
         id: 'E3', name: '연애드립러', baseType: 'lurker', callGroup: 'casual',
         tone: '작가 직접 언급. 드립+ㅋㅋ',
         style: '연애를 드립으로 비유. 작가 직접 언급',
-        endings: ['~시뮬레이터', '~솔로', '~과다 섭취', '~ㅋㅋ']
+        endings: ['~시뮬레이터', '~솔로', '~과다 섭취', '~ㅋㅋ'],
+        cognitiveFocus: '연애 요소를 현실/밈으로 비유해서 드립을 친다'
     },
     {
         id: 'E4', name: '역사드립러', baseType: 'lurker', callGroup: 'casual',
         tone: '시대극→현대 밈 비유. 드립+ㅋㅋ',
         style: '역사→현대 감각으로 비유',
-        endings: ['~타고 싶다', '~재밌음', '~나올듯', '~ㅋㅋ']
+        endings: ['~타고 싶다', '~재밌음', '~나올듯', '~ㅋㅋ'],
+        cognitiveFocus: '역사적 장면을 현대 감각으로 번역해서 드립을 친다'
     },
     {
         id: 'E5', name: '오독러', baseType: 'misreader', callGroup: 'chaos',
         tone: '~을걸, ~인듯으로 끊음. 확신형 (틀린 채로)',
         style: '잘못 읽고 확신. 근거 없는 단정',
-        endings: ['~을걸', '~인듯', '~이었음', '~의심']
+        endings: ['~을걸', '~인듯', '~이었음', '~의심'],
+        cognitiveFocus: '잘못 이해한 정보를 기반으로 확신에 찬 해석을 한다'
     },
 ];
-
 
 // 장르별 페르소나 풀 (이 중에서 랜덤 6~8명 선택)
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
@@ -1104,6 +1135,7 @@ function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], do
             personaTone: persona.tone,
             personaStyle: persona.style,
             personaEndings: persona.endings,
+            personaCognitive: persona.cognitiveFocus,
             attentionSpan: 0,
             memoryNoise: 0,
             emotionalIntensity: emotion,
@@ -1438,12 +1470,13 @@ ${sceneContext ? `
 [이번 화 핵심 장면]
 ${sceneContext}
 
-⚠️ 댓글 중 최소 30%는 위 장면을 직접 언급하라.` : ''}
+댓글 대부분이 위 장면을 직접 언급해야 한다.` : ''}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
         return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
 기억: ${r.view}${bandwagon}
+사고 초점: ${r.profile.personaCognitive}
 말투: ${r.profile.personaTone}
 행동: ${r.profile.personaStyle}
 어미: ${r.profile.personaEndings.join(', ')}`;
@@ -1459,12 +1492,13 @@ ${sceneContext ? `
 [이번 화 핵심 장면]
 ${sceneContext}
 
-⚠️ 댓글 중 최소 30%는 위 장면을 직접 언급하라.` : ''}
+장면을 언급해도 된다.` : ''}
 
 ${overreactorViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
         return `[${i + 1}번 독자: 감정강도 ${Math.round(r.profile.emotionalIntensity * 10)}/10]
 장면: ${r.view}${bandwagon}
+사고 초점: ${r.profile.personaCognitive}
 말투: ${r.profile.personaTone}
 행동: ${r.profile.personaStyle}
 어미: ${r.profile.personaEndings.join(', ')}`;
@@ -1482,6 +1516,7 @@ ${chaosViews.map((r, i) => {
         const memoryLabel = r.profile.type === 'misreader' ? '기억(틀림)' : '기억';
         return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'misreader' ? '잘못 이해' : '짜증/비꼼'}]${bandwagon}
 ${memoryLabel}: ${r.view}
+사고 초점: ${r.profile.personaCognitive}
 말투: ${r.profile.personaTone}
 행동: ${r.profile.personaStyle}
 어미: ${r.profile.personaEndings.join(', ')}`;
@@ -1497,6 +1532,7 @@ ${memoryLabel}: ${r.view}
 ${casualViews.map((r, i) => {
         return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밈형' : '대충 반응'}]
 기억: ${r.view}
+사고 초점: ${r.profile.personaCognitive}
 말투: ${r.profile.personaTone}
 행동: ${r.profile.personaStyle}
 어미: ${r.profile.personaEndings.join(', ')}`;
