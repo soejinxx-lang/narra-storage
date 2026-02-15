@@ -71,8 +71,8 @@ export interface LanguagePack {
     // === 데이터 풀 ===
     nicknamePool: string[];
     templates: Record<PersonalityTone, string[]>;
-    contextTemplates: ContextTemplate[];
     genreTemplates: Record<string, string[]>;
+
 
     // === 30 페르소나 (문화 적응) ===
     personas: PersonaDef[];
