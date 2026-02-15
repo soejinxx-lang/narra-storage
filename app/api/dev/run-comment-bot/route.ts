@@ -698,6 +698,7 @@ interface StoryEvent {
     importance: number;
     characters: string[];
     quote?: string;
+    detail?: string;  // 구체적 묘사/감정 (딜컨텍스트용)
 }
 
 interface EventExtraction {
@@ -1079,7 +1080,7 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
 {
   "dominantEmotion": "긴장|슬픔|분노|웃김|소름|설렘|허탈|감동 중 1개",
   "events": [
-    { "id": 1, "summary": "사건 요약 (15자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장 1개 (20자 이내)" }
+    { "id": 1, "summary": "사건 요약 (30자 이내)", "type": "action|emotion|dialogue|twist|reveal", "importance": 0.0~1.0, "characters": ["이름"], "quote": "원문 핵심 문장/대사 (40자 이내)", "detail": "이 장면의 구체적 묘사나 감정 (50자 이내)" }
   ]
 }
 
@@ -1260,15 +1261,15 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile): string {
             return visibleEvents.map(e => `${e.characters[0] || '누군가'} — ${e.summary}`).join('\n');
 
         case 'analyst':
-            // 사건 전체 + quote + 관계
+            // 사건 전체 + quote + detail + 관계
             return visibleEvents.map(e =>
-                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` — "${e.quote}"` : ''}`
+                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` [${e.detail}]` : ''}`
             ).join('\n');
 
         default:
-            // 사건 요약 + quote
+            // 사건 요약 + quote + detail
             return visibleEvents.map(e =>
-                `${e.summary}${e.quote ? ` — "${e.quote}"` : ''}`
+                `${e.summary}${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` (${e.detail})` : ''}`
             ).join('\n');
     }
 }
@@ -1463,14 +1464,19 @@ async function generateDeepContextComments(
         .map(e => `"${e.quote}" (${e.summary})`)
         .join(', ');
 
+    // Episode excerpt for deep context (last 500 chars = climax/cliffhanger area)
+    const episodeExcerpt = episodeContent.length > 500
+        ? episodeContent.slice(-500)
+        : episodeContent;
+
     // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
     const call1Prompt = immersedViews.length > 0 ? `${platform}
-생각 정리 안 한다. 분석하려다 말아라.${moodHint}${genreHint}
-${sceneContext ? `
-[이번 화 핵심 장면]
-${sceneContext}
+생각 정리 안 한다. 설명하지 말아라. 정리하지 말아라.${moodHint}${genreHint}
 
-댓글 대부분이 위 장면을 직접 언급해야 한다.` : ''}
+[이번 화 주요 장면 — 읽고 반응만 해라, 분석하지 말아라]
+${episodeExcerpt}
+${sceneContext ? `
+핵심 장면: ${sceneContext}` : ''}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
@@ -1483,26 +1489,22 @@ ${immersedViews.map((r, i) => {
     }).join('\n')}
 
 이런 톤이 섞여야 한다:
-"이거 나중에 돌아온다 100%"
-"저거 복선 맞음 ㅋㅋ"
-"작가 일부러 여기서 끊었네"
-"아 여기서 끊네 미쳤냐"
+"저 대사 일부러 넣은 거 같은데"
+"얘 속으로 뭔가 생각하고 있는 듯"
+"아까 그 장면이랑 연결되는 건가"
+"아 여기서 끊네 아 진짜"
 "이건 좀 뻔한데"
-"솔직히 좀 과한 듯"
-"왜 저러는 거임 이해 안 됨"
-⚠️ 위 문장을 그대로 반복하지 말고 비슷한 결로 변형해라
+⚠️ 위 문장을 그대로 반복하지 말고, 이번 화 내용을 넣어서 변형해라
 
 [출력 — JSON]
 { "tags": ["battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당"], "comments": ["${Math.min(immersedViews.length * 2, 8)}개"] }` : null;
 
     // --- 호출 2: 감정폭발형 (페르소나별 말투 주입) ---
     const call2Prompt = overreactorViews.length > 0 ? `${platform}
-방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망.${moodHint}${genreHint}
-${sceneContext ? `
-[이번 화 핵심 장면]
-${sceneContext}
+방금 읽고 폰 던질 뻔한 사람들. 감정이 앞서서 타이핑 엉망. 설명하지 마라.${moodHint}${genreHint}
 
-장면을 언급해도 된다.` : ''}
+[방금 읽은 장면]
+${episodeExcerpt}
 
 ${overreactorViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 감정이입 심함.` : '';
