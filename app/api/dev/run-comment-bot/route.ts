@@ -1090,26 +1090,9 @@ function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], do
         ? allCharacters[Math.floor(Math.random() * allCharacters.length)]
         : null;
 
-    // 감정 쏠림
-    const dominantRatio = dominantEmotion ? 0.3 + Math.random() * 0.3 : 0;
-    const dominantCount = Math.round(count * dominantRatio);
-    if (dominantEmotion) {
-        console.log(`🎭 Emotion skew: "${dominantEmotion}" → ${dominantCount}/${count} readers (${(dominantRatio * 100).toFixed(0)}%)`);
-    }
 
     const profiles: ReaderProfile[] = [];
-    let dominantApplied = 0;
     const rand = (min: number, max: number) => min + Math.random() * (max - min);
-
-    const emotionResistance: Record<ReaderType, number> = {
-        immersed: 0.2,
-        overreactor: 0.1,
-        analyst: 0.5,
-        skimmer: 0.6,
-        misreader: 0.4,
-        lurker: 0.8,
-        troll: 0.7,
-    };
 
     for (let i = 0; i < personas.length; i++) {
         const persona = personas[i];
@@ -1174,17 +1157,17 @@ function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], do
             profile.bandwagonTarget = bandwagonChar;
         }
 
-        // 감정 쏠림 적용
-        if (dominantEmotion && dominantApplied < dominantCount) {
-            const resistance = emotionResistance[persona.baseType];
-            if (Math.random() > resistance) {
-                if (persona.baseType === 'troll' && Math.random() < 0.3) {
-                    profile.dominantEmotion = '반감';
-                } else {
-                    profile.dominantEmotion = dominantEmotion;
-                }
-                dominantApplied++;
-            }
+        // Conservative intensity boost based on episode mood (not vocabulary)
+        // Affects expression strength only, not word choice
+        if (dominantEmotion) {
+            const moodIntensityBoost: Record<string, number> = {
+                '슬픔': 1.08, '소름': 1.06, '감동': 1.06,
+                '긴장': 1.04, '분노': 1.05,
+                '설렘': 1.0,  // No boost - this was causing romance overflow
+                '웃김': 1.0, '허탈': 1.0
+            };
+            const boost = moodIntensityBoost[dominantEmotion] || 1.0;
+            profile.emotionalIntensity *= boost;
         }
 
         profiles.push(profile);
@@ -1193,7 +1176,7 @@ function generateReaderProfiles(events: StoryEvent[], personas: PersonaDef[], do
     if (bandwagonChar) {
         console.log(`👥 Bandwagon: ${profiles.filter(p => p.bandwagonTarget).length} readers on "${bandwagonChar}"`);
     }
-    console.log(`🎭 Emotion infected: ${profiles.filter(p => p.dominantEmotion).length}/${profiles.length}`);
+
 
     return profiles;
 }
