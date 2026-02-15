@@ -835,24 +835,8 @@ function pickComment(
         }
     }
 
-    // 15% context template
-    if (characterNames.length > 0 && Math.random() < 0.15) {
-        const contextPool = lang.contextTemplates.filter(t => t.tone === tone);
-        if (contextPool.length > 0) {
-            const ct = contextPool[Math.floor(Math.random() * contextPool.length)];
-            let text = ct.template;
-            const shuffled = [...characterNames].sort(() => Math.random() - 0.5);
-            text = text.replace(/\{name1\}/g, shuffled[0] || 'protagonist');
-            text = text.replace(/\{name2\}/g, shuffled[1] || shuffled[0] || 'protagonist');
-            text = text.replace(/\{author\}/g, 'author');
-            text = lang.applyDynamicVariations(text);
-            text = lang.humanize(text);
-            usedTemplates.add(ct.template);
-            return text;
-        }
-    }
-
     // Universal 템플릿
+
     const pool = lang.templates[tone];
     const available = pool.filter(t => !usedTemplates.has(t));
     let selected: string;
