@@ -1356,7 +1356,7 @@ async function generateDeepContextComments(
     genreWeights: Record<string, number> = {},
     count: number = 8,
     sourceLanguage: string = 'ko'
-): Promise<{ comments: string[]; detectedTags: string[] }> {
+): Promise<{ comments: string[]; midComments: string[]; detectedTags: string[] }> {
 
     // ===== Stage 1: Event Extraction =====
     console.log('📋 Stage 1: Extracting events...');
@@ -1365,7 +1365,7 @@ async function generateDeepContextComments(
 
     if (events.length === 0) {
         console.warn('⚠️ No events extracted, falling back to old method');
-        return { comments: [], detectedTags: [] };
+        return { comments: [], midComments: [], detectedTags: [] };
     }
 
     // ===== Stage 1.5: DB 장르 가중치로 페르소나 선택 =====
@@ -1556,7 +1556,7 @@ ${episodeExcerpt.substring(0, 300)}
 
     // ===== 5회 병렬 호출 (빈 그룹은 skip) =====
     console.log('🧠 Stage 4: Persona-based cognitive calls...');
-    const prompts = [call5Prompt].filter(Boolean) as string[]; // 중간밀도 테스트: call1~4 비활성화
+    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt, call5Prompt].filter(Boolean) as string[];
     const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
 
     // ===== 결과 합치기 (chaos 보호 분리) =====
@@ -1632,8 +1632,8 @@ ${episodeExcerpt.substring(0, 300)}
         ? parseComments(rawResults[resultIdx++] || null).filter(c => midDensityQualityScore(c) >= 6)
         : [];
 
-    // 중간밀도를 safeComments에 병합
-    safeComments.push(...midComments);
+    // 중간밀도는 별도 풀로 유지 (70/20/10 비율 시스템에서 사용)
+    // safeComments에 병합하지 않음
 
     console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
 
@@ -1662,7 +1662,7 @@ ${episodeExcerpt.substring(0, 300)}
     }
 
     console.log(`🧠 Final: ${filtered.length} curated + ${selectedChaos.length} chaos = ${finalMerged.length}, tags: [${detectedTags.join(', ')}]`);
-    return { comments: finalMerged, detectedTags };
+    return { comments: finalMerged, midComments, detectedTags };
 }
 
 
@@ -2871,6 +2871,7 @@ export async function GET(req: NextRequest) {
 
         // 4. Deep Context GPT 댓글 사전 생성 (deep=true일 때만)
         let deepComments: string[] = [];
+        let midDensityPool: string[] = [];
         let sceneTags: string[] = [];
         if (useDeep) {
             // 에피소드 본문 조회
@@ -2891,6 +2892,7 @@ export async function GET(req: NextRequest) {
                         sourceLanguage
                     );
                     deepComments.push(...result.comments);
+                    midDensityPool.push(...result.midComments);
                     if (calls === 0) sceneTags = result.detectedTags;
                     calls++;
                     console.log(`   → 배치 ${calls}: +${result.comments.length}개 (총 ${deepComments.length}/${totalCount})`);
@@ -2944,9 +2946,25 @@ export async function GET(req: NextRequest) {
             let lastCommentTime: Date | null = null;
 
             for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-                // Deep Context 댓글만 사용 (템플릿 fallback 비활성화)
-                if (deepComments.length === 0) break;
-                let content: string = deepComments.pop()!;
+                // 70/20/10 비율 시스템: 딥컨텍스트 70%, 중간밀도 20%, 템플릿 10%
+                const roll = Math.random();
+                let content: string;
+                if (roll < 0.70 && deepComments.length > 0) {
+                    // 딥컨텍스트 (70%)
+                    content = deepComments.pop()!;
+                } else if (roll < 0.90 && midDensityPool.length > 0) {
+                    // 중간밀도 (20%)
+                    content = midDensityPool.pop()!;
+                } else {
+                    // 템플릿 (10%) 또는 다른 풀 소진 시 fallback
+                    if (deepComments.length > 0) {
+                        content = deepComments.pop()!;
+                    } else if (midDensityPool.length > 0) {
+                        content = midDensityPool.pop()!;
+                    } else {
+                        break;
+                    }
+                }
                 content = humanize(content);
                 let createdAt = randomTimestamp();
 
