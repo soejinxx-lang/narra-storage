@@ -1527,7 +1527,10 @@ ${overreactorViews.map((r, i) => {
 
     // --- 호출 3: 냉소형 + 오독형 — 🔒 보호 영역 ---
     const call3Prompt = chaosViews.length > 0 ? `${platform}
-이 독자들은 호의적이지 않거나 잘못 이해하고 있다.${moodHint}${genreHint}
+이 독자들은 호의적이지 않거나 잘못 이해하고 있다. 그래도 방금 읽은 장면을 근거로 말해라.${moodHint}${genreHint}
+
+[방금 읽은 장면]
+${episodeExcerpt}
 
 ${chaosViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}" 싫어함.` : '';
@@ -1543,12 +1546,15 @@ ${memoryLabel}: ${r.view}
 [출력 — JSON]
 { "comments": ["${Math.min(chaosViews.length * 2, 4)}개"] }` : null;
 
-    // --- 호출 4: 밈/드립형 + 단어투척 ---
+    // --- 호출 4: 밀/드립형 + 가벼운 반응 ---
     const call4Prompt = casualViews.length > 0 ? `${platform}
-이 독자들은 대충 읽거나 밈으로 반응한다.${moodHint}${genreHint}
+이 독자들은 가벼운 톤으로 반응하지만, 방금 읽은 장면을 근거로 말해야 한다. 단문 금지.${moodHint}${genreHint}
+
+[방금 읽은 장면]
+${episodeExcerpt}
 
 ${casualViews.map((r, i) => {
-        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밈형' : '대충 반응'}]
+        return `[${String.fromCharCode(65 + i)}: ${r.profile.type === 'lurker' ? '드립/밀형' : '가벼운 반응'}]
 기억: ${r.view}
 사고 초점: ${r.profile.personaCognitive}
 말투: ${r.profile.personaTone}
@@ -1876,11 +1882,11 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
 const GENRE_HINTS: Record<string, Record<string, string>> = {
     'fantasy': {
         'ko': `\n\n[장르: 판타지 | 한국어 댓글 스타일]
-- 짧은 문장 (5-15자)
+- 최소 8자 이상 (단문 금지 — "와", "ㅇㅈ", "인정" 같은 건 쓰지 마라)
 - 쉼표 거의 사용 안 함
 - 방금 읽은 장면에서 인상 깊은 부분을 직접 언급해라
-- 캐릭터 이름, 대사, 행동을 구체적으로 넣어라
 - "복선", "설정" 같은 메타 용어보다 장면 자체를 말해라
+- 에피소드에 없는 인물 이름을 만들어내지 마라
 
 금지:
 - 로맨스 어휘 ("심쿵", "달달", "케미", "설렘")
