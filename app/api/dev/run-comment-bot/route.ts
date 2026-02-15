@@ -231,10 +231,8 @@ const GENRE_TEMPLATES: Record<string, string[]> = {
     fantasy: [
         '마나 폭주하는 장면 소름', '각성 장면 연출 미쳤음',
         '드디어 강해짐ㅋㅋ', '이 스킬 사기인데',
-        '마탑 설정 개좋다', '정령 소환하는거 개간지',
         '주인공 성장속도 미쳤네', '여기서 각성하네',
         '마법 체계 좋네', '이세계 설정 신선하네',
-        '용 나올때 소름돋음', '마왕 클래스 ㄷㄷ',
         '결계 뚫리는 장면 긴장감', '아티팩트 개사기네',
         '파워업 개간지', '진짜 강해졌네ㅋㅋ',
     ],
@@ -255,20 +253,17 @@ const GENRE_TEMPLATES: Record<string, string[]> = {
         '심쿵사 당했음', '고백해라 제발',
         '둘이 눈 마주치는데 심장', '커플링 확정이지 이거',
         '남주 왜이렇게 설레게 하냐', '여주 당당한거 개좋아',
-        '무도회 장면 미쳤다', '정략결혼인데 진심인거 같은데',
-        '황녀 클래스 ㄷㄷ', '시녀가 진짜 충신이네',
-        '전생 기억 돌아올때 소름', '악녀라면서 왜 이렇게 착해',
-        '피앙세 바꾸는거 시원하네', '사교계 정치 재밌다',
+        '전생 기억 돌아올때 소름',
+        '사교계 정치 재밌다',
         '작가님 너무너무너무너무너무 맛있어요',
     ],
     // 무협
     martial_arts: [
         '내공 폭발하는 장면 개간지', '검기 묘사 미쳤음',
-        '사부님 ㅈㄴ 강하네', '무림맹 설정 좋다',
+        '무림맹 설정 좋다',
         '경공 장면 개쩔어', '독공 위험하지 않나ㅋㅋ',
         '혈도 짚는 장면 소름', '비급 습득하는거 개좋네',
-        '마교 등장하면 항상 긴장됨', '천하제일대회 기대됨',
-        '검황 클래스 ㄷㄷ', '장문인 뒤통수 치겠네',
+        '천하제일대회 기대됨',
         '협객다운 한마디 소름', '무공 이름 개간지',
         '절초 펼치는 장면 미쳤음', '강호 세계관 좋네',
     ],
@@ -1528,9 +1523,40 @@ ${casualViews.map((r, i) => {
 [출력 — JSON]
 { "comments": ["${Math.min(casualViews.length * 2, 4)}개"] }` : null;
 
-    // ===== 4회 병렬 호출 (빈 그룹은 skip) =====
+    // --- 호출 5: 중간밀도 (7~18자, 장면 언급, 분석 안 함) ---
+    const call5Prompt = `${platform}
+너는 웹소설 독자다. 방금 읽은 에피소드에 7~18자 짧은 댓글 5개 생성.
+
+[규칙]
+✅ 장면 언급하되 분석 안 함
+✅ 캐릭터 언급하되 감상문 아님
+✅ 7~18자
+✅ 장르 톤 유지${genreHint}
+
+❌ 문장 끝에 마침표 쓰지 마라
+❌ 존댓말 금지
+❌ 2문장 이상 금지
+❌ 접속사 사용 금지 (그리고, 하지만, 그래서)
+❌ 분석, 복선 추론, 작가 의도 언급 금지
+
+좋은 예:
+"여기서 각성하네ㅋㅋ"
+"이 장면 소름"
+"드디어 만났다ㅠ"
+
+나쁜 예:
+"각성 장면이 너무 인상적이었다." (마침표, 존댓말)
+"주인공이 각성하는 장면을 보니, 정말 성장한 것 같다" (2문장, 감상문)
+
+[방금 읽은 장면]
+${episodeExcerpt.substring(0, 300)}
+
+[출력 — JSON]
+{ "comments": ["5개"] }`;
+
+    // ===== 5회 병렬 호출 (빈 그룹은 skip) =====
     console.log('🧠 Stage 4: Persona-based cognitive calls...');
-    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt].filter(Boolean) as string[];
+    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt, call5Prompt].filter(Boolean) as string[];
     const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
 
     // ===== 결과 합치기 (chaos 보호 분리) =====
@@ -1579,7 +1605,37 @@ ${casualViews.map((r, i) => {
     if (call3Prompt) chaosComments.push(...parseComments(rawResults[resultIdx++] || null)); // 🔒 보호
     if (call4Prompt) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
 
-    console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}`);
+    // ===== 중간밀도 품질 필터 =====
+    const midDensityQualityScore = (text: string): number => {
+        let score = 10;
+
+        // 길이 체크
+        if (text.length < 7 || text.length > 18) score -= 4;
+
+        // 금지 패턴
+        if (/것 같다|느껴졌다|보였다/.test(text)) score -= 3;
+        if ((text.match(/,/g) || []).length >= 2) score -= 2;
+        if (/[\.。]$/.test(text)) score -= 2; // 마침표 끝
+        if (/입니다|습니다|되었다/.test(text)) score -= 2; // 존댓말
+
+        // 반복 어휘 감점 (메타 단어)
+        if (/각성|복선|설정/.test(text)) score -= 1;
+
+        // 장르 톤 보너스
+        if (/ㅠ/.test(text) && primaryGenre === 'romance_fantasy') score += 1;
+        if (/ㅋㅋ/.test(text) && primaryGenre === 'game_fantasy') score += 1;
+
+        return score;
+    };
+
+    const midComments: string[] = call5Prompt
+        ? parseComments(rawResults[resultIdx++] || null).filter(c => midDensityQualityScore(c) >= 6)
+        : [];
+
+    // 중간밀도를 safeComments에 병합
+    safeComments.push(...midComments);
+
+    console.log(`📊 Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
 
     // ===== Stage 5: 집단 동조 파동 (safe만) =====
     console.log('👥 Stage 5: Herd effect...');
