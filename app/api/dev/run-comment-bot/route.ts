@@ -1511,6 +1511,11 @@ ${casualViews.map((r, i) => {
     const parseComments = (raw: string | null): string[] => {
         if (!raw) return [];
         const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        // GPT가 앞에 붙이는 라벨 제거 패턴
+        const stripLabel = (c: string) => c
+            .replace(/^["']|["']$/g, '')
+            .replace(/^(반응|원댓글|독자[A-Z]?|[A-Z]|감상|댓글|코멘트|의견|답글)[：:]\s*/g, '')
+            .trim();
         try {
             const parsed = JSON.parse(cleaned);
             if (parsed.tags) {
@@ -1519,11 +1524,11 @@ ${casualViews.map((r, i) => {
                 );
             }
             return (parsed.comments || [])
-                .map((c: string) => c.replace(/^["']|["']$/g, '').replace(/^(반응|원댓글|독자[AB]?|[AB]):\s*/g, '').trim())
+                .map((c: string) => stripLabel(c))
                 .filter((c: string) => c.length > 0 && c.length < 100);
         } catch {
             return raw.split('\n')
-                .map((l: string) => l.replace(/^\d+[\.)\\-]\s*/, '').replace(/^"|"$/g, '').trim())
+                .map((l: string) => stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
                 .filter((l: string) => l.length > 0 && l.length < 100);
         }
     };
