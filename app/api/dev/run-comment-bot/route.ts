@@ -1380,7 +1380,8 @@ function amplifyEmotions(comments: string[]): string[] {
 async function generateDeepContextComments(
     episodeContent: string,
     genreWeights: Record<string, number> = {},
-    count: number = 8
+    count: number = 8,
+    sourceLanguage: string = 'ko'
 ): Promise<{ comments: string[]; detectedTags: string[] }> {
 
     // ===== Stage 1: Event Extraction =====
@@ -1412,6 +1413,13 @@ async function generateDeepContextComments(
 
     // ===== Stage 4: callGroup별 분리 GPT 호출 =====
     const moodHint = dominantEmotion ? `\n분위기: 이 화는 전체적으로 "${dominantEmotion}" 느낌이 강하다.` : '';
+
+    // 장르 힌트 주입 (GENRE_HINTS에서 가져옴)
+    const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const genreHintText = GENRE_HINTS[primaryGenre]?.[sourceLanguage] || GENRE_HINTS[primaryGenre]?.['ko'] || '';
+    const genreHint = genreHintText ? `\n${genreHintText}` : '';
+    if (primaryGenre) console.log(`📖 Genre hint applied: ${primaryGenre} (${sourceLanguage})`);
+
     const platform = '한국 웹소설 모바일 앱. 방금 읽고 바로 폰으로 치는 댓글.';
 
     // callGroup별 분류
@@ -1436,7 +1444,7 @@ async function generateDeepContextComments(
 
     // --- 호출 1: 몰입형 + 분석형 (페르소나별 말투 주입) ---
     const call1Prompt = immersedViews.length > 0 ? `${platform}
-생각 정리 안 한다. 분석하려다 말아라.${moodHint}
+생각 정리 안 한다. 분석하려다 말아라.${moodHint}${genreHint}
 
 ${immersedViews.map((r, i) => {
         const bandwagon = r.profile.bandwagonTarget ? ` "${r.profile.bandwagonTarget}"한테 꽂힘.` : '';
@@ -2769,7 +2777,8 @@ export async function GET(req: NextRequest) {
                     const result = await generateDeepContextComments(
                         episodeContent,
                         genreWeights,
-                        15              // count
+                        15,             // count
+                        sourceLanguage
                     );
                     deepComments.push(...result.comments);
                     if (calls === 0) sceneTags = result.detectedTags;
