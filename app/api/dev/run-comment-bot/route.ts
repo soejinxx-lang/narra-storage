@@ -1552,11 +1552,11 @@ ${casualViews.map((r, i) => {
 ${episodeExcerpt.substring(0, 300)}
 
 [출력 — JSON]
-{ "comments": ["5개"] }`;
+{ "comments": ["15개"] }`;
 
     // ===== 5회 병렬 호출 (빈 그룹은 skip) =====
     console.log('🧠 Stage 4: Persona-based cognitive calls...');
-    const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt, call5Prompt].filter(Boolean) as string[];
+    const prompts = [call5Prompt].filter(Boolean) as string[]; // 중간밀도 테스트: call1~4 비활성화
     const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
 
     // ===== 결과 합치기 (chaos 보호 분리) =====
