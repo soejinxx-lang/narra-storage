@@ -487,12 +487,17 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
         const instantKill = [
             /\bpalpable\b/i,
             /you could? feel/i,
+            /can really feel/i,
             /danger in the air/i,
             /sends? (?:a )?(?:chill|shiver)/i,
             /weight of (?:the|his|her)/i,
             /air (?:was |felt )(?:thick|heavy)/i,
             /perfectly captures?/i,
             /testament to/i,
+            // Structural patterns (sentence-level AI DNA)
+            /really (?:adds|brings|shows|captures)/i,
+            /going to play a (?:significant|major|important|key|crucial) role/i,
+            /balance between \w+ and \w+/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };

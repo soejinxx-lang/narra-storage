@@ -78,18 +78,19 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
 // 장르별 페르소나 풀 매핑 (구조 동일, 언어 무관)
 // ============================================================
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
-    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
-    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
-    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
-    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
-    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5'],
-    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5'],
-    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
-    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
-    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    // Rebalanced: more C/D/E (chaos/analyst/casual), fewer A/B (immersed/overreactor)
+    'fantasy': ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E4', 'E5'],
+    'game-fantasy': ['A1', 'A4', 'B1', 'B4', 'C1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E4', 'E5'],
+    'murim': ['A1', 'A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E4', 'E5'],
+    'romance': ['A1', 'A3', 'A7', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E4', 'E5'],
+    'scifi': ['A2', 'B1', 'B4', 'C1', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E4', 'E5'],
+    'mystery': ['A1', 'B1', 'B6', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E4', 'E5'],
+    'horror': ['A1', 'A6', 'C1', 'C3', 'C5', 'D1', 'D5', 'E2', 'E4', 'E5'],
+    'historical': ['A2', 'A5', 'B5', 'C3', 'C5', 'D1', 'D4', 'E2', 'E4', 'E5'],
+    'slice-of-life': ['A1', 'A7', 'C3', 'C4', 'C5', 'D1', 'D4', 'E2', 'E4', 'E5'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E4', 'E5'],
+    'comedy': ['A1', 'C1', 'C3', 'C4', 'C5', 'D1', 'D4', 'E1', 'E2', 'E4', 'E5'],
+    'regression': ['A4', 'A5', 'B1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E4', 'E5'],
 };
 
 // ============================================================
@@ -293,7 +294,7 @@ function selectPersonasForGenre(
     count: number = 8
 ): PersonaDef[] {
     const personaMap = new Map(lang.personas.map(p => [p.id, p]));
-    const defaultPool = ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C5', 'D1', 'E2', 'E5'];
+    const defaultPool = ['A1', 'A5', 'B1', 'C1', 'C3', 'C5', 'D1', 'D3', 'E2', 'E4', 'E5'];
 
     const categories = Object.keys(genreWeights);
     if (categories.length === 0) {
@@ -824,16 +825,23 @@ async function generateDeepContextComments(
         [/\bfr fr\b/i, 'fr fr'], [/\blowkey\b/i, 'lowkey'], [/\bngl\b/i, 'ngl'],
         [/\btbh\b/i, 'tbh'], [/\bno cap\b/i, 'no cap'], [/\bbruh\b/i, 'bruh'],
     ];
+    const smashPattern = /[a-z]{8,}/;
+    let smashCount = 0;
     const slangCounts = new Map<string, number>();
     const afterSlang = dedupedSafe.filter(comment => {
         const lower = comment.toLowerCase();
+        // Keyboard smash: max 1 per batch
+        if (smashPattern.test(lower) && /(?:asdf|jkl|qwer|zxcv|asdj|fjsk)/i.test(lower)) {
+            smashCount++;
+            if (smashCount > 1) return false;
+        }
         for (const [pattern, key] of slangPatterns) {
             if (pattern.test(lower)) {
                 const count = slangCounts.get(key) || 0;
                 slangCounts.set(key, count + 1);
-                // Decay: 1st-2nd always keep, 3rd 50% keep, 4th 20% keep, 5th+ 5%
+                // Steeper decay: 1st-2nd keep, 3rd 30%, 4th 5%, 5th+ 0%
                 if (count >= 2) {
-                    const keepChance = count === 2 ? 0.5 : count === 3 ? 0.2 : 0.05;
+                    const keepChance = count === 2 ? 0.3 : count === 3 ? 0.05 : 0;
                     if (Math.random() > keepChance) return false;
                 }
             }
