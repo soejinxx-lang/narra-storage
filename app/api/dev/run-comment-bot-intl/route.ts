@@ -17,7 +17,7 @@ import type { LanguagePack } from "./types";
 const LANGUAGE_PACKS: Record<string, () => Promise<LanguagePack>> = {
     'en': () => import('./lang/en').then(m => m.default),
     // Phase 2 (remaining):
-    // 'ja': () => import('./lang/ja').then(m => m.default),
+    'ja': () => import('./lang/ja').then(m => m.default),
     // 'zh': () => import('./lang/zh').then(m => m.default),
     'es': () => import('./lang/es').then(m => m.default),
 };
