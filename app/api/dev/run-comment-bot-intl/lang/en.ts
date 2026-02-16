@@ -536,6 +536,11 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             /In this chapter/i,
             /The author/i,
             /masterfully|brilliantly|expertly/i,
+            // 메타 리뷰 단어
+            /\b(imagery|layer|dynamic|foreshadowing)\b/i,
+            /interesting dynamic/i,
+            // 설명형 동사 (AI가 해설하는 구조)
+            /\b(highlights?|demonstrates?|conveys?|depicts?|illustrates?)\b/i,
         ];
         for (const pattern of aiPatterns) {
             if (pattern.test(comment)) score -= 30;
@@ -547,9 +552,11 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
         // "The/This/It" 시작 분석 구조
         if (/^(The|This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) score -= 12;
         // 문학 비평 단어
-        if (/\b(dynamic|narrative|storytelling|character development)\b/i.test(comment)) score -= 10;
+        if (/\b(narrative|storytelling|character development)\b/i.test(comment)) score -= 10;
         // 2문장 이상 + 논리 연결 (AI 설명 구조)
         if (/\. [A-Z]/.test(comment) && /\b(and|but|also|however|while|although|because)\b/i.test(comment)) score -= 20;
+        // 2문장 이상 (논리 연결 없어도 — 사람은 2문장 잘 안 씀)
+        if (/\. [A-Z]/.test(comment)) score -= 12;
         // 길이 + 감정 부재 = 리뷰
         if (comment.length > 100) score -= 20;
         if (comment.length > 70 && !/[!?…]/.test(comment)) score -= 10;
@@ -561,14 +568,20 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
         if (!/[.!?]$/.test(comment)) score += 6;
         // 매우 짧음 (5단어 이하)
         if (comment.split(' ').length <= 5) score += 8;
-        // 대문자 과용 (2단어 이상 전부 대문자)
+        // 대문자 과용 (WHAT, BRO)
         if (/[A-Z]{3,}/.test(comment)) score += 3;
         // 반복 문자 (lmaooo, nooo, wtfff)
         if (/(.)\1{2,}/.test(comment)) score += 4;
-        // 물음표/느낌표 단독 또는 과다
+        // 물음표/느낌표 과다
         if (/^[?!]+$/.test(comment.trim()) || /[!?]{2,}/.test(comment)) score += 3;
         // 슬랭 사용
         if (/\b(bruh|lmao|ngl|tbh|fr|ong|bro|dude|smh|idk|nah|yooo?|wtf|lol)\b/i.test(comment)) score += 4;
+        // 질문형 (사람은 질문으로 반응함)
+        if (/\?/.test(comment) && comment.split(' ').length <= 10) score += 7;
+        // "wait/hold on/what" 시작 (반응형)
+        if (/^(wait|hold on|what|huh|bro|yo|ok but|nah)/i.test(comment)) score += 5;
+        // "idk/idc/whatever" 어설픈 마무리
+        if (/\b(idk|idc|whatever|i guess|or something)\b/i.test(comment)) score += 4;
 
         return { score: Math.max(0, Math.min(120, score)) };
     },
