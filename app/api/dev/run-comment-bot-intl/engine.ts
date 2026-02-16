@@ -647,10 +647,14 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
     const bypassed = shuffledPre.slice(0, bypassCount);
     const toCurate = shuffledPre.slice(bypassCount);
 
-    // GPT-5 큐레이터 (직관 기반 — 의심 테스트)
+    // GPT-5 큐레이터 (직관 기반 — 언어별 커뮤니티 페르소나)
     const commentList = toCurate.map((s, i) => `${i}: "${s.text}"`).join('\n');
-    const platformName = lang.platformString || 'Royal Road';
-    const curatorPrompt = `You've been on ${platformName} for years. You scroll fast. You don't overthink.
+    const targetCurateCount = Math.max(1, targetCount - Math.ceil(bypassCount * 0.3));
+
+    // 언어별 curator 프롬프트 사용 (없으면 기본 영어 프롬프트)
+    const curatorPrompt = lang.curatorPrompt
+        ? lang.curatorPrompt(commentList, targetCurateCount)
+        : `You've been on ${lang.platformString || 'Royal Road'} for years. You scroll fast. You don't overthink.
 
 Someone made a bot to fake comments. Your job is not to pick the best ones.
 Your job is to pick the ones that wouldn't make you suspicious.
@@ -673,7 +677,7 @@ Some just type and leave.
 
 Pick the ones that feel like that.
 
-Here are ${toCurate.length} comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
+Here are ${toCurate.length} comments. Pick ${targetCurateCount}.
 
 ${commentList}
 

@@ -665,6 +665,25 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
 
     // === CJK 토크나이저 (영어는 whitespace) ===
     tokenize: (text) => text.toLowerCase().split(/\s+/).filter(Boolean),
+
+    // === Curator 프롬프트 (Royal Road 페르소나) ===
+    curatorPrompt: (commentList, targetCount) => `You've been on Royal Road for years. You scroll comment sections fast.
+
+Someone made a bot. Your job: pick comments that feel real.
+
+Don't analyze. Don't think about rules.
+Just ask: "If I saw this in a real chapter, would I think 'wait, that's a bot'?"
+
+Royal Road readers are messy. Some are smart. Most aren't.
+Some barely read. Some just vibe and type.
+Some people just drop "lol" and leave.
+
+Pick ${targetCount} that feel like real people typed them.
+
+${commentList}
+
+JSON only:
+{ "selected": [indices] }`,
 };
 
 export default enLangPack;

@@ -648,6 +648,24 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
 
     // === 토크나이저 ===
     tokenize: (text) => text.toLowerCase().split(/\s+/).filter(Boolean),
+
+    // === Curator プロンプト (Wattpad/Webnovel español ペルソナ) ===
+    curatorPrompt: (commentList, targetCount) => `Llevas años en Wattpad/Webnovel en español. Scrolleas comentarios rápido.
+
+Hay un bot mezclado. Tu trabajo: elige los que parecen reales.
+
+No analices. No pienses en reglas.
+Solo pregunta: "Si veo esto en un capítulo real, ¿pensaría 'espera, esto es un bot'?"
+
+Los lectores en español son emocionales y directos. Algunos son listos. La mayoría no.
+Algunos apenas leen. Algunos solo comentan y se van.
+
+Elige ${targetCount} que parezcan escritos por personas reales.
+
+${commentList}
+
+Solo JSON:
+{ "selected": [índices] }`,
 };
 
 export default esLangPack;

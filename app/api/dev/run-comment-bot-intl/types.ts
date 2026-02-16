@@ -112,6 +112,9 @@ export interface LanguagePack {
     applyDynamicVariations: (text: string) => string;
     curateScoring: (comment: string) => { score: number };
 
+    // === Curator 프롬프트 (언어별 커뮤니티 페르소나) ===
+    curatorPrompt?: (commentList: string, targetCount: number) => string;
+
     // === 군집/감정 (문자열 → 언어팩) ===
     extractKeyword: (text: string) => string | null;
     herdEchoTemplates: (keyword: string) => string[];
