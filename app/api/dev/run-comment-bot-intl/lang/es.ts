@@ -535,6 +535,12 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /\bfascinante\b/i,
             // "La referencia a..." (리뷰 구조)
             /la referencia a/i,
+
+            // === 🔥 NEW: 감상 템플릿 패턴 ===
+            /^Me gustó cómo/i,
+            /me parece (?:interesante|curioso|extraño)/i,
+            /^La verdad,.*(?:fue|estuvo|me)/i,
+            /nunca había visto algo así/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };
@@ -551,6 +557,9 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /\b(imaginería|capa|dinámica|presagio)\b/i,
             /dinámica interesante/i,
             /\b(destaca|demuestra|transmite|describe|ilustra)\b/i,
+            // === 🔥 NEW: 추상명사 + 완성형 ===
+            /^La (?:reacción|determinación|habilidad) de \w+/i,
+            /fue (?:intenso|inesperado|brutal|increíble)$/i,
         ];
         for (const pattern of aiPatterns) {
             if (pattern.test(comment)) score -= 30;
@@ -564,6 +573,8 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
         if (/\. [A-ZÁÉÍÓÚÑ]/.test(comment)) score -= 12;
         if (comment.length > 100) score -= 20;
         if (comment.length > 70 && !/[!?¡¿…]/.test(comment)) score -= 10;
+        // === 🔥 NEW: 완성형 쉼표+형용사 ===
+        if (/,.*(?:brutal|intenso|increíble|inesperado|interesante)\.?$/.test(comment)) score -= 15;
 
         // === 🔥 Human Bonus ===
         if (/^[a-záéíóúñ]/.test(comment)) score += 5;
