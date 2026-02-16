@@ -78,19 +78,19 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
 // 장르별 페르소나 풀 매핑 (구조 동일, 언어 무관)
 // ============================================================
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
-    // Rebalanced: more C/D/E (chaos/analyst/casual), fewer A/B (immersed/overreactor)
-    'fantasy': ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E4', 'E5'],
-    'game-fantasy': ['A1', 'A4', 'B1', 'B4', 'C1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E4', 'E5'],
-    'murim': ['A1', 'A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E4', 'E5'],
-    'romance': ['A1', 'A3', 'A7', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E4', 'E5'],
-    'scifi': ['A2', 'B1', 'B4', 'C1', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E4', 'E5'],
-    'mystery': ['A1', 'B1', 'B6', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E4', 'E5'],
-    'horror': ['A1', 'A6', 'C1', 'C3', 'C5', 'D1', 'D5', 'E2', 'E4', 'E5'],
-    'historical': ['A2', 'A5', 'B5', 'C3', 'C5', 'D1', 'D4', 'E2', 'E4', 'E5'],
-    'slice-of-life': ['A1', 'A7', 'C3', 'C4', 'C5', 'D1', 'D4', 'E2', 'E4', 'E5'],
-    'action': ['A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E4', 'E5'],
-    'comedy': ['A1', 'C1', 'C3', 'C4', 'C5', 'D1', 'D4', 'E1', 'E2', 'E4', 'E5'],
-    'regression': ['A4', 'A5', 'B1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E4', 'E5'],
+    // Deep context test: more C(chaos) + D(analyst) for energy diversity, fewer A/B(excited)
+    'fantasy': ['A1', 'A2', 'A5', 'B1', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E5'],
+    'game-fantasy': ['A1', 'A4', 'B1', 'B4', 'C1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'D5', 'E1', 'E2', 'E5'],
+    'murim': ['A1', 'A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'romance': ['A1', 'A3', 'A7', 'B6', 'C1', 'C3', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
+    'scifi': ['A2', 'B1', 'B4', 'C1', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E5'],
+    'mystery': ['A1', 'B1', 'B6', 'C3', 'C5', 'D1', 'D3', 'D4', 'E2', 'E5'],
+    'horror': ['A1', 'A6', 'C1', 'C3', 'C5', 'D1', 'D5', 'E2', 'E5'],
+    'historical': ['A2', 'A5', 'B5', 'C3', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'slice-of-life': ['A1', 'A7', 'C3', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C3', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
+    'comedy': ['A1', 'C1', 'C3', 'C4', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
+    'regression': ['A4', 'A5', 'B1', 'C2', 'C3', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
 };
 
 // ============================================================
@@ -294,7 +294,7 @@ function selectPersonasForGenre(
     count: number = 8
 ): PersonaDef[] {
     const personaMap = new Map(lang.personas.map(p => [p.id, p]));
-    const defaultPool = ['A1', 'A5', 'B1', 'C1', 'C3', 'C5', 'D1', 'D3', 'E2', 'E4', 'E5'];
+    const defaultPool = ['A1', 'A5', 'B1', 'C1', 'C3', 'C5', 'D1', 'D3', 'E2', 'E5'];
 
     const categories = Object.keys(genreWeights);
     if (categories.length === 0) {
