@@ -10,6 +10,16 @@
 import db, { initDb } from '../app/db';
 import { splitIntoChunks } from './chunker';
 import { translateWithPython, restructureParagraphsWithPython } from './translate';
+import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine';
+import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types';
+
+// 언어팩 동적 로더
+const LANG_PACK_LOADERS: Record<string, () => Promise<LanguagePack>> = {
+  'en': () => import('../app/api/dev/run-comment-bot-intl/lang/en').then(m => m.default),
+  'ja': () => import('../app/api/dev/run-comment-bot-intl/lang/ja').then(m => m.default),
+  'zh': () => import('../app/api/dev/run-comment-bot-intl/lang/zh').then(m => m.default),
+  'es': () => import('../app/api/dev/run-comment-bot-intl/lang/es').then(m => m.default),
+};
 
 // Pipeline merged into Worker - no longer using HTTP
 
@@ -581,6 +591,81 @@ async function processJob(job: TranslationJob): Promise<void> {
 /**
  * Worker 메인 루프
  */
+
+// ── 댓글 자동 생성 (5분 주기) ──
+async function autoGenerateComments(): Promise<void> {
+  // 댓글 0개인 published 에피소드 1개 찾기
+  const result = await db.query(`
+    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
+           COALESCE(n.source_language, 'en') AS source_language
+    FROM episodes e
+    JOIN novels n ON e.novel_id = n.id
+    WHERE e.status = 'published'
+      AND NOT EXISTS (
+        SELECT 1 FROM comments c WHERE c.episode_id = e.id
+      )
+    ORDER BY e.created_at ASC
+    LIMIT 1
+  `);
+
+  if (result.rows.length === 0) return;
+
+  const { episode_id, novel_id, ep, created_at, source_language } = result.rows[0];
+
+  // 언어 선택: 70% source_language, 30% 랜덤 다른 언어
+  const availableLangs = Object.keys(LANG_PACK_LOADERS);
+  let lang: string;
+  if (Math.random() < 0.7 && LANG_PACK_LOADERS[source_language]) {
+    lang = source_language;
+  } else {
+    lang = availableLangs[Math.floor(Math.random() * availableLangs.length)];
+  }
+
+  const loader = LANG_PACK_LOADERS[lang];
+  if (!loader) {
+    console.log(`[CommentBot] ⚠️ No langpack for "${lang}", skipping`);
+    return;
+  }
+
+  console.log(`[CommentBot] 💬 Starting: ${novel_id} ep${ep} (lang=${lang})`);
+  const langPack = await loader();
+  const publishedAt = new Date(created_at);
+
+  // backfill 모드 → is_hidden=FALSE → 즉시 보임
+  const botResult = await runCommentBotIntl(
+    novel_id,
+    langPack,
+    60,           // baseCount
+    1.0,          // density
+    true,         // useDeep
+    episode_id,   // targetEpisodeId
+    true,         // backfill
+    publishedAt,  // publishedAt
+  );
+
+  console.log(`[CommentBot] ✅ ep${ep}: ${botResult.inserted} comments posted (${lang})`);
+}
+
+// ── 예약 댓글 공개 (1분 주기) ──
+async function revealScheduledComments(): Promise<void> {
+  const result = await db.query(`
+    UPDATE comments SET is_hidden = FALSE
+    WHERE id IN (
+      SELECT id FROM comments
+      WHERE is_hidden = TRUE
+        AND scheduled_at IS NOT NULL
+        AND scheduled_at <= NOW()
+      ORDER BY scheduled_at ASC
+      LIMIT 5
+    )
+    RETURNING id
+  `);
+
+  if (result.rows.length > 0) {
+    console.log(`[Reveal] 👁 ${result.rows.length} comments revealed`);
+  }
+}
+
 async function main() {
   // 환경 변수 확인
   if (!process.env.OPENAI_API_KEY) {
@@ -593,10 +678,14 @@ async function main() {
   console.log('[Worker] 🐍 Using Python translation_core (Pipeline merged)');
   console.log(`[Worker] ⚡ Parallel mode: max ${MAX_CONCURRENCY} per episode`);
   console.log('[Worker] ⏰ Scheduler: checking every 60s for scheduled episodes');
+  console.log('[Worker] 💬 CommentBot: checking every 5min for commentless episodes');
+  console.log('[Worker] 👁 Reveal: checking every 60s for scheduled comments');
   console.log('[Worker] 👀 Watching for PENDING jobs...\n');
 
   let lastScheduleCheck = 0;
   let lastViewsUpdate = 0;
+  let lastCommentBot = 0;
+  let lastReveal = 0;
 
   while (true) {
     try {
@@ -629,7 +718,27 @@ async function main() {
         lastViewsUpdate = Date.now();
       }
 
-      // ── 3. 번역 작업 폴링 ──
+      // ── 3. 댓글 자동 생성 (5분마다) ──
+      if (Date.now() - lastCommentBot > 300_000) {
+        try {
+          await autoGenerateComments();
+        } catch (err) {
+          console.error('[CommentBot] ⚠️ Error:', err);
+        }
+        lastCommentBot = Date.now();
+      }
+
+      // ── 4. 예약 댓글 공개 (1분마다) ──
+      if (Date.now() - lastReveal > 60_000) {
+        try {
+          await revealScheduledComments();
+        } catch (err) {
+          console.error('[Reveal] ⚠️ Error:', err);
+        }
+        lastReveal = Date.now();
+      }
+
+      // ── 5. 번역 작업 폴링 ──
       const jobs = await fetchAndClaimNextJobs(MAX_CONCURRENCY);
 
       if (jobs.length === 0) {

@@ -1519,8 +1519,13 @@ export async function runCommentBotIntl(
         // #4 상주 독자: 처음 N개 슬롯은 recurring pool에서 (이미 생성된 계정 재사용)
         if (i < recurringReaders.length) {
             const reader = recurringReaders[i];
+            // 같은 에피소드에 이미 댓글 단 상주 독자는 스킵
+            if (usedNicknames.has(reader.nickname)) {
+                continue;
+            }
             userId = reader.userId;
             nickname = reader.nickname;
+            usedNicknames.add(nickname);
             console.log(`🔁 [intl] Recurring ${reader.tier} ${i + 1}/${recurringReaders.length}: "${nickname}"`);
         } else {
             // 새 일회성 봇 생성
@@ -1569,9 +1574,13 @@ export async function runCommentBotIntl(
             if (parentComment && parentComment.created_at) {
                 const delayMs = replyDelay();
                 createdAt = new Date(parentComment.created_at.getTime() + delayMs);
-                // 미래를 넘지 않도록
+                // 미래를 넘지 않도록 (fallback: 1~72시간 랜덤)
                 if (createdAt.getTime() > Date.now()) {
-                    createdAt = new Date(parentComment.created_at.getTime() + Math.random() * 600000);
+                    const fallbackMs = (3600000 + Math.random() * 71 * 3600000);
+                    createdAt = new Date(parentComment.created_at.getTime() + fallbackMs);
+                    if (createdAt.getTime() > Date.now()) {
+                        createdAt = new Date(Date.now() - Math.random() * 3600000);
+                    }
                 }
             }
 
