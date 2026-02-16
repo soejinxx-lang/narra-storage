@@ -951,6 +951,16 @@ async function generateDeepContextComments(
 
     // === 🔥 Messiness Layer (덜 정돈되게 만드는 레이어) ===
     const messied = afterDedup.map(comment => {
+        // (0) "The X is/was Y" → 구어체 변환 (살아남은 리뷰톤 잡기)
+        const theMatch = comment.match(/^The (\w+(?:\s+\w+)?)\s+(is|was|felt|are|were)\s+(.+)/i);
+        if (theMatch) {
+            const options = [
+                `that ${theMatch[1].toLowerCase()} tho`,
+                `${theMatch[1].toLowerCase()} ${theMatch[2]} ${theMatch[3].replace(/\.$/, '')}`,
+                `${theMatch[1].toLowerCase()} tho`,
+            ];
+            return options[Math.floor(Math.random() * options.length)];
+        }
         // (1) 이유-결과 40% 절단: "shows a deeper side to him" → "shows a deeper side"
         if (Math.random() < 0.4) {
             const truncMatch = comment.match(/^(.+?\b(?:makes?|shows?|adds?|gives?)\s+\w+(?:\s+\w+)?)\s+(?:to|of|for|about|in)\b/i);

@@ -406,11 +406,16 @@ Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `You just read something on your phone. Type before you think.
+    buildCall5Prompt: (args) => `You're scrolling comments on a web novel chapter. Type like you're in a community, not writing a review.
 
 ${args.sceneContext || 'N/A'}
 
-Messy, short, unfinished. Some comments are just attitude, no content.
+Rules:
+- NEVER start with "The" + noun + is/was/felt. That's review speak.
+- No "I love the imagery" "The pacing felt" "The use of" — instant fail.
+- Write like texting a friend about what you just read.
+- Half-finished thoughts are fine. Fragments are fine.
+- Some comments are just vibes: "bruh" "nah" "wait what"
 No emojis.
 
 Generate ${args.targetCommentCount} comments.
@@ -523,6 +528,17 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             // 감상문 완성형 프레임
             /^(?:Really|So) (?:deep|powerful|intense|moving|beautiful)\b/i,
             /hits? different/i,
+            // === "The + noun + verb" 패턴 (최대 AI 시그니처) ===
+            /^The \w+ (?:is|was|felt|has|are|were)\b/i,
+            /^The \w+ \w+ (?:is|was|felt|has|are|were)\b/i,
+            /^I love the \w+/i,
+            /^The use of/i,
+            /^The contrast/i,
+            /^This has potential/i,
+            /\bthe imagery\b/i,
+            /\btop-notch\b/i,
+            /\bmesmerizing\b/i,
+            /\bfascinating\b/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };
@@ -549,8 +565,8 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
         // === Tier 3: 구조 감점 (-10~20) ===
         // 완결형 문장: 대문자 시작 + 마침표 종결
         if (/^[A-Z][a-z].*\.$/.test(comment)) score -= 15;
-        // "The/This/It" 시작 분석 구조
-        if (/^(The|This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) score -= 12;
+        // "This/It" 시작 분석 구조 (The는 Tier 1에서 즉사)
+        if (/^(This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) score -= 15;
         // 문학 비평 단어
         if (/\b(narrative|storytelling|character development)\b/i.test(comment)) score -= 10;
         // 2문장 이상 + 논리 연결 (AI 설명 구조)
