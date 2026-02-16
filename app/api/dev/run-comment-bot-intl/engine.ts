@@ -641,9 +641,15 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
 
     console.log(`📏 [intl] Length dist: short=${shortComments.length}(min${minShort}), med=${medComments.length}(max${maxMed}), long=${longComments.length}(min${minLong})`);
 
+    // === 30% Curator Bypass (자연 무질서 보존) ===
+    const bypassCount = Math.ceil(preFiltered.length * 0.3);
+    const shuffledPre = [...preFiltered].sort(() => Math.random() - 0.5);
+    const bypassed = shuffledPre.slice(0, bypassCount);
+    const toCurate = shuffledPre.slice(bypassCount);
+
     // GPT-5 큐레이터 (반전된 프롬프트: 완벽한 것 제거)
-    const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
-    const curatorPrompt = `You have ${preFiltered.length} comments. Pick ${targetCount}.
+    const commentList = toCurate.map((s, i) => `${i}: "${s.text}"`).join('\n');
+    const curatorPrompt = `You have ${toCurate.length} comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
 
 REMOVE these types:
 - Most polished, essay-like comments
@@ -660,7 +666,7 @@ KEEP these types:
 ${commentList}
 
 [Output — JSON]
-{ "selected": [${targetCount} indices] }`;
+{ "selected": [indices] }`;
 
     const curatorRaw = await callOpenAIReview(curatorPrompt);
     let finalComments: string[] = [];
@@ -671,17 +677,25 @@ ${commentList}
             const curatorData = JSON.parse(cleaned);
             if (curatorData.selected && Array.isArray(curatorData.selected)) {
                 finalComments = curatorData.selected
-                    .filter((idx: number) => idx >= 0 && idx < preFiltered.length)
-                    .map((idx: number) => preFiltered[idx].text);
+                    .filter((idx: number) => idx >= 0 && idx < toCurate.length)
+                    .map((idx: number) => toCurate[idx].text);
             }
         } catch (e) {
             console.warn('⚠️ [intl] GPT-5 curator parse failed');
         }
     }
 
+    // 바이패스된 댓글 중 일부 삽입 (무질서 보존)
+    const bypassInsert = bypassed.sort(() => Math.random() - 0.5).slice(0, Math.ceil(bypassCount * 0.3)).map(s => s.text);
+    finalComments.push(...bypassInsert);
+
     if (finalComments.length < targetCount) {
-        finalComments = preFiltered.slice(0, targetCount).map(s => s.text);
+        const needed = targetCount - finalComments.length;
+        const remaining = preFiltered.filter(s => !finalComments.includes(s.text)).map(s => s.text);
+        finalComments.push(...remaining.slice(0, needed));
     }
+    finalComments = finalComments.slice(0, targetCount);
+    console.log(`🎯 [intl] Curator: ${toCurate.length} curated + ${bypassInsert.length} bypassed = ${finalComments.length} final`);
 
     // 후처리 노이즈 (언어팩)
     const noised = finalComments.map(text => lang.applyPostNoise(text));
@@ -883,9 +897,10 @@ async function generateDeepContextComments(
         return true;
     });
 
-    // Fix D: CAPS limiter — randomized max (2-5), convert don't delete
-    const capsMax = 2 + Math.floor(Math.random() * 4); // 2~5 per batch
+    // Fix D: CAPS limiter — softening not killing
+    const capsMax = 2 + Math.floor(Math.random() * 4);
     let capsCount = 0;
+    const lolSuffixes = [' lol', ' lmao', ' haha', ' bruh', ''];
     const afterCaps = afterSlang.map(comment => {
         const upperRatio = comment.length > 5
             ? (comment.match(/[A-Z]/g) || []).length / comment.length
@@ -893,14 +908,16 @@ async function generateDeepContextComments(
         if (upperRatio > 0.5) {
             capsCount++;
             if (capsCount > capsMax) {
-                return comment.charAt(0) + comment.slice(1).toLowerCase();
+                // 에너지 흐리게 (전부 소문자 + lol 붙이기)
+                const suffix = lolSuffixes[Math.floor(Math.random() * lolSuffixes.length)];
+                return comment.toLowerCase() + suffix;
             }
         }
         return comment;
     });
 
-    // Fix E: Word-overlap dedup — 70% threshold, allow 1 natural dupe
-    let dupeAllowance = 1; // allow 1 similar pair (humans repeat)
+    // Fix E: Word-overlap dedup — 70% threshold, allow 2 natural dupes
+    let dupeAllowance = 2; // humans repeat similar things
     const afterDedup: string[] = [];
     for (const comment of afterCaps) {
         const words = new Set(comment.toLowerCase().split(/\s+/).filter(w => w.length > 2));
@@ -921,8 +938,29 @@ async function generateDeepContextComments(
 
     console.log(`🧹 [intl] Filters: ${dedupedSafe.length} → slang:${afterSlang.length} → caps_adj → dedup:${afterDedup.length}`);
 
+    // === 🔥 Messiness Layer (덜 정돈되게 만드는 레이어) ===
+    const messied = afterDedup.map(comment => {
+        // (1) 이유-결과 40% 절단: "shows a deeper side to him" → "shows a deeper side"
+        if (Math.random() < 0.4) {
+            const truncMatch = comment.match(/^(.+?\b(?:makes?|shows?|adds?|gives?)\s+\w+(?:\s+\w+)?)\s+(?:to|of|for|about|in)\b/i);
+            if (truncMatch) return truncMatch[1];
+        }
+        // (2) 마지막 단어 5% 절단 (미완성 문장)
+        if (Math.random() < 0.05 && comment.split(' ').length > 4) {
+            const words = comment.split(' ');
+            words.pop();
+            return words.join(' ');
+        }
+        // (3) 마침표 8% 제거 (끊김 효과)
+        if (Math.random() < 0.08 && /\.$/.test(comment)) {
+            return comment.slice(0, -1);
+        }
+        return comment;
+    });
+    console.log(`🎲 [intl] Messiness applied to ${afterDedup.length} comments`);
+
     // Stage 5: Emotion Amplification (감정 먼저 → 자연스러운 깨짐)
-    const withEmotion = amplifyEmotions(afterDedup, lang);
+    const withEmotion = amplifyEmotions(messied, lang);
 
     // Stage 6: Herd Effect (50% 감소 — 테스트 중 연출감 방지)
     const withHerd = injectHerdEffect(withEmotion, lang);
