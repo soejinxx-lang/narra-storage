@@ -1251,6 +1251,39 @@ export async function runCommentBotIntl(
                 break;
             }
             content = lang.humanize(content);
+
+            // === 🔥 2댓글 로직: 두 번째 댓글 강제 변환 ===
+            if (j === 1 && commentCount === 2) {
+                // 3가지 타입 중 하나로 강제
+                const type = Math.floor(Math.random() * 3);
+                const firstComment = deepComments[deepComments.length - 1] || midDensityPool[midDensityPool.length - 1] || '';
+
+                if (type === 0) {
+                    // 단어형
+                    const words = ['草', 'それな', 'まじ', 'え', 'うん', 'わかる', 'やば', 'ほんとそれ', 'w', 'ww'];
+                    content = words[Math.floor(Math.random() * words.length)];
+                } else if (type === 1) {
+                    // 이모지형
+                    const emoji = ['www', 'wwww', '😂', '(^^;)', '(*´ω`*)', 'えぇ…', '草生える'];
+                    content = emoji[Math.floor(Math.random() * emoji.length)];
+                } else {
+                    // 맥락 무관형
+                    const contextFree = ['てかさ', 'まあいいけど', 'いや待って', 'ていうか', 'よく分からんけど', 'まあ'];
+                    content = contextFree[Math.floor(Math.random() * contextFree.length)];
+                }
+
+                // 첫 댓글 단어/이름 포함 금지 검증
+                const firstWords = firstComment.split(/\s+/);
+                for (const word of firstWords) {
+                    if (word.length > 2 && content.includes(word)) {
+                        // 포함되면 다시 선택
+                        const fallback = ['草', 'w', 'それな', 'まじか'];
+                        content = fallback[Math.floor(Math.random() * fallback.length)];
+                        break;
+                    }
+                }
+            }
+
             let createdAt = randomTimestamp();
 
             // 같은 봇 댓글 간 5분~3시간 간격
