@@ -345,6 +345,7 @@ ${profileList}
 
 要約しない。説明しない。振り返らない。
 半分集中してない感じ。思考が途中で終わってもいい。短く書く。
+意味づけるな。解釈で終わるな。
 
 🔥 必ず日本語で書け。英語禁止。
 
@@ -369,6 +370,7 @@ ${profileList}
 
 なんでやばいかは説明しない。ただ興奮を出す。
 ほぼ小文字。短く書く。
+意味づけるな。解釈で終わるな。
 
 🔥 必ず日本語で書け。英語禁止。
 
@@ -416,6 +418,7 @@ ${args.sceneContext || 'N/A'}
 ${profileList}
 
 一つの感情だけ。長く書かない。レビューじゃない。
+意味づけるな。解釈で終わるな。
 
 🔥 必ず日本語で書け。英語禁止。
 
@@ -488,6 +491,14 @@ ${parentComment}
         if (Math.random() < 0.05) {
             const slang = ['w', '草', 'それな', 'マジで'];
             result += slang[Math.floor(Math.random() * slang.length)];
+        }
+
+        // === 🔥 4. 光沢除去 (15% — 잘 쓴 냄새 제거) ===
+        if (Math.random() < 0.15) {
+            result = result.replace(/ている/g, 'てる');
+            result = result.replace(/している/g, 'してる');
+            result = result.replace(/かもしれない/g, 'かも');
+            result = result.replace(/だと思う/g, Math.random() < 0.5 ? 'かも' : 'かな');
         }
 
         return result;
@@ -603,8 +614,12 @@ ${parentComment}
             if (pattern.test(comment)) return { score: 0 };
         }
 
-        // === Tier 2: Heavy penalty (-30) ===
+        // Tier 2: AI-heavy patterns (heavy penalty)
         const aiPatterns = [
+            // === 🔥 構造パターン (名詞+が+抽象動詞) ===
+            /.+が.+(?:感じ|伝わ|際立|増し|高ま|響|刺さ|残)/i,
+            /(?:この|その)(?:瞬間|場面|描写|展開)(?:が|は|で)/i,
+            /(?:物語|ストーリー|キャラクター)の(?:深さ|魅力|成長)/i,
             /\b(活用|促進|示唆|従って|また|しかし)\b/i,
             /\b(特に|具体的に|本質的に|基本的に)\b/i,
             /。しかしながら、/,
@@ -614,11 +629,22 @@ ${parentComment}
             /\b(描写力|表現力|構成|伏線)\b/i,
             /興味深い(?:展開|設定)/i,
             /\b(示す|表す|描く|描写する|表現する)\b/i,
-            // === 🔥 構造パターン (名詞+が+抽象動詞) ===
-            /.+が.+(?:感じ|伝わ|際立|増し|高ま|響|刺さ|残)/i,
         ];
         for (const pattern of aiPatterns) {
             if (pattern.test(comment)) score -= 30;
+        }
+
+        // === Tier 2.5: 解釈動詞 (意味完結性マーカー -40) ===
+        const interpretVerbs = [
+            /感じさせる/i,      // 〜を感じさせる
+            /高めている/i,      // 緊張感を高めている
+            /表現している/i,    // 決意が表現されている
+            /伝えている/i,      // 思いが伝えている
+            /強調している/i,    // 孤独を強調している
+            /込められている/i,  // 過去が込められている
+        ];
+        for (const verb of interpretVerbs) {
+            if (verb.test(comment)) score -= 40;
         }
 
         // === Tier 3: 構造減点 ===
