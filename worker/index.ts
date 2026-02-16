@@ -7,19 +7,25 @@
  * - 상태 업데이트 (RUNNING → DONE/FAILED)
  */
 
-import db, { initDb } from '../app/db';
-import { splitIntoChunks } from './chunker';
-import { translateWithPython, restructureParagraphsWithPython } from './translate';
-import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine';
-import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types';
+import db, { initDb } from '../app/db.js';
+import { splitIntoChunks } from './chunker.js';
+import { translateWithPython, restructureParagraphsWithPython } from './translate.js';
+import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine.js';
+import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
 
-// 언어팩 동적 로더
-const LANG_PACK_LOADERS: Record<string, () => Promise<LanguagePack>> = {
-  'en': () => import('../app/api/dev/run-comment-bot-intl/lang/en').then(m => m.default),
-  'ja': () => import('../app/api/dev/run-comment-bot-intl/lang/ja').then(m => m.default),
-  'zh': () => import('../app/api/dev/run-comment-bot-intl/lang/zh').then(m => m.default),
-  'es': () => import('../app/api/dev/run-comment-bot-intl/lang/es').then(m => m.default),
-};
+// 언어팩 동적 로더 (NodeNext moduleResolution 호환)
+const SUPPORTED_COMMENT_LANGS = ['en', 'ja', 'zh', 'es'];
+async function loadLangPack(lang: string): Promise<LanguagePack> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mod: any;
+  switch (lang) {
+    case 'ja': mod = await import('../app/api/dev/run-comment-bot-intl/lang/ja.js'); break;
+    case 'zh': mod = await import('../app/api/dev/run-comment-bot-intl/lang/zh.js'); break;
+    case 'es': mod = await import('../app/api/dev/run-comment-bot-intl/lang/es.js'); break;
+    default: mod = await import('../app/api/dev/run-comment-bot-intl/lang/en.js'); break;
+  }
+  return mod.default as LanguagePack;
+}
 
 // Pipeline merged into Worker - no longer using HTTP
 
@@ -592,9 +598,9 @@ async function processJob(job: TranslationJob): Promise<void> {
  * Worker 메인 루프
  */
 
-// ── 댓글 자동 생성 (5분 주기) ──
+// ── 댓글 자동 생성 (5분 주기, 한 번에 모든 빈 에피소드 처리) ──
 async function autoGenerateComments(): Promise<void> {
-  // 댓글 0개인 published 에피소드 1개 찾기
+  // 댓글 0개인 published 에피소드 전부 찾기 (최대 100개)
   const result = await db.query(`
     SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
            COALESCE(n.source_language, 'en') AS source_language
@@ -605,45 +611,48 @@ async function autoGenerateComments(): Promise<void> {
         SELECT 1 FROM comments c WHERE c.episode_id = e.id
       )
     ORDER BY e.created_at ASC
-    LIMIT 1
+    LIMIT 100
   `);
 
   if (result.rows.length === 0) return;
 
-  const { episode_id, novel_id, ep, created_at, source_language } = result.rows[0];
+  console.log(`[CommentBot] 📋 Found ${result.rows.length} episodes without comments`);
 
-  // 언어 선택: 70% source_language, 30% 랜덤 다른 언어
-  const availableLangs = Object.keys(LANG_PACK_LOADERS);
-  let lang: string;
-  if (Math.random() < 0.7 && LANG_PACK_LOADERS[source_language]) {
-    lang = source_language;
-  } else {
-    lang = availableLangs[Math.floor(Math.random() * availableLangs.length)];
+  for (const row of result.rows) {
+    const { episode_id, novel_id, ep, created_at, source_language } = row;
+
+    // 언어 선택: 70% source_language, 30% 랜덤 다른 언어
+    let lang: string;
+    if (Math.random() < 0.7 && SUPPORTED_COMMENT_LANGS.includes(source_language)) {
+      lang = source_language;
+    } else {
+      lang = SUPPORTED_COMMENT_LANGS[Math.floor(Math.random() * SUPPORTED_COMMENT_LANGS.length)];
+    }
+
+    try {
+      console.log(`[CommentBot] 💬 ep${ep}: starting (lang=${lang})`);
+      const langPack = await loadLangPack(lang);
+      const publishedAt = new Date(created_at);
+
+      const botResult = await runCommentBotIntl(
+        novel_id,
+        langPack,
+        60,           // baseCount
+        1.0,          // density
+        true,         // useDeep
+        episode_id,   // targetEpisodeId
+        true,         // backfill
+        publishedAt,  // publishedAt
+      );
+
+      console.log(`[CommentBot] ✅ ep${ep}: ${botResult.inserted} comments (${lang})`);
+    } catch (epErr) {
+      console.error(`[CommentBot] ⚠️ ep${ep} failed:`, epErr);
+    }
+
+    // API 과부하 방지: 에피소드 사이 3초 대기
+    await new Promise(r => setTimeout(r, 3000));
   }
-
-  const loader = LANG_PACK_LOADERS[lang];
-  if (!loader) {
-    console.log(`[CommentBot] ⚠️ No langpack for "${lang}", skipping`);
-    return;
-  }
-
-  console.log(`[CommentBot] 💬 Starting: ${novel_id} ep${ep} (lang=${lang})`);
-  const langPack = await loader();
-  const publishedAt = new Date(created_at);
-
-  // backfill 모드 → is_hidden=FALSE → 즉시 보임
-  const botResult = await runCommentBotIntl(
-    novel_id,
-    langPack,
-    60,           // baseCount
-    1.0,          // density
-    true,         // useDeep
-    episode_id,   // targetEpisodeId
-    true,         // backfill
-    publishedAt,  // publishedAt
-  );
-
-  console.log(`[CommentBot] ✅ ep${ep}: ${botResult.inserted} comments posted (${lang})`);
 }
 
 // ── 예약 댓글 공개 (1분 주기) ──
