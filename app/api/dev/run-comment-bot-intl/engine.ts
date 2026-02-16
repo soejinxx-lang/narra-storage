@@ -957,10 +957,85 @@ async function generateDeepContextComments(
         }
         return comment;
     });
-    console.log(`🎲 [intl] Messiness applied to ${afterDedup.length} comments`);
+
+    // === 🔁 Structure Pattern Dedup (같은 시작 패턴 통계 컷) ===
+    const patternMap = new Map<string, string[]>();
+    for (const comment of messied) {
+        const words = comment.toLowerCase().split(/\s+/).slice(0, 2).join(' ');
+        const key = words || '__empty__';
+        if (!patternMap.has(key)) patternMap.set(key, []);
+        patternMap.get(key)!.push(comment);
+    }
+    const afterPatternDedup: string[] = [];
+    for (const [pattern, group] of patternMap) {
+        if (group.length > 2) {
+            // 같은 시작 패턴 3개 이상 → 2개만 유지 (랜덤)
+            const shuffled = group.sort(() => Math.random() - 0.5);
+            afterPatternDedup.push(...shuffled.slice(0, 2));
+            console.log(`🔁 [intl] Pattern dedup: "${pattern}" ${group.length} → 2`);
+        } else {
+            afterPatternDedup.push(...group);
+        }
+    }
+
+    // === 📊 Hard Quota Enforcement (비율 하드캡) ===
+    const maxTwoSentence = Math.ceil(afterPatternDedup.length * 0.20); // 2문장 이상 최대 20%
+    const maxLong = Math.ceil(afterPatternDedup.length * 0.25); // 15단어+ 최대 25%
+    const maxExplanation = Math.ceil(afterPatternDedup.length * 0.10); // 설명형 동사 최대 10%
+
+    let twoSentCount = 0;
+    let longCount = 0;
+    let explanationCount = 0;
+    const afterQuota = afterPatternDedup.filter(comment => {
+        const isTwoSent = /\. [A-Z]/.test(comment);
+        const isLong = comment.split(' ').length >= 15;
+        const hasExplanation = /\b(shows?|adds?|highlights?|demonstrates?|brings?|creates?|captures?)\b/i.test(comment);
+
+        if (isTwoSent) {
+            twoSentCount++;
+            if (twoSentCount > maxTwoSentence) return false;
+        }
+        if (isLong) {
+            longCount++;
+            if (longCount > maxLong) return false;
+        }
+        if (hasExplanation) {
+            explanationCount++;
+            if (explanationCount > maxExplanation) return false;
+        }
+        return true;
+    });
+    console.log(`📊 [intl] Quotas: 2sent=${twoSentCount}(max${maxTwoSentence}), long=${longCount}(max${maxLong}), explain=${explanationCount}(max${maxExplanation})`);
+
+    // === 🧠 Cognitive Break Injection (인지 오류 주입) ===
+    const cognitiveBreaks = [
+        'wait who said that',
+        'wasn\'t that the other guy',
+        'hold on i missed something',
+        'wait is this the same chapter',
+        'did i skip a page or',
+        'why does everyone keep saying that',
+        'ok but what happened to the other one',
+        'am i the only one confused',
+        'i thought he already did that',
+        'wait that doesn\'t make sense',
+        'huh? when did that happen',
+        'did anyone else misread that lol',
+        'i keep getting the names mixed up',
+        'wait go back',
+    ];
+    const breakCount = Math.max(1, Math.ceil(afterQuota.length * 0.15));
+    const withBreaks = [...afterQuota];
+    for (let i = 0; i < breakCount && cognitiveBreaks.length > 0; i++) {
+        const breakIdx = Math.floor(Math.random() * cognitiveBreaks.length);
+        const insertIdx = Math.floor(Math.random() * withBreaks.length);
+        withBreaks.splice(insertIdx, 0, cognitiveBreaks.splice(breakIdx, 1)[0]);
+    }
+    console.log(`🧠 [intl] Cognitive breaks: +${breakCount} injected (total ${withBreaks.length})`);
+    console.log(`🎲 [intl] Diversity pipeline: ${afterDedup.length} → mess:${messied.length} → pattern:${afterPatternDedup.length} → quota:${afterQuota.length} → breaks:${withBreaks.length}`);
 
     // Stage 5: Emotion Amplification (감정 먼저 → 자연스러운 깨짐)
-    const withEmotion = amplifyEmotions(messied, lang);
+    const withEmotion = amplifyEmotions(withBreaks, lang);
 
     // Stage 6: Herd Effect (50% 감소 — 테스트 중 연출감 방지)
     const withHerd = injectHerdEffect(withEmotion, lang);
@@ -1168,9 +1243,9 @@ export async function runCommentBotIntl(
             }
             lastCommentTime = createdAt;
 
-            // 답글 5%
+            // 답글 10% (pool에 3개 이상 있을 때만)
             let parentId: string | null = null;
-            if (Math.random() < 0.05 && commentPool.length > 0) {
+            if (Math.random() < 0.10 && commentPool.length >= 3) {
                 const parentCommentId = weightedRandom(
                     commentPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
                 );
