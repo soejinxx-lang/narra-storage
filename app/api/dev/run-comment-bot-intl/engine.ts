@@ -18,6 +18,7 @@
  * + 봇 생성 & 댓글 작성
  */
 
+import crypto from 'crypto';
 import db from "../../../db";
 import type {
     LanguagePack,
@@ -118,15 +119,120 @@ function pickCommentCount(weights: { count: number; weight: number }[]): number 
 function pickNickname(pool: string[], usedNicknames: Set<string>): string {
     const available = pool.filter(n => !usedNicknames.has(n));
     if (available.length === 0) {
-        const base = pool[Math.floor(Math.random() * pool.length)];
-        const suffix = Math.floor(Math.random() * 999) + 1;
-        const nn = `${base}_${suffix}`;
+        // 풀 소진 시: 중복 없을 때까지 반복 시도
+        let nn: string;
+        let attempts = 0;
+        do {
+            const base = pool[Math.floor(Math.random() * pool.length)];
+            const suffix = Math.floor(Math.random() * 9999) + 1;
+            nn = `${base}_${suffix}`;
+            attempts++;
+        } while (usedNicknames.has(nn) && attempts < 100);
         usedNicknames.add(nn);
         return nn;
     }
     const selected = available[Math.floor(Math.random() * available.length)];
     usedNicknames.add(selected);
     return selected;
+}
+
+// ============================================================
+// #1 현실적 username 생성 (닉네임 파생, 다양한 스타일)
+// ============================================================
+function generateRealisticUsername(nickname: string): string {
+    const clean = nickname.replace(/[^a-zA-Z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uac00-\ud7af]/g, '');
+    const ascii = clean.replace(/[^a-zA-Z0-9]/g, '');
+    const base = ascii.length > 0 ? ascii : 'user';
+    const styles: (() => string)[] = [
+        () => base.toLowerCase(),                                      // yukireader
+        () => base.toLowerCase().slice(0, 5) + Math.floor(Math.random() * 9999), // yuki3847
+        () => base.slice(0, 3).toLowerCase() + crypto.randomBytes(2).toString('hex'), // yuk8f3a
+        () => base.toLowerCase() + '_' + (Math.floor(Math.random() * 99) + 1),   // yukireader_42
+        () => base.charAt(0).toUpperCase() + base.slice(1).toLowerCase() + Math.floor(Math.random() * 999), // Yukireader483
+        () => 'x' + crypto.randomBytes(3).toString('hex') + Math.floor(Math.random() * 99), // x8f3a2b47
+    ];
+    return styles[Math.floor(Math.random() * styles.length)]();
+}
+
+// ============================================================
+// #5 랜덤 비밀번호 해시 (더미 bcrypt 형식)
+// ============================================================
+function randomPasswordHash(): string {
+    return `$2b$10$${crypto.randomBytes(22).toString('base64').replace(/[+/=]/g, 'a').slice(0, 22)}`;
+}
+
+// ============================================================
+// #3 likes 롱테일 분포 (power law)
+// ============================================================
+function randomLikes(): number {
+    const r = Math.random();
+    if (r < 0.80) return 0;        // 80%: 0
+    if (r < 0.92) return 1;        // 12%: 1
+    if (r < 0.96) return 2;        //  4%: 2
+    if (r < 0.98) return Math.floor(Math.random() * 5) + 3;  // 2%: 3~7
+    return Math.floor(Math.random() * 20) + 8;                // 2%: 8~27
+}
+
+// ============================================================
+// #2 답글 시간 지연 (Pareto-like 헤비테일)
+// 현실: 즉답 ~ 몇 달 후까지 다양한 범위
+// ============================================================
+function replyDelay(): number {
+    const r = Math.random();
+    let baseMs: number;
+
+    if (r < 0.40) {
+        // 40%: 즉답 (10초~5분)
+        baseMs = 10000 + Math.random() * 290000;
+    } else if (r < 0.65) {
+        // 25%: 빠른 답글 (5~60분)
+        baseMs = 5 * 60000 + Math.random() * 55 * 60000;
+    } else if (r < 0.80) {
+        // 15%: 수시간 후 (1~6시간)
+        baseMs = 3600000 + Math.random() * 5 * 3600000;
+    } else if (r < 0.90) {
+        // 10%: 다음날 (6~48시간)
+        baseMs = 6 * 3600000 + Math.random() * 42 * 3600000;
+    } else if (r < 0.95) {
+        // 5%: 며칠 후 (2~14일)
+        baseMs = 2 * 86400000 + Math.random() * 12 * 86400000;
+    } else {
+        // 5%: 늦은 답글 (2주~3개월)
+        baseMs = 14 * 86400000 + Math.random() * 76 * 86400000;
+    }
+
+    // 관일화 방지: 0.5x~1.5x 랜덤 배율
+    const jitterMultiplier = 0.5 + Math.random();
+    return Math.floor(baseMs * jitterMultiplier);
+}
+
+// ============================================================
+// #6 Backfill 계정 생성일 (범위: 1일 ~ 2년 전)
+// ============================================================
+function generateAccountCreatedAt(publishedAt: Date): Date {
+    const r = Math.random();
+    let daysBeforePublish: number;
+    if (r < 0.30) {
+        // 30%: 신규 가입 (1~7일 전)
+        daysBeforePublish = 1 + Math.random() * 6;
+    } else if (r < 0.60) {
+        // 30%: 기존 유저 (1~3개월 전)
+        daysBeforePublish = 30 + Math.random() * 60;
+    } else if (r < 0.85) {
+        // 25%: 오래된 유저 (3~12개월 전)
+        daysBeforePublish = 90 + Math.random() * 270;
+    } else {
+        // 15%: 초기 유저 (1~2년 전)
+        daysBeforePublish = 365 + Math.random() * 365;
+    }
+    return new Date(publishedAt.getTime() - daysBeforePublish * 86400000);
+}
+
+// ============================================================
+// #8 콘텐츠 중복 검사 정규화
+// ============================================================
+function normalizeForDedup(s: string): string {
+    return s.replace(/[。、！？!?.,\s]/g, '').slice(0, 20).toLowerCase();
 }
 
 // ============================================================
@@ -156,8 +262,9 @@ function weightedRandomHour(weights: number[]): number {
 }
 
 // ============================================================
-// 3단 클러스터링 시간 분배
-// 40% 즉시(1~15분), 30% 중기(1~3시간), 30% 장기(6~18시간)
+// 5단 클러스터링 시간 분배
+// 30% 즉시(1~15분), 25% 중기(1~3시간), 20% 당일(6~18시간),
+// 15% 1주 내(1~7일), 10% 롱테일(1~4주)
 // ============================================================
 function distributeTimestamps(count: number, langCode: string): Date[] {
     const now = new Date();
@@ -167,14 +274,14 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
         const roll = Math.random();
         let offsetMs: number;
 
-        if (roll < 0.40) {
-            // 40% → 게시 직후 1~15분
+        if (roll < 0.30) {
+            // 30% → 게시 직후 1~15분
             offsetMs = (1 + Math.random() * 14) * 60 * 1000;
-        } else if (roll < 0.70) {
-            // 30% → 1~3시간 후
+        } else if (roll < 0.55) {
+            // 25% → 1~3시간 후
             offsetMs = (60 + Math.random() * 120) * 60 * 1000;
-        } else {
-            // 30% → 6~18시간 후 (시간대 가중치 적용)
+        } else if (roll < 0.75) {
+            // 20% → 6~18시간 후 (시간대 가중치 적용)
             const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
             const targetHour = weightedRandomHour(weights);
             const ts = new Date(now);
@@ -183,12 +290,31 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
                 ts.setDate(ts.getDate() + 1);
             }
             offsetMs = ts.getTime() - now.getTime();
+        } else if (roll < 0.90) {
+            // 15% → 1~7일 후 (다음주 독자)
+            const days = 1 + Math.random() * 6;
+            const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
+            const targetHour = weightedRandomHour(weights);
+            const ts = new Date(now);
+            ts.setDate(ts.getDate() + Math.floor(days));
+            ts.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
+            offsetMs = ts.getTime() - now.getTime();
+        } else {
+            // 10% → 1~4주 후 (롱테일 독자)
+            const days = 7 + Math.random() * 21;
+            const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
+            const targetHour = weightedRandomHour(weights);
+            const ts = new Date(now);
+            ts.setDate(ts.getDate() + Math.floor(days));
+            ts.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
+            offsetMs = ts.getTime() - now.getTime();
         }
 
-        // 랜덤 초단위 지연 (0~59초)
+        // 관일화 방지: 초단위 랜덤 + 0.8x~1.2x 변동
+        offsetMs = Math.floor(offsetMs * (0.8 + Math.random() * 0.4));
         offsetMs += Math.floor(Math.random() * 60) * 1000;
 
-        timestamps.push(new Date(now.getTime() + offsetMs));
+        timestamps.push(new Date(now.getTime() + Math.max(offsetMs, 60000)));
     }
 
     return timestamps.sort((a, b) => a.getTime() - b.getTime());
@@ -1283,6 +1409,7 @@ export async function runCommentBotIntl(
     targetEpisodeId?: string,
     backfill: boolean = false,
     publishedAt?: Date,
+    recurringReaders: RecurringReader[] = [],
 ): Promise<CommentBotResult> {
     const totalCount = Math.round(baseCount * density);
     let personalityWeights = lang.defaultWeights;
@@ -1314,16 +1441,17 @@ export async function runCommentBotIntl(
 
     // 2. 기존 댓글 캐싱 (답글 가중치용)
     const existingResult = await db.query(
-        `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content
+        `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content, c.created_at
          FROM comments c
          LEFT JOIN comments r ON r.parent_id = c.id
          WHERE c.episode_id = $1
          GROUP BY c.id`,
         [episodeId]
     );
-    const commentPool: { id: string; content: string; reply_count: number }[] = existingResult.rows.map(
-        (r: { id: string; content: string; reply_count: string }) => ({
+    const commentPool: { id: string; content: string; reply_count: number; created_at: Date | null }[] = existingResult.rows.map(
+        (r: { id: string; content: string; reply_count: string; created_at: string | null }) => ({
             id: r.id, content: r.content, reply_count: parseInt(r.reply_count) || 0,
+            created_at: r.created_at ? new Date(r.created_at) : null,
         })
     );
 
@@ -1376,122 +1504,112 @@ export async function runCommentBotIntl(
     );
 
     let totalCommentsPosted = 0;
-    const botCount = Math.ceil(totalCount / 1.3);
+    // 1봇 = 1댓글: 봇 수 = 댓글 수
+    const botCount = totalCount;
 
     // 🔥 타임스탬프 생성: backfill이면 과거, 아니면 미래 스케줄링
     const scheduledTimes = backfill && publishedAt
         ? distributeBackfillTimestamps(totalCount, publishedAt, lang.code)
         : distributeTimestamps(totalCount, lang.code);
-    let scheduledIndex = 0;
 
     for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
-        const nickname = pickNickname(lang.nicknamePool, usedNicknames);
-        console.log(`🎭 [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}" (pool=${lang.nicknamePool.length}, used=${usedNicknames.size})`);
+        let userId: string;
+        let nickname: string;
+
+        // #4 상주 독자: 처음 N개 슬롯은 recurring pool에서 (이미 생성된 계정 재사용)
+        if (i < recurringReaders.length) {
+            const reader = recurringReaders[i];
+            userId = reader.userId;
+            nickname = reader.nickname;
+            console.log(`🔁 [intl] Recurring ${reader.tier} ${i + 1}/${recurringReaders.length}: "${nickname}"`);
+        } else {
+            // 새 일회성 봇 생성
+            nickname = pickNickname(lang.nicknamePool, usedNicknames);
+            console.log(`🎭 [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}"`);
+
+            const username = generateRealisticUsername(nickname);
+            const pwHash = randomPasswordHash();
+            const userCreatedAt = backfill && publishedAt
+                ? generateAccountCreatedAt(publishedAt)
+                : new Date();
+            const userResult = await db.query(
+                `INSERT INTO users(username, password_hash, name, is_hidden, created_at)
+                 VALUES($1, $2, $3, FALSE, $4) RETURNING id`,
+                [username, pwHash, nickname, userCreatedAt]
+            );
+            userId = userResult.rows[0].id;
+        }
         const tone = pickPersonalityTone(personalityWeights);
-        let commentCount = pickCommentCount(lang.commentCountWeights);
 
-        // Royal Road: 1인 1댓글이 기본
+        // 1봇 1댓글: 중간밀도 우선, 없으면 deep
+        let content: string;
+        if (midDensityPool.length > 0) {
+            content = midDensityPool.pop()!;
+        } else if (deepComments.length > 0) {
+            content = deepComments.pop()!;
+        } else {
+            break;
+        }
+        content = lang.humanize(content);
 
-        // 봇 계정 생성
-        const timestamp = Date.now();
-        const username = `bot_${timestamp}_${i}`;
-        const userResult = await db.query(
-            `INSERT INTO users(username, password_hash, name, is_hidden)
-             VALUES($1, '', $2, FALSE) RETURNING id`,
-            [username, nickname]
-        );
-        const userId = userResult.rows[0].id;
+        // 스케줄링된 공개 시간 사용
+        const scheduledAt = scheduledTimes[i] || new Date();
+        let createdAt: Date = scheduledAt;
 
-        let lastCommentTime: Date | null = null;
+        // 답글 10% (pool에 3개 이상 있을 때만)
+        let parentId: string | null = null;
+        if (Math.random() < 0.10 && commentPool.length >= 3) {
+            const parentCommentId = weightedRandom(
+                commentPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
+            );
+            parentId = parentCommentId;
 
-        for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-            // 100% 중간밀도 우선 (짧고 자연스러운 댓글)
-            let content: string;
-            if (midDensityPool.length > 0) {
-                content = midDensityPool.pop()!;
-            } else if (deepComments.length > 0) {
-                content = deepComments.pop()!;
-            } else {
-                break;
-            }
-            content = lang.humanize(content);
-
-            // === 🔥 2댓글 로직: 두 번째 댓글 강제 변환 ===
-            if (j === 1 && commentCount === 2) {
-                // 3가지 타입 중 하나로 강제
-                const type = Math.floor(Math.random() * 3);
-                const firstComment = deepComments[deepComments.length - 1] || midDensityPool[midDensityPool.length - 1] || '';
-
-                if (type === 0) {
-                    // 단어형
-                    const words = ['草', 'それな', 'まじ', 'え', 'うん', 'わかる', 'やば', 'ほんとそれ', 'w', 'ww'];
-                    content = words[Math.floor(Math.random() * words.length)];
-                } else if (type === 1) {
-                    // 이모지형
-                    const emoji = ['www', 'wwww', '😂', '(^^;)', '(*´ω`*)', 'えぇ…', '草生える'];
-                    content = emoji[Math.floor(Math.random() * emoji.length)];
-                } else {
-                    // 맥락 무관형
-                    const contextFree = ['てかさ', 'まあいいけど', 'いや待って', 'ていうか', 'よく分からんけど', 'まあ'];
-                    content = contextFree[Math.floor(Math.random() * contextFree.length)];
+            // #2 답글 시간 보정: 부모 댓글 시간 + 로그 정규 지연
+            const parentComment = commentPool.find(c => c.id === parentCommentId);
+            if (parentComment && parentComment.created_at) {
+                const delayMs = replyDelay();
+                createdAt = new Date(parentComment.created_at.getTime() + delayMs);
+                // 미래를 넘지 않도록
+                if (createdAt.getTime() > Date.now()) {
+                    createdAt = new Date(parentComment.created_at.getTime() + Math.random() * 600000);
                 }
+            }
 
-                // 첫 댓글 단어/이름 포함 금지 검증
-                const firstWords = firstComment.split(/\s+/);
-                for (const word of firstWords) {
-                    if (word.length > 2 && content.includes(word)) {
-                        // 포함되면 다시 선택
-                        const fallback = ['草', 'w', 'それな', 'まじか'];
-                        content = fallback[Math.floor(Math.random() * fallback.length)];
-                        break;
+            if (parentComment) {
+                const replyPrompt = lang.buildReplyPrompt(parentComment.content);
+                const replyRaw = await callAzureGPT(replyPrompt);
+                if (replyRaw) {
+                    const replyClean = replyRaw.trim()
+                        .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
+                        .replace(/^["']|["']$/g, '').trim();
+                    if (replyClean.length > 0 && replyClean.length <= 50) {
+                        content = replyClean;
                     }
                 }
             }
+        }
 
-            // 스케줄링된 공개 시간 사용
-            const scheduledAt = scheduledTimes[scheduledIndex] || new Date();
-            scheduledIndex++;
-            // created_at는 현재 시간 (생성 시점), scheduled_at가 공개 시점
-            const createdAt = scheduledAt;
+        // backfill: 즉시 표시 (과거 댓글), schedule: 숨김 + 예약
+        const insertResult = backfill
+            ? await db.query(
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden)
+                 VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt]
+            )
+            : await db.query(
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
+                 VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt, scheduledAt]
+            );
 
-            // 답글 10% (pool에 3개 이상 있을 때만)
-            let parentId: string | null = null;
-            if (Math.random() < 0.10 && commentPool.length >= 3) {
-                const parentCommentId = weightedRandom(
-                    commentPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
-                );
-                parentId = parentCommentId;
+        commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0, created_at: createdAt });
+        totalCommentsPosted++;
 
-                const parentComment = commentPool.find(c => c.id === parentCommentId);
-                if (parentComment) {
-                    const replyPrompt = lang.buildReplyPrompt(parentComment.content);
-                    const replyRaw = await callAzureGPT(replyPrompt);
-                    if (replyRaw) {
-                        const replyClean = replyRaw.trim()
-                            .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
-                            .replace(/^["']|["']$/g, '').trim();
-                        if (replyClean.length > 0 && replyClean.length <= 50) {
-                            content = replyClean;
-                        }
-                    }
-                }
-            }
-
-            // backfill: 즉시 표시 (과거 댓글), schedule: 숨김 + 예약
-            const insertResult = backfill
-                ? await db.query(
-                    `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden)
-                     VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
-                    [episodeId, userId, content, parentId, createdAt]
-                )
-                : await db.query(
-                    `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
-                     VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
-                    [episodeId, userId, content, parentId, createdAt, scheduledAt]
-                );
-
-            commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
-            totalCommentsPosted++;
+        // #3 likes 롱테일 분포
+        const likes = randomLikes();
+        if (likes > 0) {
+            await db.query(`UPDATE comments SET likes = $1 WHERE id = $2`,
+                [likes, insertResult.rows[0].id]);
         }
 
         await new Promise(resolve => setTimeout(resolve, 30));
@@ -1520,6 +1638,81 @@ export interface BatchResult {
     totalInserted: number;
 }
 
+// ============================================================
+// #4 상주 독자 시스템 (Zipf 분포 기반)
+// 연구 근거:
+//   - 90-9-1 Rule (Nielsen, 2006): 90% lurker, 9% occasional, 1% superuser
+//   - Zipf's Law (α≈1): 소수 유저가 대다수 콘텐츠 생성
+//   - Serial fiction retention ~50% drop per episode (BlogSpot study)
+//   - Webtoon subscriber-to-reader ratio ~10% (Reddit community data)
+// ============================================================
+interface RecurringReader {
+    userId: string;
+    nickname: string;
+    tier: 'superfan' | 'regular' | 'casual';
+    // 등장 확률 (Zipf 가중치): superfan=0.8~1.0, regular=0.3~0.7, casual=0.05~0.15
+    appearanceRate: number;
+}
+
+async function createRecurringReaderPool(
+    lang: LanguagePack,
+    totalEpisodes: number,
+    firstPublishedAt: Date,
+    backfill: boolean,
+): Promise<RecurringReader[]> {
+    const pool: RecurringReader[] = [];
+    const usedNicknames = new Set<string>();
+
+    // 풀 크기: 에피소드 수의 25~40% (최소 3, 최대 20)
+    const poolSize = Math.max(3, Math.min(20, Math.ceil(totalEpisodes * 0.3)));
+
+    // Zipf 기반 3-Tier 분포 (90-9-1 규칙 적용)
+    const superfanCount = Math.max(1, Math.round(poolSize * 0.05));     // ~5%: 습퍼팬
+    const regularCount = Math.max(1, Math.round(poolSize * 0.15));      // ~15%: 중급
+    const casualCount = poolSize - superfanCount - regularCount;         // ~80%: 일반
+
+    for (let i = 0; i < poolSize; i++) {
+        const nickname = pickNickname(lang.nicknamePool, usedNicknames);
+        const username = generateRealisticUsername(nickname);
+        const pwHash = randomPasswordHash();
+
+        // 계정 생성일: 소설 첥 에피소드 전 (상주 독자니까 초기부터 있어야 함)
+        const userCreatedAt = backfill
+            ? new Date(firstPublishedAt.getTime() - (7 + Math.random() * 180) * 86400000)
+            : new Date();
+
+        const userResult = await db.query(
+            `INSERT INTO users(username, password_hash, name, is_hidden, created_at)
+             VALUES($1, $2, $3, FALSE, $4) RETURNING id`,
+            [username, pwHash, nickname, userCreatedAt]
+        );
+
+        let tier: RecurringReader['tier'];
+        let appearanceRate: number;
+
+        if (i < superfanCount) {
+            tier = 'superfan';
+            appearanceRate = 0.80 + Math.random() * 0.20;  // 80~100%
+        } else if (i < superfanCount + regularCount) {
+            tier = 'regular';
+            appearanceRate = 0.30 + Math.random() * 0.40;  // 30~70%
+        } else {
+            tier = 'casual';
+            appearanceRate = 0.05 + Math.random() * 0.10;  // 5~15%
+        }
+
+        pool.push({
+            userId: userResult.rows[0].id,
+            nickname,
+            tier,
+            appearanceRate,
+        });
+    }
+
+    console.log(`👥 [recurring] Created pool: ${superfanCount} superfans, ${regularCount} regulars, ${casualCount} casual (total=${poolSize})`);
+    return pool;
+}
+
 export async function runCommentBotBatch(
     novelId: string,
     lang: LanguagePack,
@@ -1537,6 +1730,12 @@ export async function runCommentBotBatch(
     if (epResult.rows.length === 0) {
         throw new Error(`No episodes found for ${novelId}`);
     }
+
+    // #4 상주 독자 풀 생성 (Zipf 분포 기반)
+    const firstPublishedAt = new Date(epResult.rows[0].created_at);
+    const recurringPool = await createRecurringReaderPool(
+        lang, epResult.rows.length, firstPublishedAt, backfill,
+    );
 
     const now = new Date();
     const episodes: BatchResult['episodes'] = [];
@@ -1559,6 +1758,15 @@ export async function runCommentBotBatch(
             continue;
         }
 
+        // 에피소드별 상주 독자 배정: 각 독자의 appearanceRate로 등장 여부 결정
+        // 후반 에피소드일수록 상주 독자 비율 높음 (retention 효과)
+        const epProgress = Math.min(epNumber / epResult.rows.length, 1.0);
+        const recurringBoost = 0.7 + epProgress * 0.3; // ep1=0.7x, epLast=1.0x
+        const episodeRecurring = recurringPool.filter(r => {
+            const adjusted = r.appearanceRate * recurringBoost;
+            return Math.random() < adjusted;
+        });
+
         try {
             const result = await runCommentBotIntl(
                 novelId,
@@ -1569,6 +1777,7 @@ export async function runCommentBotBatch(
                 episodeId,
                 backfill,
                 backfill ? publishedAt : undefined,
+                episodeRecurring,
             );
             episodes.push({
                 episodeId, ep: epNumber, views, daysSince,
