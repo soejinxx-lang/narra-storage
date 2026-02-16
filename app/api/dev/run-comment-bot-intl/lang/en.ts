@@ -337,7 +337,7 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. React fast.
+        return `You're a Royal Road web novel reader on your phone. You just finished a chapter. React fast.
 
 ${args.sceneContext || 'N/A'}
 
@@ -361,7 +361,7 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. You're excited.
+        return `You're a Royal Road web novel reader on your phone. You just finished a chapter. You're excited.
 
 ${args.sceneContext || 'N/A'}
 
@@ -381,7 +381,7 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You skimmed too fast or misread. React.
+        return `You're a Royal Road web novel reader on your phone. You skimmed too fast or misread. React.
 
 ${args.sceneContext || 'N/A'}
 
@@ -399,7 +399,7 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. Quick thoughts.
+        return `You're a Royal Road web novel reader on your phone. Quick thoughts.
 
 ${args.sceneContext || 'N/A'}
 
@@ -414,7 +414,7 @@ Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `You just read this on your phone. React.
+    buildCall5Prompt: (args) => `You're a Royal Road web novel reader on your phone. React.
 
 ${args.sceneContext || 'N/A'}
 
