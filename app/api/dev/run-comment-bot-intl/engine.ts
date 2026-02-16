@@ -1245,12 +1245,12 @@ export async function runCommentBotIntl(
         let lastCommentTime: Date | null = null;
 
         for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-            // 100% deep context (스페인어 딥컨텍스트 테스트)
+            // 100% 중간밀도 우선 (짧고 자연스러운 댓글)
             let content: string;
-            if (deepComments.length > 0) {
-                content = deepComments.pop()!;
-            } else if (midDensityPool.length > 0) {
+            if (midDensityPool.length > 0) {
                 content = midDensityPool.pop()!;
+            } else if (deepComments.length > 0) {
+                content = deepComments.pop()!;
             } else {
                 break;
             }
