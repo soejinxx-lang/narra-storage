@@ -344,6 +344,8 @@ ${profileList}
 半分集中してない感じでコメント。思考が途中で終わってもいい。
 絵文字なし。代名詞使え。
 
+🔥 必ず日本語で書け。英語禁止。
+
 ${args.targetCommentCount}個のコメント生成。
 JSON { "comments": [...] }`;
     },
@@ -362,6 +364,8 @@ ${profileList}
 
 興奮を見せるが理由は説明しない。分析なし。「深みを加える」「雰囲気を作る」「〜という点が」禁止。
 ほぼ小文字。絵文字なし。
+
+🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。
 JSON { "comments": [...] }`;
@@ -383,6 +387,7 @@ ${profileList}
 絵文字なし。
 
 🔥 日本語特有: 文法ガバガバでいい。途中で切れてもOK。です/ます禁止。
+🔥🔥 必ず日本語で書け。絶対に英語使うな。
 
 ${args.targetCommentCount}個のコメント生成。
 JSON { "comments": [...] }`;
@@ -403,6 +408,8 @@ ${profileList}
 一つの思考だけ。「深みを加える」「良い描写」「〜という点が」「雰囲気を作る」禁止。
 文学的分析なし。絵文字なし。
 
+🔥 必ず日本語で書け。英語禁止。
+
 ${args.targetCommentCount}個のコメント生成。
 JSON { "comments": [...] }`;
     },
@@ -420,6 +427,7 @@ ${args.sceneContext || 'N/A'}
 絵文字なし。
 
 🔥 日本語特有: です/ます使うな。文章完成させるな。「〜が○○」構造避けろ。
+🔥🔥 必ず日本語で書け。絶対に英語使うな。
 
 ${args.targetCommentCount}個のコメント生成。
 JSON { "comments": [...] }`,
@@ -453,7 +461,7 @@ ${parentComment}
 
         // === 🔥 2. 流れ込み追加 (15% — 文末に曖昧化) ===
         if (Math.random() < 0.15) {
-            const trailing = ['…', '…？', 'いや…', 'なんか…', 'てか', 'まあ'];
+            const trailing = ['…', '…？', 'いや', 'え', 'てか', 'まあ', 'うーん'];
             result = result.replace(/。?$/, trailing[Math.floor(Math.random() * trailing.length)]);
         }
 
@@ -528,6 +536,12 @@ ${parentComment}
             // 抽象名詞
             /\b(?:心理描写|感情表現|物語性|テーマ性)\b/i,
 
+            // === 🔥 評価型抽象名詞 (感想文マーカー — 即死) ===
+            /\b(?:印象的|興味深い|迫力|緊張感|孤独感|決意|内面|背景|要素|対比|強調)\b/i,
+
+            // === 🔥 評価動詞構造 (名詞+を+強調/影響) ===
+            /を(?:強調して|影響して|考えさせる)/i,
+
             // === 🔥 感情+評価 パターン (GPT習慣) ===
             // "AがBを〜" 構造 (分析型)
             /が(?:引き立って|際立って|伝わって)(?:いる|きた)/i,
@@ -586,6 +600,10 @@ ${parentComment}
         if (/。[ぁ-んァ-ヶー一-龠]/.test(comment)) score -= 12;
         if (comment.length > 80) score -= 20;
         if (comment.length > 50 && !/[!?！？…]/.test(comment)) score -= 10;
+
+        // === 🔥 評価終止形減点 (感想文マーカー) ===
+        const evalEndings = comment.match(/(?:だった|している|になっている)[。、]/g);
+        if (evalEndings && evalEndings.length >= 2) score -= 25;
 
         // === 🔥 です/ます基本減点 (なろう댓글은 존댓말 비율 낮음) ===
         const desuMasuCount = (comment.match(/(?:です|ます)(?:[。、]|$)/g) || []).length;
