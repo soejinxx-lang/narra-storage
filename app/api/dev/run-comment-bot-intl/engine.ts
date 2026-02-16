@@ -130,8 +130,122 @@ function pickNickname(pool: string[], usedNicknames: Set<string>): string {
 }
 
 // ============================================================
-// 시간 분산 (한국어 route.ts 동일)
+// 시간대별 가중치 (현지 피크 시간 기반)
+// 리서치: 19~21시 최대 피크, 점심/통근 부피크
 // ============================================================
+const HOUR_WEIGHTS: Record<string, number[]> = {
+    // 24시간 가중치 [00~23], 합계 ≈ 1.0
+    'ko': [.01, .01, .01, .01, .01, .02, .03, .06, .06, .03, .03, .04,
+        .06, .06, .04, .04, .05, .05, .07, .10, .10, .07, .05, .03], // KST
+    'ja': [.01, .01, .01, .01, .01, .02, .03, .06, .06, .03, .03, .04,
+        .06, .06, .04, .04, .05, .05, .07, .10, .10, .07, .05, .03], // JST
+    'en': [.03, .01, .01, .01, .01, .02, .03, .06, .06, .04, .04, .05,
+        .06, .06, .04, .04, .05, .05, .06, .08, .08, .06, .05, .03], // EST
+    'es': [.02, .01, .01, .01, .01, .01, .02, .04, .05, .04, .04, .05,
+        .06, .06, .05, .05, .05, .06, .07, .08, .08, .07, .05, .03], // CET
+};
+
+function weightedRandomHour(weights: number[]): number {
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let h = 0; h < 24; h++) {
+        r -= weights[h];
+        if (r <= 0) return h;
+    }
+    return 23;
+}
+
+// ============================================================
+// 3단 클러스터링 시간 분배
+// 40% 즉시(1~15분), 30% 중기(1~3시간), 30% 장기(6~18시간)
+// ============================================================
+function distributeTimestamps(count: number, langCode: string): Date[] {
+    const now = new Date();
+    const timestamps: Date[] = [];
+
+    for (let i = 0; i < count; i++) {
+        const roll = Math.random();
+        let offsetMs: number;
+
+        if (roll < 0.40) {
+            // 40% → 게시 직후 1~15분
+            offsetMs = (1 + Math.random() * 14) * 60 * 1000;
+        } else if (roll < 0.70) {
+            // 30% → 1~3시간 후
+            offsetMs = (60 + Math.random() * 120) * 60 * 1000;
+        } else {
+            // 30% → 6~18시간 후 (시간대 가중치 적용)
+            const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
+            const targetHour = weightedRandomHour(weights);
+            const ts = new Date(now);
+            ts.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
+            if (ts.getTime() - now.getTime() < 6 * 3600 * 1000) {
+                ts.setDate(ts.getDate() + 1);
+            }
+            offsetMs = ts.getTime() - now.getTime();
+        }
+
+        // 랜덤 초단위 지연 (0~59초)
+        offsetMs += Math.floor(Math.random() * 60) * 1000;
+
+        timestamps.push(new Date(now.getTime() + offsetMs));
+    }
+
+    return timestamps.sort((a, b) => a.getTime() - b.getTime());
+}
+
+// ============================================================
+// 조회수 + 화수 + 나이 기반 동적 댓글 수 (90-9-1 법칙 + 노이즈)
+// ============================================================
+function calculateTargetCount(
+    views: number,
+    epNumber: number,
+    daysSincePublished: number,
+): number {
+    // 90-9-1 기반 비율 (신생 플랫폼 보정)
+    let ratio: number;
+    if (views <= 30) ratio = 0.10;
+    else if (views <= 100) ratio = 0.05;
+    else if (views <= 300) ratio = 0.03;
+    else if (views <= 1000) ratio = 0.015;
+    else ratio = 0.005;
+
+    // 에피소드 번호 감소 곡선 (초반 화에 관심 집중)
+    let epDecay: number;
+    if (epNumber <= 3) epDecay = 1.0;
+    else if (epNumber <= 10) epDecay = 0.7;
+    else if (epNumber <= 20) epDecay = 0.5;
+    else if (epNumber <= 40) epDecay = 0.35;
+    else epDecay = 0.25;
+
+    // 🔥 나이 기반 감소 (게시 후 경과 일수)
+    // 1화: 오래돼도 꾸준히 댓글 유입 (신규 독자 진입점)
+    // 후반 화: 시간 지나면 급감
+    let ageFactor: number;
+    if (epNumber <= 3) {
+        // ep 1~3: 에버그린 (신규 독자 진입점 — 항상 80% 이상)
+        if (daysSincePublished <= 7) ageFactor = 1.0;
+        else if (daysSincePublished <= 30) ageFactor = 0.9;
+        else ageFactor = 0.8;
+    } else {
+        // ep 4+: 시간에 따라 급감
+        if (daysSincePublished <= 3) ageFactor = 1.0;
+        else if (daysSincePublished <= 7) ageFactor = 0.6;
+        else if (daysSincePublished <= 14) ageFactor = 0.3;
+        else if (daysSincePublished <= 30) ageFactor = 0.15;
+        else ageFactor = 0.1;
+    }
+
+    const base = views * ratio * epDecay * ageFactor;
+
+    // 30~50% 노이즈 (패턴 예측 방지)
+    const noise = base * (0.7 + Math.random() * 0.6); // 70%~130%
+
+    // 최소 0 허용, 최대 40
+    return Math.min(Math.floor(noise), 40);
+}
+
+// randomTimestamp는 하위호환용으로 유지 (예약 시스템 미사용 시)
 function randomTimestamp(): Date {
     const now = Date.now();
     const rand = Math.random();
@@ -1134,21 +1248,27 @@ export async function runCommentBotIntl(
     baseCount: number = 60,
     density: number = 1.0,
     useDeep: boolean = true,
+    targetEpisodeId?: string,
 ): Promise<CommentBotResult> {
     const totalCount = Math.round(baseCount * density);
     let personalityWeights = lang.defaultWeights;
 
-    console.log(`🤖[intl] Starting comment bot for ${novelId} (lang=${lang.code})...`);
+    console.log(`🤖[intl] Starting comment bot for ${novelId} (lang=${lang.code}, count=${totalCount})...`);
 
-    // 1. 에피소드 ID 조회
-    const episodeResult = await db.query(
-        `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
-        [novelId]
-    );
-    if (episodeResult.rows.length === 0) {
-        throw new Error(`No episodes found for ${novelId}`);
+    // 1. 에피소드 ID 결정
+    let episodeId: string;
+    if (targetEpisodeId) {
+        episodeId = targetEpisodeId;
+    } else {
+        const episodeResult = await db.query(
+            `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
+            [novelId]
+        );
+        if (episodeResult.rows.length === 0) {
+            throw new Error(`No episodes found for ${novelId}`);
+        }
+        episodeId = episodeResult.rows[0].id;
     }
-    const episodeId = episodeResult.rows[0].id;
     const episodeIds = [episodeId];
 
     // 1.5. 캐릭터 이름 로딩
@@ -1224,6 +1344,10 @@ export async function runCommentBotIntl(
     let totalCommentsPosted = 0;
     const botCount = Math.ceil(totalCount / 1.3);
 
+    // 🔥 스케줄링: 모든 댓글의 공개 시간 미리 생성 (3단 클러스터링)
+    const scheduledTimes = distributeTimestamps(totalCount, lang.code);
+    let scheduledIndex = 0;
+
     for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
         const nickname = pickNickname(lang.nicknamePool, usedNicknames);
         console.log(`🎭 [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}" (pool=${lang.nicknamePool.length}, used=${usedNicknames.size})`);
@@ -1288,16 +1412,11 @@ export async function runCommentBotIntl(
                 }
             }
 
-            let createdAt = randomTimestamp();
-
-            // 같은 봇 댓글 간 5분~3시간 간격
-            if (lastCommentTime) {
-                const minGap = 5 * 60 * 1000;
-                const maxGap = 3 * 60 * 60 * 1000;
-                const gap = Math.random() * (maxGap - minGap) + minGap;
-                createdAt = new Date(lastCommentTime.getTime() + gap);
-            }
-            lastCommentTime = createdAt;
+            // 스케줄링된 공개 시간 사용
+            const scheduledAt = scheduledTimes[scheduledIndex] || new Date();
+            scheduledIndex++;
+            // created_at는 현재 시간 (생성 시점), scheduled_at가 공개 시점
+            const createdAt = scheduledAt;
 
             // 답글 10% (pool에 3개 이상 있을 때만)
             let parentId: string | null = null;
@@ -1323,9 +1442,9 @@ export async function runCommentBotIntl(
             }
 
             const insertResult = await db.query(
-                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                [episodeId, userId, content, parentId, createdAt]
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
+                 VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt, scheduledAt]
             );
 
             commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
@@ -1344,5 +1463,85 @@ export async function runCommentBotIntl(
         detectedTags: sceneTags,
         language: lang.code,
         contentLanguage,
+    };
+}
+
+// ============================================================
+// 배치 실행 — 소설의 모든 에피소드를 순회하며 동적 댓글 수 적용
+// 조회수 + 화수 + 나이 기반으로 각 에피소드별 댓글 수 자동 결정
+// ============================================================
+export interface BatchResult {
+    novelId: string;
+    language: string;
+    episodes: { episodeId: string; ep: number; views: number; daysSince: number; targetCount: number; inserted: number }[];
+    totalInserted: number;
+}
+
+export async function runCommentBotBatch(
+    novelId: string,
+    lang: LanguagePack,
+): Promise<BatchResult> {
+    console.log(`🚀 [batch] Starting batch for ${novelId} (lang=${lang.code})...`);
+
+    // 모든 에피소드 조회 (views, ep번호, 게시일)
+    const epResult = await db.query(
+        `SELECT id, ep, views, created_at FROM episodes
+         WHERE novel_id = $1 ORDER BY ep ASC`,
+        [novelId]
+    );
+
+    if (epResult.rows.length === 0) {
+        throw new Error(`No episodes found for ${novelId}`);
+    }
+
+    const now = new Date();
+    const episodes: BatchResult['episodes'] = [];
+    let totalInserted = 0;
+
+    for (const row of epResult.rows) {
+        const episodeId = row.id;
+        const epNumber = parseInt(row.ep) || 1;
+        const views = parseInt(row.views) || 0;
+        const publishedAt = new Date(row.created_at);
+        const daysSince = Math.floor((now.getTime() - publishedAt.getTime()) / (1000 * 60 * 60 * 24));
+
+        // 동적 댓글 수 계산
+        const targetCount = calculateTargetCount(views, epNumber, daysSince);
+
+        console.log(`📊 [batch] ep${epNumber}: views=${views}, age=${daysSince}d, target=${targetCount}`);
+
+        if (targetCount === 0) {
+            episodes.push({ episodeId, ep: epNumber, views, daysSince, targetCount: 0, inserted: 0 });
+            continue;
+        }
+
+        try {
+            const result = await runCommentBotIntl(
+                novelId,
+                lang,
+                targetCount,  // baseCount = 동적 계산된 수
+                1.0,
+                true,
+                episodeId,    // targetEpisodeId — 특정 에피소드 지정
+            );
+            episodes.push({
+                episodeId, ep: epNumber, views, daysSince,
+                targetCount,
+                inserted: result.inserted,
+            });
+            totalInserted += result.inserted;
+        } catch (err) {
+            console.error(`❌ [batch] ep${epNumber} failed:`, err);
+            episodes.push({ episodeId, ep: epNumber, views, daysSince, targetCount, inserted: 0 });
+        }
+    }
+
+    console.log(`✅ [batch] Finished: ${totalInserted} total comments across ${epResult.rows.length} episodes`);
+
+    return {
+        novelId,
+        language: lang.code,
+        episodes,
+        totalInserted,
     };
 }

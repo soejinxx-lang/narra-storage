@@ -1,6 +1,7 @@
 /**
  * 다국어 댓글봇 라우터
  * GET /api/dev/run-comment-bot-intl?novel=novel-xxx&lang=en&count=60&deep=true
+ * GET /api/dev/run-comment-bot-intl?novel=novel-xxx&lang=en&mode=batch  (전체 에피소드 자동)
  * 
  * 한국어 route.ts는 절대 건드리지 않음.
  * 이 엔드포인트는 en/ja/zh/es만 처리.
@@ -8,7 +9,7 @@
 
 import { NextResponse, NextRequest } from "next/server";
 import { requireAdmin } from "../../../../lib/admin";
-import { runCommentBotIntl } from "./engine";
+import { runCommentBotIntl, runCommentBotBatch } from "./engine";
 import type { LanguagePack } from "./types";
 
 // ============================================================
@@ -30,9 +31,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const novelId = searchParams.get('novel');
     const langCode = searchParams.get('lang') || 'en';
+    const mode = searchParams.get('mode') || 'single';
     const baseCount = parseInt(searchParams.get('count') || '60');
     const density = parseFloat(searchParams.get('density') || '1.0');
-    const useDeep = searchParams.get('deep') !== 'false'; // default: true
+    const useDeep = searchParams.get('deep') !== 'false';
 
     // === 검증 ===
     if (!novelId) {
@@ -44,29 +46,39 @@ export async function GET(req: NextRequest) {
 
     if (langCode === 'ko') {
         return NextResponse.json(
-            { error: 'Korean uses /api/dev/run-comment-bot (existing endpoint). This endpoint is for en/ja/zh/es only.' },
+            { error: 'Korean uses /api/dev/run-comment-bot (existing endpoint).' },
             { status: 400 }
         );
     }
 
     if (!SUPPORTED_LANGUAGES.includes(langCode)) {
         return NextResponse.json(
-            {
-                error: `Unsupported language: ${langCode}`,
-                supported: SUPPORTED_LANGUAGES,
-                hint: 'Language packs are added in Phase 2. Currently no language packs are registered.',
-            },
+            { error: `Unsupported language: ${langCode}`, supported: SUPPORTED_LANGUAGES },
             { status: 400 }
         );
     }
 
     try {
-        // 언어팩 로딩 (동적 import)
         const loadLangPack = LANGUAGE_PACKS[langCode];
         const langPack = await loadLangPack();
 
-        console.log(`🌐 [intl] Language: ${langCode} (maturity: ${langPack.dataMaturity})`);
+        console.log(`🌐 [intl] Language: ${langCode}, mode: ${mode}`);
 
+        // 🔥 배치 모드: 전체 에피소드 순회, 조회수+나이 기반 동적 댓글 수
+        if (mode === 'batch') {
+            const result = await runCommentBotBatch(novelId, langPack);
+            return NextResponse.json({
+                success: true,
+                mode: 'batch',
+                novel: novelId,
+                language: langCode,
+                totalInserted: result.totalInserted,
+                episodes: result.episodes,
+                version: 'v4-batch',
+            });
+        }
+
+        // 기존 단일 에피소드 모드
         const result = await runCommentBotIntl(
             novelId,
             langPack,
@@ -77,6 +89,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
+            mode: 'single',
             novel: novelId,
             language: langCode,
             dataMaturity: langPack.dataMaturity,
@@ -85,17 +98,12 @@ export async function GET(req: NextRequest) {
             commentsPosted: result.inserted,
             deepContextUsed: result.deepContextUsed,
             detectedTags: result.detectedTags,
-            azureConfigured: !!(process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY),
-            version: 'v3-intl',
+            version: 'v4-intl',
         });
     } catch (error) {
         console.error('[intl] Comment Bot Error:', error);
         return NextResponse.json(
-            {
-                error: 'Failed to run comment bot',
-                details: String(error),
-                language: langCode,
-            },
+            { error: 'Failed to run comment bot', details: String(error), language: langCode },
             { status: 500 }
         );
     }
