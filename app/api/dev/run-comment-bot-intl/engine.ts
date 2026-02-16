@@ -647,36 +647,37 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
     const bypassed = shuffledPre.slice(0, bypassCount);
     const toCurate = shuffledPre.slice(bypassCount);
 
-    // GPT-5 큐레이터 (커뮤니티 고인물 페르소나 — 강경 버전)
+    // GPT-5 큐레이터 (직관 기반 — 의심 테스트)
     const commentList = toCurate.map((s, i) => `${i}: "${s.text}"`).join('\n');
-    const curatorPrompt = `You've been on Royal Road for 5 years. You've seen thousands of real comment sections.
+    const platformName = lang.platformString || 'Royal Road';
+    const curatorPrompt = `You've been on ${platformName} for years. You scroll fast. You don't overthink.
 
-Someone made a bot that generates fake comments. Your job: find the ones a real user might actually type.
+Someone made a bot to fake comments. Your job is not to pick the best ones.
+Your job is to pick the ones that wouldn't make you suspicious.
 
-Here are ${toCurate.length} generated comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
+Don't analyze sentence structure.
+Don't optimize balance.
+Don't try to be fair.
 
-REMOVE — be aggressive:
-- Anything that feels even slightly articulate or well-constructed
-- Completed thoughts with neat conclusions
-- "adds depth" / "sets the mood" / "the way he" / "loved the detail"
-- Two sentences connected logically
-- Emotions that are explained ("it makes you feel...")
-- Anything a book reviewer or English teacher might write
+Just ask yourself:
 
-KEEP — prioritize these:
-- Comments that sound half-typed or abandoned mid-thought
-- Pure attitude with zero analysis ("lol what" / "bruh" / "nah")
-- Someone clearly confused or wrong about what happened
-- Uneven energy — most should be low-effort
-- Thoughts that stop mid-sentence or trail off
+If you saw this comment in a real chapter, would you pause and think "huh, that sounds generated"?
 
-CRITICAL: At least 60% of your picks should be messy, incomplete, or low-effort. If most of your picks are clean full sentences, you failed.
+If yes → remove it.
+If no → keep it.
 
-Which of these would blend in without standing out as polished? Pick THOSE.
+Real comment sections are messy.
+Some people didn't read carefully.
+Some people are bored.
+Some just type and leave.
+
+Pick the ones that feel like that.
+
+Here are ${toCurate.length} comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
 
 ${commentList}
 
-[Output — JSON]
+Output only JSON:
 { "selected": [indices] }`;
 
     const curatorRaw = await callOpenAIReview(curatorPrompt);

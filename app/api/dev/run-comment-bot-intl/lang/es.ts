@@ -478,12 +478,23 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /agrega (?:profundidad|una capa)/i,
             /establece el (?:tono|ambiente|escenario)/i,
             /captura perfectamente/i,
-            // "la forma en que" (the way he/she)
-            /la forma en que (?:él|ella|ellos)/i,
+            // "la forma en que" / "la manera en que" (실제 데이터에서 최다 AI 패턴)
+            /la (?:forma|manera) en que (?:él|ella|ellos|se)/i,
+            /el momento en que/i,
             // 해석 프레임
             /^Me encantó el \w+/i,
             /Ese momento cuando/i,
             /El detalle sobre/i,
+            // "Añade un..." 구조 (GPT 리뷰 전형)
+            /añade un (?:nuevo )?(?:nivel|giro|toque|elemento)/i,
+            /añade (?:profundidad|complejidad)/i,
+            // "Refleja" (과도한 해석)
+            /refleja (?:algo|su|una)/i,
+            // símbolo/complejidad (리뷰어 단어)
+            /\b(?:símbolo|simboliza|complejidad)\b/i,
+            // "Es un buen detalle" (감상문 완성형)
+            /es un buen detalle/i,
+            /(?:le da|tiene) (?:ese )?toque poético/i,
             // 분석 구조
             /va a jugar un (?:papel|rol) (?:significativo|importante|crucial)/i,
             /equilibrio entre \w+ y \w+/i,
@@ -494,7 +505,7 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /el peso de (?:la|su)/i,
             // 완성형
             /^(?:Realmente|Muy) (?:profundo|poderoso|intenso|conmovedor|bello)\b/i,
-            // === "El/La + noun + verb" (최대 AI 시그니처) ===
+            // === "El/La + noun + verb" (영어 The 패턴과 동일) ===
             /^(?:El|La|Los|Las) \w+ (?:es|fue|está|son|eran|parece|resulta)\b/i,
             /^(?:El|La|Los|Las) \w+ \w+ (?:es|fue|está|son|eran|parece)\b/i,
             /^Me encanta la \w+/i,
@@ -505,6 +516,8 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /\bde primera categoría\b/i,
             /\bhipnotizante\b/i,
             /\bfascinante\b/i,
+            // "La referencia a..." (리뷰 구조)
+            /la referencia a/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };
