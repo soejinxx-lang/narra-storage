@@ -335,13 +335,15 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You're a Royal Road web novel reader on your phone. You just finished a chapter. React fast.
+        return `You just read a chapter on your phone. Type what comes to mind first. Don't think about it.
 
 ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Short, messy, phone-typed. Some incomplete thoughts. No emojis. Use pronouns after first mention.
+No summaries. No explanations. No reflections. Don't describe what happened.
+Comment like you're half-distracted. Some thoughts don't finish.
+No emojis. Use pronouns after first mention.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -353,13 +355,14 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You're a Royal Road web novel reader on your phone. You just finished a chapter. You're excited.
+        return `You just read a chapter on your phone. You liked it. Type fast.
 
 ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Excited but mostly lowercase. No emojis.
+Show excitement but don't explain why. No analysis. No "it adds depth" or "the way he".
+Mostly lowercase. No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -371,13 +374,14 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You're a Royal Road web novel reader on your phone. You skimmed too fast or misread. React.
+        return `You read a chapter but you weren't really paying attention. Type something anyway.
 
 ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Off-topic, confused, sarcastic, or wrong. No emojis.
+You're confused, bored, or got the wrong idea. Don't correct yourself.
+No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -389,23 +393,25 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You're a Royal Road web novel reader on your phone. Quick thoughts.
+        return `You just finished a chapter. Drop a quick hot take, not a review.
 
 ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Reddit-style casual analysis. Not literary reviews. No emojis. Use pronouns after first mention.
+One thought max. No "adds depth" "nice touch" "the way he" "sets the mood".
+No literary analysis. No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `You're a Royal Road web novel reader on your phone. React.
+    buildCall5Prompt: (args) => `You just read something on your phone. Type before you think.
 
 ${args.sceneContext || 'N/A'}
 
-Short, messy, phone-typed. Mix of reactions. No emojis.
+Messy, short, unfinished. Some comments are just attitude, no content.
+No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`,
@@ -479,29 +485,41 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
     },
 
     curateScoring: (comment) => {
-        let score = 100;
+        let score = 70; // 기본 70 (가점/감점 양방향)
 
-        // === Tier 1: Instant kill (unmistakable AI DNA) ===
+        // === Tier 1: Instant kill (AI DNA — 구조 패턴) ===
         const instantKill = [
+            // 단어 기반
             /\bpalpable\b/i,
+            /\btestament to\b/i,
+            // 감정 해설형 (AI가 설명하는 문장)
             /you could? feel/i,
             /can really feel/i,
+            /makes? you feel/i,
+            /really (?:adds|brings|shows|captures|highlights|sets)/i,
+            /adds? (?:so much )?depth/i,
+            /adds? (?:a )?(?:nice|great|interesting) (?:touch|layer)/i,
+            /nice touch/i,
+            /sets? the (?:mood|tone|stage)/i,
+            /amps? up/i,
+            /perfectly captures?/i,
+            // "the way he/she" 구조 (같은 배치에서 반복 = AI)
+            /the way (?:he|she|they|it) \w+/i,
+            // 분석 구조
+            /going to play a (?:significant|major|important|key|crucial) role/i,
+            /balance between \w+ and \w+/i,
+            /shows? (?:his|her|their) (?:vulnerability|isolation|growth|determination)/i,
+            // 분위기 묘사
             /danger in the air/i,
             /sends? (?:a )?(?:chill|shiver)/i,
             /weight of (?:the|his|her)/i,
             /air (?:was |felt )(?:thick|heavy)/i,
-            /perfectly captures?/i,
-            /testament to/i,
-            // Structural patterns (sentence-level AI DNA)
-            /really (?:adds|brings|shows|captures)/i,
-            /going to play a (?:significant|major|important|key|crucial) role/i,
-            /balance between \w+ and \w+/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };
         }
 
-        // === Tier 2: Heavy penalty (-30) ===
+        // === Tier 2: Heavy penalty (-30) — 학술/리뷰 단어 ===
         const aiPatterns = [
             /\b(utilize|facilitate|leverage|endeavor|commence|thus|hence|moreover)\b/i,
             /\b(particularly|specifically|essentially|fundamentally)\b/i,
@@ -509,29 +527,41 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             /In this chapter/i,
             /The author/i,
             /masterfully|brilliantly|expertly/i,
-            /adds? (?:so much )?depth/i,
         ];
         for (const pattern of aiPatterns) {
             if (pattern.test(comment)) score -= 30;
         }
 
-        // === Tier 3: Light penalty (-12) — clean analytical structure ===
-        if (/^(The|This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) {
-            score -= 12;
-        }
-        if (/\b(dynamic|narrative|storytelling|character development)\b/i.test(comment)) {
-            score -= 8;
-        }
-
-        // Length — long polished sentences are suspicious
+        // === Tier 3: 구조 감점 (-10~20) ===
+        // 완결형 문장: 대문자 시작 + 마침표 종결
+        if (/^[A-Z][a-z].*\.$/.test(comment)) score -= 15;
+        // "The/This/It" 시작 분석 구조
+        if (/^(The|This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) score -= 12;
+        // 문학 비평 단어
+        if (/\b(dynamic|narrative|storytelling|character development)\b/i.test(comment)) score -= 10;
+        // 2문장 이상 + 논리 연결 (AI 설명 구조)
+        if (/\. [A-Z]/.test(comment) && /\b(and|but|also|however|while|although|because)\b/i.test(comment)) score -= 20;
+        // 길이 + 감정 부재 = 리뷰
         if (comment.length > 100) score -= 20;
-        if (comment.length > 70 && !/[!?…]/.test(comment)) score -= 10; // long + no emotion = review
-        if (comment.length < 5) score -= 10;
+        if (comment.length > 70 && !/[!?…]/.test(comment)) score -= 10;
 
-        // Formal sentence ending
-        if (/^[A-Z][a-z]+, [a-z]+ [a-z]+ [a-z]+\.$/.test(comment)) score -= 15;
+        // === 🔥 Human Bonus (비정돈성 가점) ===
+        // 소문자 시작
+        if (/^[a-z]/.test(comment)) score += 5;
+        // 문장 중간 끊김 (마침표 없이 끝남)
+        if (!/[.!?]$/.test(comment)) score += 6;
+        // 매우 짧음 (5단어 이하)
+        if (comment.split(' ').length <= 5) score += 8;
+        // 대문자 과용 (2단어 이상 전부 대문자)
+        if (/[A-Z]{3,}/.test(comment)) score += 3;
+        // 반복 문자 (lmaooo, nooo, wtfff)
+        if (/(.)\1{2,}/.test(comment)) score += 4;
+        // 물음표/느낌표 단독 또는 과다
+        if (/^[?!]+$/.test(comment.trim()) || /[!?]{2,}/.test(comment)) score += 3;
+        // 슬랭 사용
+        if (/\b(bruh|lmao|ngl|tbh|fr|ong|bro|dude|smh|idk|nah|yooo?|wtf|lol)\b/i.test(comment)) score += 4;
 
-        return { score: Math.max(0, score) };
+        return { score: Math.max(0, Math.min(120, score)) };
     },
 
     // === 집단 동조 ===
