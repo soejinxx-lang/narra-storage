@@ -541,7 +541,7 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile, lang: Lan
 // Stage 5: 집단 동조 파동 (언어팩 문자열 사용)
 // ============================================================
 function injectHerdEffect(comments: string[], lang: LanguagePack): string[] {
-    if (Math.random() > 0.3 || comments.length < 4) return comments;
+    if (Math.random() > 0.15 || comments.length < 4) return comments; // 50% reduced for testing (was 0.3)
 
     const candidates = comments.filter(c => c.length >= 5);
     if (candidates.length === 0) return comments;
@@ -610,18 +610,52 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
         return { text: cleaned, score };
     });
 
-    // 하위 20%만 제거 (한국어 route.ts 동일)
+    // === Spectrum Preservation (스펙트럼 보존) ===
+    // 하위 20% 제거 대신: Tier 1 즉사(0점)만 제거, 나머지는 보존
     scored.sort((a, b) => b.score - a.score);
-    const preFiltered = scored.slice(0, Math.ceil(scored.length * 0.8));
-    const preDropped = scored.slice(Math.ceil(scored.length * 0.8));
-    for (const d of preDropped) {
-        console.log(`🔪 [intl] AI-tell filter (${d.score}): "${d.text}"`);
+
+    // Tier 1 즉사만 제거 (score === 0)
+    const alive = scored.filter(s => s.score > 0);
+    const killed = scored.filter(s => s.score === 0);
+    for (const d of killed) {
+        console.log(`🔪 [intl] AI-DNA kill (${d.score}): "${d.text}"`);
     }
 
-    // GPT-5 큐레이터 (구조 동일)
+    // 상위 10% "너무 완벽한" 댓글 제거 (균질화 방지)
+    const topCut = Math.ceil(alive.length * 0.1);
+    const tooClean = alive.slice(0, topCut).filter(s => s.score >= 90 && s.text.length > 50);
+    for (const d of tooClean) {
+        console.log(`✨ [intl] Too-clean removal (${d.score}): "${d.text}"`);
+    }
+    const preFiltered = alive.filter(s => !tooClean.includes(s));
+
+    // === Length Distribution Enforcement (길이 분포 강제) ===
+    const shortComments = preFiltered.filter(s => s.text.split(' ').length <= 5);
+    const longComments = preFiltered.filter(s => s.text.includes('. ') || s.text.includes('! ') || s.text.length > 80);
+    const medComments = preFiltered.filter(s => !shortComments.includes(s) && !longComments.includes(s));
+
+    // 최소 비율 보장: short 8%, long 15%
+    const minShort = Math.max(1, Math.ceil(targetCount * 0.08));
+    const minLong = Math.max(1, Math.ceil(targetCount * 0.15));
+    const maxMed = Math.ceil(targetCount * 0.40);
+
+    console.log(`📏 [intl] Length dist: short=${shortComments.length}(min${minShort}), med=${medComments.length}(max${maxMed}), long=${longComments.length}(min${minLong})`);
+
+    // GPT-5 큐레이터 (반전된 프롬프트: 완벽한 것 제거)
     const commentList = preFiltered.map((s, i) => `${i}: "${s.text}"`).join('\n');
-    const curatorPrompt = `Pick ${targetCount} comments from ${preFiltered.length}.
-A set that looks too clean or organized is fake. Different lengths and tones are natural.
+    const curatorPrompt = `You have ${preFiltered.length} comments. Pick ${targetCount}.
+
+REMOVE these types:
+- Most polished, essay-like comments
+- Comments that sound like book reviews
+- Comments that feel too smart or analytical
+- Anything a teacher would write
+
+KEEP these types:
+- Short dumb reactions (3-5 words)
+- Messy incomplete thoughts
+- Casual low-effort takes
+- Mix of lengths and energy levels
 
 ${commentList}
 
@@ -887,11 +921,11 @@ async function generateDeepContextComments(
 
     console.log(`🧹 [intl] Filters: ${dedupedSafe.length} → slang:${afterSlang.length} → caps_adj → dedup:${afterDedup.length}`);
 
-    // Stage 5: Herd Effect (safe만)
-    const withHerd = injectHerdEffect(afterDedup, lang);
+    // Stage 5: Emotion Amplification (감정 먼저 → 자연스러운 깨짐)
+    const withEmotion = amplifyEmotions(afterDedup, lang);
 
-    // Stage 6: Emotion Amplification
-    const withEmotion = amplifyEmotions(withHerd, lang);
+    // Stage 6: Herd Effect (50% 감소 — 테스트 중 연출감 방지)
+    const withHerd = injectHerdEffect(withEmotion, lang);
 
     // Stage 7: Curator
     const chaosRoll = Math.random();
