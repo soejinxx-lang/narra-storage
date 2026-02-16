@@ -64,12 +64,13 @@ export async function GET(req: NextRequest) {
 
         console.log(`🌐 [intl] Language: ${langCode}, mode: ${mode}`);
 
-        // 🔥 배치 모드: 전체 에피소드 순회, 조회수+나이 기반 동적 댓글 수
-        if (mode === 'batch') {
-            const result = await runCommentBotBatch(novelId, langPack);
+        // 🔥 배치/백필 모드: 전체 에피소드 순회
+        if (mode === 'batch' || mode === 'backfill') {
+            const isBackfill = mode === 'backfill';
+            const result = await runCommentBotBatch(novelId, langPack, isBackfill);
             return NextResponse.json({
                 success: true,
-                mode: 'batch',
+                mode,
                 novel: novelId,
                 language: langCode,
                 totalInserted: result.totalInserted,

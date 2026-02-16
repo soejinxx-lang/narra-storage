@@ -245,19 +245,51 @@ function calculateTargetCount(
     return Math.min(Math.floor(noise), 40);
 }
 
-// randomTimestamp는 하위호환용으로 유지 (예약 시스템 미사용 시)
-function randomTimestamp(): Date {
-    const now = Date.now();
-    const rand = Math.random();
-    let offset: number;
-    if (rand < 0.60) {
-        offset = Math.random() * 24 * 60 * 60 * 1000;
-    } else if (rand < 0.85) {
-        offset = (1 + Math.random() * 2) * 24 * 60 * 60 * 1000;
-    } else {
-        offset = (3 + Math.random() * 4) * 24 * 60 * 60 * 1000;
+// ============================================================
+// 소급 생성용 과거 타임스탬프 분배
+// publishedAt ~ now 사이에 자연스럽게 분포
+// 현실 패턴: 게시 직후 폭발 → 며칠간 산발 → 이후 드물게
+// ============================================================
+function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode: string): Date[] {
+    const now = new Date();
+    const totalSpanMs = now.getTime() - publishedAt.getTime();
+    if (totalSpanMs <= 0) return distributeTimestamps(count, langCode);
+
+    const timestamps: Date[] = [];
+
+    for (let i = 0; i < count; i++) {
+        const roll = Math.random();
+        let offsetMs: number;
+
+        if (roll < 0.50) {
+            // 50% → 게시 후 첫 24시간 내
+            const first24h = Math.min(totalSpanMs, 24 * 3600 * 1000);
+            offsetMs = Math.random() * first24h;
+        } else if (roll < 0.75) {
+            // 25% → 게시 후 1~7일 내
+            const first7d = Math.min(totalSpanMs, 7 * 24 * 3600 * 1000);
+            offsetMs = 24 * 3600 * 1000 + Math.random() * (first7d - 24 * 3600 * 1000);
+            if (offsetMs < 0) offsetMs = Math.random() * totalSpanMs;
+        } else {
+            // 25% → 전체 기간 중 랜덤
+            offsetMs = Math.random() * totalSpanMs;
+        }
+
+        // 시간대 가중치로 시간 보정
+        const baseTime = new Date(publishedAt.getTime() + offsetMs);
+        const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
+        const targetHour = weightedRandomHour(weights);
+        baseTime.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
+
+        // now를 넘지 않도록
+        if (baseTime.getTime() > now.getTime()) {
+            baseTime.setTime(publishedAt.getTime() + Math.random() * totalSpanMs);
+        }
+
+        timestamps.push(baseTime);
     }
-    return new Date(now - offset);
+
+    return timestamps.sort((a, b) => a.getTime() - b.getTime());
 }
 
 // ============================================================
@@ -1249,6 +1281,8 @@ export async function runCommentBotIntl(
     density: number = 1.0,
     useDeep: boolean = true,
     targetEpisodeId?: string,
+    backfill: boolean = false,
+    publishedAt?: Date,
 ): Promise<CommentBotResult> {
     const totalCount = Math.round(baseCount * density);
     let personalityWeights = lang.defaultWeights;
@@ -1344,8 +1378,10 @@ export async function runCommentBotIntl(
     let totalCommentsPosted = 0;
     const botCount = Math.ceil(totalCount / 1.3);
 
-    // 🔥 스케줄링: 모든 댓글의 공개 시간 미리 생성 (3단 클러스터링)
-    const scheduledTimes = distributeTimestamps(totalCount, lang.code);
+    // 🔥 타임스탬프 생성: backfill이면 과거, 아니면 미래 스케줄링
+    const scheduledTimes = backfill && publishedAt
+        ? distributeBackfillTimestamps(totalCount, publishedAt, lang.code)
+        : distributeTimestamps(totalCount, lang.code);
     let scheduledIndex = 0;
 
     for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
@@ -1441,11 +1477,18 @@ export async function runCommentBotIntl(
                 }
             }
 
-            const insertResult = await db.query(
-                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
-                 VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
-                [episodeId, userId, content, parentId, createdAt, scheduledAt]
-            );
+            // backfill: 즉시 표시 (과거 댓글), schedule: 숨김 + 예약
+            const insertResult = backfill
+                ? await db.query(
+                    `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden)
+                     VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
+                    [episodeId, userId, content, parentId, createdAt]
+                )
+                : await db.query(
+                    `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
+                     VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
+                    [episodeId, userId, content, parentId, createdAt, scheduledAt]
+                );
 
             commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
             totalCommentsPosted++;
@@ -1480,8 +1523,9 @@ export interface BatchResult {
 export async function runCommentBotBatch(
     novelId: string,
     lang: LanguagePack,
+    backfill: boolean = false,
 ): Promise<BatchResult> {
-    console.log(`🚀 [batch] Starting batch for ${novelId} (lang=${lang.code})...`);
+    console.log(`🚀 [batch] Starting ${backfill ? 'BACKFILL' : 'SCHEDULE'} for ${novelId} (lang=${lang.code})...`);
 
     // 모든 에피소드 조회 (views, ep번호, 게시일)
     const epResult = await db.query(
@@ -1519,10 +1563,12 @@ export async function runCommentBotBatch(
             const result = await runCommentBotIntl(
                 novelId,
                 lang,
-                targetCount,  // baseCount = 동적 계산된 수
+                targetCount,
                 1.0,
                 true,
-                episodeId,    // targetEpisodeId — 특정 에피소드 지정
+                episodeId,
+                backfill,
+                backfill ? publishedAt : undefined,
             );
             episodes.push({
                 episodeId, ep: epNumber, views, daysSince,
