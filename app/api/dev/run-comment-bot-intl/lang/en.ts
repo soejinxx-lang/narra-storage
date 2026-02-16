@@ -288,10 +288,8 @@ const enLangPack: LanguagePack = {
 
     // === 댓글 개수 가중치 ===
     commentCountWeights: [
-        { count: 0, weight: 20 },
-        { count: 1, weight: 40 },
-        { count: 2, weight: 30 },
-        { count: 3, weight: 10 },
+        { count: 1, weight: 97 },
+        { count: 2, weight: 3 },
     ],
 
     // === 플랫폼 문자열 ===

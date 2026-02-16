@@ -294,7 +294,7 @@ function selectPersonasForGenre(
     count: number = 8
 ): PersonaDef[] {
     const personaMap = new Map(lang.personas.map(p => [p.id, p]));
-    const defaultPool = ['A1', 'A5', 'B1', 'C1', 'C3', 'C5', 'D1', 'D3', 'E2', 'E5'];
+    const defaultPool = ['A1', 'A5', 'B1', 'C1', 'C3', 'C5', 'D1', 'D3', 'E2', 'E4', 'E5'];
 
     const categories = Object.keys(genreWeights);
     if (categories.length === 0) {
@@ -1057,10 +1057,7 @@ export async function runCommentBotIntl(
         const tone = pickPersonalityTone(personalityWeights);
         let commentCount = pickCommentCount(lang.commentCountWeights);
 
-        // 동일 유저 연속 댓글 15%
-        if (Math.random() < 0.15) {
-            commentCount = 2 + Math.floor(Math.random() * 2);
-        }
+        // Royal Road: 1인 1댓글이 기본
 
         // 봇 계정 생성
         const timestamp = Date.now();
