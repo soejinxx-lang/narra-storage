@@ -1240,12 +1240,12 @@ export async function runCommentBotIntl(
         let lastCommentTime: Date | null = null;
 
         for (let j = 0; j < commentCount && totalCommentsPosted < totalCount; j++) {
-            // 100% mid-density (중간밀도 테스트)
+            // 100% deep context (스페인어 딥컨텍스트 테스트)
             let content: string;
-            if (midDensityPool.length > 0) {
-                content = midDensityPool.pop()!;
-            } else if (deepComments.length > 0) {
+            if (deepComments.length > 0) {
                 content = deepComments.pop()!;
+            } else if (midDensityPool.length > 0) {
+                content = midDensityPool.pop()!;
             } else {
                 break;
             }
