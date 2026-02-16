@@ -757,7 +757,14 @@ async function generateDeepContextComments(
 
     const parseComments = (raw: string | null): string[] => {
         if (!raw) return [];
-        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        // Aggressive code fence cleanup
+        let cleaned = raw
+            .replace(/^```json\s*\n?/i, '')
+            .replace(/\n?```\s*$/i, '')
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .replace(/^json\s*/i, '')
+            .trim();
         try {
             const parsed = JSON.parse(cleaned);
             if (parsed.tags) {
@@ -767,11 +774,13 @@ async function generateDeepContextComments(
             }
             return (parsed.comments || [])
                 .map((c: string) => lang.stripLabel(c))
-                .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength);
+                .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength)
+                .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'));
         } catch {
             return raw.split('\n')
                 .map((l: string) => lang.stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
-                .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength);
+                .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength)
+                .filter((l: string) => !l.includes('```') && !l.includes('"comments"') && !l.includes('{'));
         }
     };
 
@@ -787,8 +796,29 @@ async function generateDeepContextComments(
 
     console.log(`📊 [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
 
+    // Keyword-based semantic dedup: prevent same event keyword from dominating
+    const eventKeywords = events
+        .map(e => e.summary.toLowerCase().split(/\s+/).filter(w => w.length > 4))
+        .flat();
+    const keywordCounts = new Map<string, number>();
+    const dedupedSafe = safeComments.filter(comment => {
+        const lower = comment.toLowerCase();
+        let dominated = false;
+        for (const kw of eventKeywords) {
+            if (lower.includes(kw)) {
+                const count = keywordCounts.get(kw) || 0;
+                if (count >= 3) { dominated = true; break; }
+                keywordCounts.set(kw, count + 1);
+            }
+        }
+        return !dominated;
+    });
+    if (dedupedSafe.length < safeComments.length) {
+        console.log(`🔁 [intl] Semantic dedup: ${safeComments.length} → ${dedupedSafe.length}`);
+    }
+
     // Stage 5: Herd Effect (safe만)
-    const withHerd = injectHerdEffect(safeComments, lang);
+    const withHerd = injectHerdEffect(dedupedSafe, lang);
 
     // Stage 6: Emotion Amplification
     const withEmotion = amplifyEmotions(withHerd, lang);

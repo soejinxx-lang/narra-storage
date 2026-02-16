@@ -16,33 +16,34 @@ import { EN_TEMPLATES } from './data/en_templates';
 // 장르별 가중치 (한국어 route.ts 동일)
 // ============================================================
 const EN_GENRE_WEIGHTS: Record<string, { tone: PersonalityTone; weight: number }[]> = {
+    // Rebalanced: less overreaction, more immersed/analyst
     fantasy: [
-        { tone: 'short_reactor', weight: 50 },
+        { tone: 'short_reactor', weight: 40 },
         { tone: 'emotional', weight: 25 },
-        { tone: 'theorist', weight: 15 },
-        { tone: 'cheerleader', weight: 7 },
-        { tone: 'critic', weight: 3 },
-    ],
-    'game-fantasy': [
-        { tone: 'short_reactor', weight: 45 },
-        { tone: 'theorist', weight: 30 },
-        { tone: 'emotional', weight: 15 },
-        { tone: 'cheerleader', weight: 7 },
-        { tone: 'critic', weight: 3 },
-    ],
-    romance: [
-        { tone: 'emotional', weight: 45 },
-        { tone: 'short_reactor', weight: 30 },
-        { tone: 'cheerleader', weight: 15 },
-        { tone: 'theorist', weight: 7 },
-        { tone: 'critic', weight: 3 },
-    ],
-    default: [
-        { tone: 'short_reactor', weight: 55 },
-        { tone: 'emotional', weight: 20 },
-        { tone: 'theorist', weight: 10 },
+        { tone: 'theorist', weight: 20 },
         { tone: 'cheerleader', weight: 10 },
         { tone: 'critic', weight: 5 },
+    ],
+    'game-fantasy': [
+        { tone: 'short_reactor', weight: 35 },
+        { tone: 'theorist', weight: 30 },
+        { tone: 'emotional', weight: 20 },
+        { tone: 'cheerleader', weight: 10 },
+        { tone: 'critic', weight: 5 },
+    ],
+    romance: [
+        { tone: 'emotional', weight: 40 },
+        { tone: 'short_reactor', weight: 25 },
+        { tone: 'cheerleader', weight: 15 },
+        { tone: 'theorist', weight: 12 },
+        { tone: 'critic', weight: 8 },
+    ],
+    default: [
+        { tone: 'short_reactor', weight: 40 },
+        { tone: 'emotional', weight: 25 },
+        { tone: 'theorist', weight: 15 },
+        { tone: 'cheerleader', weight: 12 },
+        { tone: 'critic', weight: 8 },
     ],
 };
 
@@ -336,20 +337,19 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. React fast in comments.
+        return `You just read this on your phone. React fast.
 
-[SCENE CONTEXT]
 ${args.sceneContext || 'N/A'}
 
-[READERS]
 ${profileList}
 
-Write like Discord/Reddit. Don't polish. React to what HAPPENED, not what it "means".
+React to what HAPPENED. No emojis. Most readers use pronouns (he/bro/this guy) after first name mention.
 
-Mix it up: some analytical ("ok that makes sense"), some emotional ("bro…"), some chaos ("YOOO").
+Vary your starts:
+"ok that makes sense" / "bro…" / "wait he" / "nah" / "lowkey" / "this hit different" / "wasn't ready"
 
-Good: "wait so he remembered that?" / "ok yeah stakes went up" / "wasn't ready for that"
-Bad: "This perfectly captures…" / "The tension was palpable"
+Not like this:
+"You could feel the tension" / "The atmosphere was" / "This perfectly captures"
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -361,14 +361,15 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. Overreact.
+        return `You just read this on your phone. You're excited.
 
 ${args.sceneContext || 'N/A'}
 
-[READERS]
 ${profileList}
 
-High energy. ALL CAPS ok. Excessive punctuation!!! React to what happened.
+Only 1-2 comments should be ALL CAPS screaming. Most should be excited but lowercase. No emojis.
+
+Vary: "NO WAY" / "wait WHAT" / "bro that was sick" / "oh come on" / "nah he's insane"
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -384,10 +385,9 @@ JSON { "comments": [...] }`;
 
 ${args.sceneContext || 'N/A'}
 
-[READERS]
 ${profileList}
 
-Off-topic, confused, sarcastic, or wrong.
+Off-topic, confused, sarcastic, or wrong. No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -399,17 +399,16 @@ JSON { "comments": [...] }`;
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
-        return `You just read this on your phone. Analyze fast.
+        return `You just read this on your phone. Quick thoughts.
 
 ${args.sceneContext || 'N/A'}
 
-[READERS]
 ${profileList}
 
-Reddit-style analysis. Theory, foreshadowing, character thoughts. Not literary reviews.
+Reddit-style analysis. Not literary reviews. No emojis. Use pronouns after first name mention.
 
-Good: "calling it now" / "that connects to ch12" / "foreshadowing"
-Bad: "The author masterfully…"
+Vary: "calling it now" / "wait that connects to" / "ok so" / "theory:" / "plot twist incoming"
+Not: "The author masterfully" / "This chapter perfectly" / "You can feel"
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -419,10 +418,10 @@ JSON { "comments": [...] }`;
 
 ${args.sceneContext || 'N/A'}
 
-Write like Discord/Reddit. Mix emotional, analytical, supportive. Don't polish.
+Mix emotional, analytical, supportive. No emojis. Use pronouns after first name mention.
 
-Good: "that was intense" / "ok I see it now" / "loving this arc"
-Bad: "This chapter masterfully..."
+Vary: "that was intense" / "ok I see it now" / "loving this arc" / "ngl" / "bro"
+Not: "The tension was palpable" / "You can feel" / "This chapter masterfully"
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`,
@@ -489,11 +488,8 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             result = result.replace(/!+/, '!'.repeat(count));
         }
 
-        // 2% emoji
-        if (Math.random() < 0.02) {
-            const emojis = ['👍', '🔥', '💯'];
-            result += ' ' + emojis[Math.floor(Math.random() * emojis.length)];
-        }
+        // Royal Road: minimal emojis (virtually none)
+        // Removed emoji injection — Wattpad culture, not RR
 
         return result;
     },
