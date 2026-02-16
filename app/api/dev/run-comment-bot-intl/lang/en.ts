@@ -499,12 +499,18 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             /really (?:adds|brings|shows|captures|highlights|sets)/i,
             /adds? (?:so much )?depth/i,
             /adds? (?:a )?(?:nice|great|interesting) (?:touch|layer)/i,
+            /adds? a layer/i,
             /nice touch/i,
             /sets? the (?:mood|tone|stage)/i,
             /amps? up/i,
             /perfectly captures?/i,
             // "the way he/she" 구조 (같은 배치에서 반복 = AI)
             /the way (?:he|she|they|it) \w+/i,
+            // 해석 프레임 (감상문 시작 구조)
+            /^Loved the \w+/i,
+            /That moment when/i,
+            /The detail about/i,
+            /\bdetail about\b/i,
             // 분석 구조
             /going to play a (?:significant|major|important|key|crucial) role/i,
             /balance between \w+ and \w+/i,
@@ -514,6 +520,9 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             /sends? (?:a )?(?:chill|shiver)/i,
             /weight of (?:the|his|her)/i,
             /air (?:was |felt )(?:thick|heavy)/i,
+            // 감상문 완성형 프레임
+            /^(?:Really|So) (?:deep|powerful|intense|moving|beautiful)\b/i,
+            /hits? different/i,
         ];
         for (const pattern of instantKill) {
             if (pattern.test(comment)) return { score: 0 };
