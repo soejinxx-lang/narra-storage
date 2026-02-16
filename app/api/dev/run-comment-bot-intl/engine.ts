@@ -647,21 +647,32 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
     const bypassed = shuffledPre.slice(0, bypassCount);
     const toCurate = shuffledPre.slice(bypassCount);
 
-    // GPT-5 큐레이터 (반전된 프롬프트: 완벽한 것 제거)
+    // GPT-5 큐레이터 (커뮤니티 고인물 페르소나 — 강경 버전)
     const commentList = toCurate.map((s, i) => `${i}: "${s.text}"`).join('\n');
-    const curatorPrompt = `You have ${toCurate.length} comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
+    const curatorPrompt = `You've been on Royal Road for 5 years. You've seen thousands of real comment sections.
 
-REMOVE these types:
-- Most polished, essay-like comments
-- Comments that sound like book reviews
-- Comments that feel too smart or analytical
-- Anything a teacher would write
+Someone made a bot that generates fake comments. Your job: find the ones a real user might actually type.
 
-KEEP these types:
-- Short dumb reactions (3-5 words)
-- Messy incomplete thoughts
-- Casual low-effort takes
-- Mix of lengths and energy levels
+Here are ${toCurate.length} generated comments. Pick ${Math.max(1, targetCount - Math.ceil(bypassCount * 0.3))}.
+
+REMOVE — be aggressive:
+- Anything that feels even slightly articulate or well-constructed
+- Completed thoughts with neat conclusions
+- "adds depth" / "sets the mood" / "the way he" / "loved the detail"
+- Two sentences connected logically
+- Emotions that are explained ("it makes you feel...")
+- Anything a book reviewer or English teacher might write
+
+KEEP — prioritize these:
+- Comments that sound half-typed or abandoned mid-thought
+- Pure attitude with zero analysis ("lol what" / "bruh" / "nah")
+- Someone clearly confused or wrong about what happened
+- Uneven energy — most should be low-effort
+- Thoughts that stop mid-sentence or trail off
+
+CRITICAL: At least 60% of your picks should be messy, incomplete, or low-effort. If most of your picks are clean full sentences, you failed.
+
+Which of these would blend in without standing out as polished? Pick THOSE.
 
 ${commentList}
 
