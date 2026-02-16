@@ -19,7 +19,7 @@ const LANGUAGE_PACKS: Record<string, () => Promise<LanguagePack>> = {
     // Phase 2 (remaining):
     // 'ja': () => import('./lang/ja').then(m => m.default),
     // 'zh': () => import('./lang/zh').then(m => m.default),
-    // 'es': () => import('./lang/es').then(m => m.default),
+    'es': () => import('./lang/es').then(m => m.default),
 };
 
 const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_PACKS);
