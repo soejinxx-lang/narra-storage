@@ -817,8 +817,70 @@ async function generateDeepContextComments(
         console.log(`🔁 [intl] Semantic dedup: ${safeComments.length} → ${dedupedSafe.length}`);
     }
 
+    // --- Post-processing filters (probabilistic, not deterministic) ---
+
+    // Fix B: Slang frequency limiter — decay probability, not hard cutoff
+    const slangPatterns: [RegExp, string][] = [
+        [/\bfr fr\b/i, 'fr fr'], [/\blowkey\b/i, 'lowkey'], [/\bngl\b/i, 'ngl'],
+        [/\btbh\b/i, 'tbh'], [/\bno cap\b/i, 'no cap'], [/\bbruh\b/i, 'bruh'],
+    ];
+    const slangCounts = new Map<string, number>();
+    const afterSlang = dedupedSafe.filter(comment => {
+        const lower = comment.toLowerCase();
+        for (const [pattern, key] of slangPatterns) {
+            if (pattern.test(lower)) {
+                const count = slangCounts.get(key) || 0;
+                slangCounts.set(key, count + 1);
+                // Decay: 1st-2nd always keep, 3rd 50% keep, 4th 20% keep, 5th+ 5%
+                if (count >= 2) {
+                    const keepChance = count === 2 ? 0.5 : count === 3 ? 0.2 : 0.05;
+                    if (Math.random() > keepChance) return false;
+                }
+            }
+        }
+        return true;
+    });
+
+    // Fix D: CAPS limiter — randomized max (2-5), convert don't delete
+    const capsMax = 2 + Math.floor(Math.random() * 4); // 2~5 per batch
+    let capsCount = 0;
+    const afterCaps = afterSlang.map(comment => {
+        const upperRatio = comment.length > 5
+            ? (comment.match(/[A-Z]/g) || []).length / comment.length
+            : 0;
+        if (upperRatio > 0.5) {
+            capsCount++;
+            if (capsCount > capsMax) {
+                return comment.charAt(0) + comment.slice(1).toLowerCase();
+            }
+        }
+        return comment;
+    });
+
+    // Fix E: Word-overlap dedup — 70% threshold, allow 1 natural dupe
+    let dupeAllowance = 1; // allow 1 similar pair (humans repeat)
+    const afterDedup: string[] = [];
+    for (const comment of afterCaps) {
+        const words = new Set(comment.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+        if (words.size < 2) { afterDedup.push(comment); continue; }
+        const isDupe = afterDedup.some(existing => {
+            const existWords = new Set(existing.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+            if (existWords.size < 2) return false;
+            const overlap = [...words].filter(w => existWords.has(w)).length;
+            return overlap / Math.min(words.size, existWords.size) > 0.7;
+        });
+        if (isDupe && dupeAllowance > 0) {
+            dupeAllowance--;
+            afterDedup.push(comment); // keep 1 natural duplicate
+        } else if (!isDupe) {
+            afterDedup.push(comment);
+        }
+    }
+
+    console.log(`🧹 [intl] Filters: ${dedupedSafe.length} → slang:${afterSlang.length} → caps_adj → dedup:${afterDedup.length}`);
+
     // Stage 5: Herd Effect (safe만)
-    const withHerd = injectHerdEffect(dedupedSafe, lang);
+    const withHerd = injectHerdEffect(afterDedup, lang);
 
     // Stage 6: Emotion Amplification
     const withEmotion = amplifyEmotions(withHerd, lang);

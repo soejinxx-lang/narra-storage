@@ -343,13 +343,7 @@ ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-React to what HAPPENED. No emojis. Most readers use pronouns (he/bro/this guy) after first name mention.
-
-Vary your starts:
-"ok that makes sense" / "bro…" / "wait he" / "nah" / "lowkey" / "this hit different" / "wasn't ready"
-
-Not like this:
-"You could feel the tension" / "The atmosphere was" / "This perfectly captures"
+Short, messy, phone-typed. Some incomplete thoughts. No emojis. Use pronouns after first mention.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -367,9 +361,7 @@ ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Only 1-2 comments should be ALL CAPS screaming. Most should be excited but lowercase. No emojis.
-
-Vary: "NO WAY" / "wait WHAT" / "bro that was sick" / "oh come on" / "nah he's insane"
+Excited but mostly lowercase. No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -405,10 +397,7 @@ ${args.sceneContext || 'N/A'}
 
 ${profileList}
 
-Reddit-style analysis. Not literary reviews. No emojis. Use pronouns after first name mention.
-
-Vary: "calling it now" / "wait that connects to" / "ok so" / "theory:" / "plot twist incoming"
-Not: "The author masterfully" / "This chapter perfectly" / "You can feel"
+Reddit-style casual analysis. Not literary reviews. No emojis. Use pronouns after first mention.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`;
@@ -418,10 +407,7 @@ JSON { "comments": [...] }`;
 
 ${args.sceneContext || 'N/A'}
 
-Mix emotional, analytical, supportive. No emojis. Use pronouns after first name mention.
-
-Vary: "that was intense" / "ok I see it now" / "loving this arc" / "ngl" / "bro"
-Not: "The tension was palpable" / "You can feel" / "This chapter masterfully"
+Short, messy, phone-typed. Mix of reactions. No emojis.
 
 Generate ${args.targetCommentCount} comments.
 JSON { "comments": [...] }`,
@@ -497,7 +483,22 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
     curateScoring: (comment) => {
         let score = 100;
 
-        // AI tells for English
+        // === Tier 1: Instant kill (unmistakable AI DNA) ===
+        const instantKill = [
+            /\bpalpable\b/i,
+            /you could? feel/i,
+            /danger in the air/i,
+            /sends? (?:a )?(?:chill|shiver)/i,
+            /weight of (?:the|his|her)/i,
+            /air (?:was |felt )(?:thick|heavy)/i,
+            /perfectly captures?/i,
+            /testament to/i,
+        ];
+        for (const pattern of instantKill) {
+            if (pattern.test(comment)) return { score: 0 };
+        }
+
+        // === Tier 2: Heavy penalty (-30) ===
         const aiPatterns = [
             /\b(utilize|facilitate|leverage|endeavor|commence|thus|hence|moreover)\b/i,
             /\b(particularly|specifically|essentially|fundamentally)\b/i,
@@ -505,17 +506,26 @@ Comment: "pacing feels rushed" → Reply: "agree tbh"`,
             /In this chapter/i,
             /The author/i,
             /masterfully|brilliantly|expertly/i,
+            /adds? (?:so much )?depth/i,
         ];
-
         for (const pattern of aiPatterns) {
             if (pattern.test(comment)) score -= 30;
         }
 
-        // Length penalties
+        // === Tier 3: Light penalty (-12) — clean analytical structure ===
+        if (/^(The|This|It) \w+ (is|was|adds|shows|creates)/i.test(comment)) {
+            score -= 12;
+        }
+        if (/\b(dynamic|narrative|storytelling|character development)\b/i.test(comment)) {
+            score -= 8;
+        }
+
+        // Length — long polished sentences are suspicious
         if (comment.length > 100) score -= 20;
+        if (comment.length > 70 && !/[!?…]/.test(comment)) score -= 10; // long + no emotion = review
         if (comment.length < 5) score -= 10;
 
-        // Sentence structure (too formal)
+        // Formal sentence ending
         if (/^[A-Z][a-z]+, [a-z]+ [a-z]+ [a-z]+\.$/.test(comment)) score -= 15;
 
         return { score: Math.max(0, score) };
