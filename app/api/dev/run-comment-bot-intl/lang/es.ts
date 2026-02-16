@@ -479,7 +479,7 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             /establece el (?:tono|ambiente|escenario)/i,
             /captura perfectamente/i,
             // "la forma en que" / "la manera en que" (실제 데이터에서 최다 AI 패턴)
-            /la (?:forma|manera) en que (?:él|ella|ellos|se)/i,
+            /la (?:forma|manera) en que (?:él|ella|ellos|se|observa|acepta|se siente)/i,
             /el momento en que/i,
             // 해석 프레임
             /^Me encantó el \w+/i,
@@ -495,6 +495,23 @@ Comentario: "se sintió apresurado" → Respuesta: "la vdd sí"`,
             // "Es un buen detalle" (감상문 완성형)
             /es un buen detalle/i,
             /(?:le da|tiene) (?:ese )?toque poético/i,
+
+            // === 🔥 NEW: 리뷰 구조 패턴 (실제 데이터 분석) ===
+            // "La parte/escena/llegada + de/donde/cuando" (명사화 도입 구조)
+            /^La (?:parte|escena|llegada|acción|imagen) (?:de|donde|cuando|con)/i,
+            /^El sonido de/i,
+            // "Buen detalle lo de..." (정돈된 감상)
+            /^Buen detalle lo de/i,
+            // "Es interesante/Me encanta + cómo" (감정 설명형)
+            /es interesante cómo/i,
+            /me encanta cómo (?:se siente|acepta|observa)/i,
+            // 추상명사 (리뷰어 DNA)
+            /\b(?:desarrollo|conexión|ritmo que atrapa|fondo emocional)\b/i,
+            /atrapa al lector/i,
+            // 감정 + 설명 결합형
+            /esto me dolió.*(?:la forma|la manera|cómo)/i,
+            /me (?:gusta|encanta|interesa).*(?:la forma|la manera|cómo)/i,
+
             // 분석 구조
             /va a jugar un (?:papel|rol) (?:significativo|importante|crucial)/i,
             /equilibrio entre \w+ y \w+/i,
