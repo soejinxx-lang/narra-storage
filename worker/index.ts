@@ -14,11 +14,11 @@ import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine.js
 import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
 
 // 언어팩 동적 로더 (NodeNext moduleResolution 호환)
-const SUPPORTED_COMMENT_LANGS = ['en', 'ja', 'zh', 'es'];
 async function loadLangPack(lang: string): Promise<LanguagePack> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mod: any;
   switch (lang) {
+    case 'ko': mod = await import('../app/api/dev/run-comment-bot-intl/lang/ko.js'); break;
     case 'ja': mod = await import('../app/api/dev/run-comment-bot-intl/lang/ja.js'); break;
     case 'zh': mod = await import('../app/api/dev/run-comment-bot-intl/lang/zh.js'); break;
     case 'es': mod = await import('../app/api/dev/run-comment-bot-intl/lang/es.js'); break;
@@ -598,12 +598,35 @@ async function processJob(job: TranslationJob): Promise<void> {
  * Worker 메인 루프
  */
 
-// ── 댓글 자동 생성 (5분 주기, 한 번에 모든 빈 에피소드 처리) ──
+// ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포 + 한국어 부스트) ──
+const LANG_BASE_WEIGHTS: Record<string, number> = {
+  'ko': 0.30,   // 한국어 (최고 퀄리티 → 부스트)
+  'en': 0.30,   // 영어권 (Royal Road, Tapas 등)
+  'ja': 0.20,   // 일본어권 (소설가になろう 등)
+  'zh': 0.12,   // 중국어권 (Qidian 등)
+  'es': 0.08,   // 스페인어권 (성장세 높은 시장)
+};
+
+// 가중치에 ±30% 랜덤 지터 적용 → 에피소드마다 다른 비율
+function jitteredWeights(): Record<string, number> {
+  const jittered: Record<string, number> = {};
+  let total = 0;
+  for (const [lang, base] of Object.entries(LANG_BASE_WEIGHTS)) {
+    const jitter = 0.7 + Math.random() * 0.6; // 0.7 ~ 1.3
+    jittered[lang] = base * jitter;
+    total += jittered[lang];
+  }
+  // 정규화 (합 = 1.0)
+  for (const lang of Object.keys(jittered)) {
+    jittered[lang] /= total;
+  }
+  return jittered;
+}
+
+// ── 댓글 자동 생성 (5분 주기, 에피소드당 다국어 혼합) ──
 async function autoGenerateComments(): Promise<void> {
-  // 댓글 0개인 published 에피소드 전부 찾기 (최대 100개)
   const result = await db.query(`
-    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
-           COALESCE(n.source_language, 'en') AS source_language
+    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at
     FROM episodes e
     JOIN novels n ON e.novel_id = n.id
     WHERE e.status = 'published'
@@ -619,38 +642,52 @@ async function autoGenerateComments(): Promise<void> {
   console.log(`[CommentBot] 📋 Found ${result.rows.length} episodes without comments`);
 
   for (const row of result.rows) {
-    const { episode_id, novel_id, ep, created_at, source_language } = row;
+    const { episode_id, novel_id, ep, created_at } = row;
+    const publishedAt = new Date(created_at);
+    const totalBase = 60;
 
-    // 언어 선택: 70% source_language, 30% 랜덤 다른 언어
-    let lang: string;
-    if (Math.random() < 0.7 && SUPPORTED_COMMENT_LANGS.includes(source_language)) {
-      lang = source_language;
-    } else {
-      lang = SUPPORTED_COMMENT_LANGS[Math.floor(Math.random() * SUPPORTED_COMMENT_LANGS.length)];
+    // 에피소드마다 다른 언어 비율 생성
+    const weights = jitteredWeights();
+    const langAllocations: { lang: string; count: number }[] = [];
+    let allocated = 0;
+
+    const langs = Object.keys(weights);
+    for (let i = 0; i < langs.length; i++) {
+      const lang = langs[i];
+      const isLast = i === langs.length - 1;
+      const count = isLast
+        ? totalBase - allocated  // 마지막 언어: 나머지 전부
+        : Math.round(totalBase * weights[lang]);
+      if (count > 0) {
+        langAllocations.push({ lang, count });
+        allocated += count;
+      }
     }
 
-    try {
-      console.log(`[CommentBot] 💬 ep${ep}: starting (lang=${lang})`);
-      const langPack = await loadLangPack(lang);
-      const publishedAt = new Date(created_at);
+    console.log(`[CommentBot] 💬 ep${ep}: ${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}`);
 
-      const botResult = await runCommentBotIntl(
-        novel_id,
-        langPack,
-        60,           // baseCount
-        1.0,          // density
-        true,         // useDeep
-        episode_id,   // targetEpisodeId
-        true,         // backfill
-        publishedAt,  // publishedAt
-      );
-
-      console.log(`[CommentBot] ✅ ep${ep}: ${botResult.inserted} comments (${lang})`);
-    } catch (epErr) {
-      console.error(`[CommentBot] ⚠️ ep${ep} failed:`, epErr);
+    for (const { lang, count } of langAllocations) {
+      try {
+        const langPack = await loadLangPack(lang);
+        const botResult = await runCommentBotIntl(
+          novel_id,
+          langPack,
+          count,          // 해당 언어 할당 수
+          1.0,
+          true,           // useDeep
+          episode_id,
+          true,           // backfill
+          publishedAt,
+        );
+        console.log(`[CommentBot]   ✅ ${lang}: ${botResult.inserted} comments`);
+      } catch (langErr) {
+        console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
+      }
     }
 
-    // API 과부하 방지: 에피소드 사이 3초 대기
+    console.log(`[CommentBot] ✅ ep${ep} done`);
+
+    // 에피소드 간 3초 대기
     await new Promise(r => setTimeout(r, 3000));
   }
 }
