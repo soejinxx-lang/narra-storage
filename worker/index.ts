@@ -274,6 +274,11 @@ function weightedSelectNovel(novels: NovelInfo[]): NovelInfo {
   return novels[novels.length - 1];
 }
 
+// ── 조회수 감쇠 (출력 스케일링) ──
+// 시뮬레이션 분포는 유지하되 절대값만 축소
+// carry가 fractional로 누적 → Math.floor 기존 로직이 자연스럽게 처리
+const VIEW_DAMPENING = 0.015;  // ~1/67 스케일
+
 // ── 정주행 세션 — 핵심 행동 모델 ──
 function simulateBingeSession(
   reader: VirtualReader,
@@ -288,7 +293,9 @@ function simulateBingeSession(
 
     const epId = novel.episodeMap.get(currentEp);
     if (epId) {
-      buffer.set(epId, (buffer.get(epId) || 0) + 1);
+      // 감쇠 + ±20% 지터 → 자연스러운 노이즈
+      const weight = VIEW_DAMPENING * (0.8 + Math.random() * 0.4);
+      buffer.set(epId, (buffer.get(epId) || 0) + weight);
     }
 
     currentEp++;
