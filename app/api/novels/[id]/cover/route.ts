@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { requireAdmin } from "../../../../../lib/admin";
+import { requireOwnerOrAdmin } from "../../../../../lib/requireAuth";
 
 
 async function saveCoverUrl(id: string, url: string) {
@@ -38,13 +38,13 @@ export async function POST(
     params: Promise<{ id: string }>;
   }
 ) {
-  // 🔒 쓰기 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id } = await context.params;
+
+  // 🔒 소유자 OR Admin
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
 
   await initDb();
-
-  const { id } = await context.params;
 
   console.log("[STORAGE COVER] hit");
   console.log(

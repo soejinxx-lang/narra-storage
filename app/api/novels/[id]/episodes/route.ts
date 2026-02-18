@@ -1,8 +1,8 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../db";
 import { randomUUID } from "crypto";
-import { requireAdmin } from "../../../../../lib/admin";
-
+import { requireOwnerOrAdmin, consumeTranslationQuota } from "../../../../../lib/requireAuth";
+import { isAdmin } from "../../../../../lib/auth";
 
 export async function GET(
   _req: NextRequest,
@@ -15,7 +15,6 @@ export async function GET(
   await initDb();
 
   const { id } = await params;
-
 
   const includeScheduled = _req.nextUrl.searchParams.get("include_scheduled") === "true";
 
@@ -41,13 +40,15 @@ export async function POST(
     params: Promise<{ id: string }>;
   }
 ) {
-  // 🔒 쓰기 API 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id } = await params;
+
+  // 소유자 OR Admin 확인
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
+  const userId = authResult;
 
   await initDb();
 
-  const { id } = await params;
   const body = await req.json();
 
   if (typeof body?.ep !== "number") {
@@ -61,7 +62,7 @@ export async function POST(
   const title = body.title ?? "";
   const content = body.content ?? "";
   const scheduledAt = body.scheduled_at ?? null;
-  const status = scheduledAt ? 'scheduled' : 'published';
+  const status = scheduledAt ? "scheduled" : "published";
 
   // 동일 화수 이미 존재하면 거부
   const existing = await db.query(
@@ -75,12 +76,31 @@ export async function POST(
     );
   }
 
-  // 트랜잭션으로 에피소드 + 번역 레코드 원자적 생성
+  // Admin은 쿼터 없음
+  const userIsAdmin = await isAdmin(req.headers.get("Authorization"));
+
+  if (!userIsAdmin) {
+    // 번역 쿼터 차감 (atomic)
+    // 트랜잭션 순서: quota 차감 → episode insert → translation records
+    // quota 차감 실패 시 episode 저장 자체를 막음
+    const quotaResult = await consumeTranslationQuota(userId);
+    if (quotaResult !== true) {
+      return NextResponse.json(
+        {
+          error: "TRANSLATION_QUOTA_EXCEEDED",
+          message: "오늘 번역 횟수를 모두 사용했습니다.",
+          resetIn: quotaResult.resetIn,
+        },
+        { status: 429 }
+      );
+    }
+  }
+
+  // 트랜잭션: 에피소드 + 번역 레코드 원자적 생성
   const client = await db.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
-    // episodes.id 직접 생성
     const episodeId = randomUUID();
 
     await client.query(
@@ -99,13 +119,13 @@ export async function POST(
       );
     }
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
+
+    return NextResponse.json({ ok: true, episodeId }, { status: 201 });
   } catch (txError) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     throw txError;
   } finally {
     client.release();
   }
-
-  return NextResponse.json({ ok: true }, { status: 201 });
 }

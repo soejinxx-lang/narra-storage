@@ -1538,8 +1538,8 @@ export async function runCommentBotIntl(
                 ? generateAccountCreatedAt(publishedAt)
                 : new Date();
             const userResult = await db.query(
-                `INSERT INTO users(username, password_hash, name, is_hidden, created_at)
-                 VALUES($1, $2, $3, FALSE, $4) RETURNING id`,
+                `INSERT INTO users(username, password_hash, name, is_hidden, role, created_at)
+                 VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
                 [username, pwHash, nickname, userCreatedAt]
             );
             userId = userResult.rows[0].id;
@@ -1691,8 +1691,8 @@ async function createRecurringReaderPool(
             : new Date();
 
         const userResult = await db.query(
-            `INSERT INTO users(username, password_hash, name, is_hidden, created_at)
-             VALUES($1, $2, $3, FALSE, $4) RETURNING id`,
+            `INSERT INTO users(username, password_hash, name, is_hidden, role, created_at)
+             VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
             [username, pwHash, nickname, userCreatedAt]
         );
 

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../db";
-import { requireAdmin } from "../../../../lib/admin";
+import { requireOwnerOrAdmin } from "../../../../lib/requireAuth";
 
-
-// GET - 작품 조회
+// GET - 작품 조회 (변경 없음)
 export async function GET(
   _req: NextRequest,
   context: {
@@ -17,7 +16,7 @@ export async function GET(
   const result = await db.query(
     `SELECT 
        n.id, n.title, n.description, n.cover_url, n.source_language, 
-       n.genre, n.genre_taxonomy, n.is_original, n.serial_status, n.episode_format, n.author_id,
+       n.genre, n.genre_taxonomy, n.is_original, n.serial_status, n.episode_format, n.author_id, n.source,
        u.name as author_name, 
        u.username as author_username
      FROM novels n
@@ -36,22 +35,20 @@ export async function GET(
   return NextResponse.json(result.rows[0]);
 }
 
-// DELETE - 작품 삭제
+// DELETE - 작품 삭제 (소유자 OR Admin)
 export async function DELETE(
   req: NextRequest,
   context: {
     params: Promise<{ id: string }>;
   }
 ) {
-  // 🔒 쓰기 API 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id } = await context.params;
+
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
 
   await initDb();
 
-  const { id } = await context.params;
-
-  // 🗂️ 삭제 전 로그 기록 (복구용)
   const snapshot = await db.query(
     `SELECT n.id, n.title, n.author_id, 
             (SELECT COUNT(*) FROM episodes e WHERE e.novel_id = n.id) as episode_count
@@ -79,25 +76,25 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
-// PATCH - 작품 정보 수정
+// PATCH - 작품 정보 수정 (소유자 OR Admin)
 export async function PATCH(
   req: NextRequest,
   context: {
     params: Promise<{ id: string }>;
   }
 ) {
-  // 🔒 쓰기 API 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id } = await context.params;
+
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
 
   await initDb();
 
-  const { id } = await context.params;
   const body = await req.json();
 
-  // 동적으로 업데이트할 필드 구성
-  const allowedFields = ["description", "genre", "genre_taxonomy", "is_original", "serial_status", "episode_format"];
+  const allowedFields = ["title", "description", "genre", "genre_taxonomy", "is_original", "serial_status", "episode_format"];
   const updates: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const values: any[] = [];
   let paramIndex = 1;
 
@@ -116,7 +113,7 @@ export async function PATCH(
   values.push(id);
 
   const result = await db.query(
-    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, genre_taxonomy, is_original, serial_status, episode_format`,
+    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, genre_taxonomy, is_original, serial_status, episode_format, source`,
     values
   );
 

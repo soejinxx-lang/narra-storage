@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../../../db";
 // import { deleteAudioFile, deleteAudioRecord, listEpisodeAudio } from "../../../../../lib/audio"; // TTS 기능 일시 중지
 import { LANGUAGES } from "../../../../../lib/constants";
+import { requireOwnerOrAdmin } from "../../../../../../lib/requireAuth";
 
 type EpisodeRow = {
   id: string;
@@ -145,8 +146,6 @@ export async function POST(
     params: Promise<{ id: string; ep: string }>;
   }
 ) {
-  await initDb();
-
   const { id, ep } = await params;
   const epNumber = Number(ep);
 
@@ -156,6 +155,12 @@ export async function POST(
       { status: 400 }
     );
   }
+
+  // 소유자 OR Admin 확인
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
+
+  await initDb();
 
   const { title, content } = await req.json();
 
@@ -218,15 +223,13 @@ export async function POST(
    DELETE (변경 없음)
 ========================= */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
     params: Promise<{ id: string; ep: string }>;
   }
 ) {
-  await initDb();
-
   const { id, ep } = await params;
   const epNumber = Number(ep);
 
@@ -237,7 +240,12 @@ export async function DELETE(
     );
   }
 
-  // TTS 기능 일시 중지
+  // 소유자 OR Admin 확인
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
+
+  await initDb();
+
   // const audioRecords = await listEpisodeAudio(id, epNumber);
   // for (const record of audioRecords) {
   //   await deleteAudioFile(id, epNumber, record.lang);

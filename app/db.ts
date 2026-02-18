@@ -398,6 +398,39 @@ export async function initDb() {
       );
     `);
 
+    // ✅ 역할 시스템: reader | author | bot | admin
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'reader';
+    `);
+
+    // ✅ 소설 출처: official (Admin 생성) | user (퍼블릭 작가 생성)
+    // 나중에 큐레이션/랭킹/홈 피드 분리에 사용
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'official';
+    `);
+
+    // ✅ 번역 쿼터 (AI 비용 보호) — 하루 3회, KST 자정 리셋
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS translation_quota (
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        used INTEGER DEFAULT 0,
+        PRIMARY KEY (user_id, date)
+      );
+    `);
+
+    // ✅ 소설 생성 쿼터 (DB 오염 방지) — 하루 3개, 번역 쿼터와 분리
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS novel_quota (
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        used INTEGER DEFAULT 0,
+        PRIMARY KEY (user_id, date)
+      );
+    `);
+
     initialized = true;
   } finally {
     client.release();
