@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../../db";
+import { getUserIdFromToken, isAdmin } from "../../../../lib/auth";
 
 export async function GET(
     _req: NextRequest,
@@ -35,9 +36,24 @@ export async function PUT(
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
+    const { id } = await context.params;
+
+    // 🔒 본인 확인 OR Admin
+    const authHeader = req.headers.get("Authorization");
+    const userId = await getUserIdFromToken(authHeader);
+
+    if (!userId) {
+        return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const userIsAdmin = await isAdmin(authHeader);
+
+    if (userId !== id && !userIsAdmin) {
+        return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
     await initDb();
 
-    const { id } = await context.params;
     const body = await req.json();
 
     const updates: string[] = [];
@@ -71,3 +87,4 @@ export async function PUT(
 
     return NextResponse.json({ author: result.rows[0] });
 }
+

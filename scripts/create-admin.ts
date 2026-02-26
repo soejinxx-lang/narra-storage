@@ -28,22 +28,11 @@ async function createAdmin() {
     const password = process.env.ADMIN_PASSWORD || 'blue2040';
     const name = 'Master Admin';
 
-    // Check if admin column exists
-    const columnCheck = await pool.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'users' AND column_name = 'is_admin'
+    // Ensure role column exists
+    await pool.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'reader';
     `);
-
-    // Add is_admin column if not exists
-    if (columnCheck.rows.length === 0) {
-      console.log('Adding is_admin column...');
-      await pool.query(`
-        ALTER TABLE users
-        ADD COLUMN is_admin BOOLEAN DEFAULT FALSE
-      `);
-      console.log('✅ Column added');
-    }
 
     // Check if user already exists
     const existingUser = await pool.query(
@@ -55,12 +44,12 @@ async function createAdmin() {
       // Update existing user to admin
       console.log('User already exists, updating to admin...');
       const passwordHash = await bcrypt.hash(password, 10);
-      
+
       await pool.query(
-        'UPDATE users SET password_hash = $1, is_admin = TRUE WHERE username = $2',
+        `UPDATE users SET password_hash = $1, role = 'admin' WHERE username = $2`,
         [passwordHash, username]
       );
-      
+
       console.log('✅ Updated existing user to admin');
     } else {
       // Create new admin user
@@ -68,8 +57,8 @@ async function createAdmin() {
       const passwordHash = await bcrypt.hash(password, 10);
 
       await pool.query(
-        `INSERT INTO users (username, password_hash, name, is_admin)
-         VALUES ($1, $2, $3, TRUE)`,
+        `INSERT INTO users (username, password_hash, name, role)
+         VALUES ($1, $2, $3, 'admin')`,
         [username, passwordHash, name]
       );
 
@@ -78,7 +67,7 @@ async function createAdmin() {
 
     // Verify
     const result = await pool.query(
-      'SELECT id, username, name, is_admin FROM users WHERE username = $1',
+      'SELECT id, username, name, role FROM users WHERE username = $1',
       [username]
     );
 
@@ -87,7 +76,7 @@ async function createAdmin() {
     console.log('ID:', result.rows[0].id);
     console.log('Username:', result.rows[0].username);
     console.log('Name:', result.rows[0].name);
-    console.log('Is Admin:', result.rows[0].is_admin);
+    console.log('Role:', result.rows[0].role);
     console.log('------------------------\n');
 
     console.log('✅ Done!');
@@ -100,3 +89,4 @@ async function createAdmin() {
 }
 
 createAdmin();
+

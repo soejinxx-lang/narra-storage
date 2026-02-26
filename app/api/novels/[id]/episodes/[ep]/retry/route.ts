@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../../../db";
-import { requireAdmin } from "../../../../../../../lib/admin";
-
-
-const PIPELINE_BASE_URL = process.env.PIPELINE_BASE_URL;
-const PIPELINE_ACCESS_PIN = process.env.PIPELINE_ACCESS_PIN;
+import { requireOwnerOrAdmin, consumeTranslationQuota } from "../../../../../../../lib/requireAuth";
+import { isAdmin } from "../../../../../../../lib/auth";
 
 export async function POST(
   req: NextRequest,
@@ -14,20 +11,15 @@ export async function POST(
     params: Promise<{ id: string; ep: string }>;
   }
 ) {
-  // 🔒 쓰기 API 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id, ep } = await params;
+
+  // 🔒 소유자 OR Admin
+  const authResult = await requireOwnerOrAdmin(req, id);
+  if (authResult instanceof NextResponse) return authResult;
+  const userId = authResult;
 
   await initDb();
 
-  if (!PIPELINE_BASE_URL || !PIPELINE_ACCESS_PIN) {
-    return NextResponse.json(
-      { error: "PIPELINE_ENV_NOT_SET" },
-      { status: 500 }
-    );
-  }
-
-  const { id, ep } = await params;
   const epNumber = Number(ep);
 
   if (Number.isNaN(epNumber)) {
@@ -47,11 +39,7 @@ export async function POST(
   }
 
   const episodeRes = await db.query(
-    `
-    SELECT id, content
-    FROM episodes
-    WHERE novel_id = $1 AND ep = $2
-    `,
+    `SELECT id FROM episodes WHERE novel_id = $1 AND ep = $2`,
     [id, epNumber]
   );
 
@@ -62,41 +50,45 @@ export async function POST(
     );
   }
 
-  const { id: episodeId, content } = episodeRes.rows[0];
+  const { id: episodeId } = episodeRes.rows[0];
+
+  // Author는 쿼터 차감
+  const userIsAdmin = await isAdmin(req.headers.get("Authorization"));
+  if (!userIsAdmin) {
+    const quotaResult = await consumeTranslationQuota(userId);
+    if (quotaResult !== true) {
+      return NextResponse.json(
+        { error: "TRANSLATION_QUOTA_EXCEEDED", resetIn: quotaResult.resetIn },
+        { status: 429 }
+      );
+    }
+  }
 
   try {
     await db.query(
-      `
-      UPDATE episode_translations
-      SET status = 'PENDING',
-          error_message = NULL,
-          updated_at = NOW()
-      WHERE episode_id = $1 AND language = $2
-      `,
+      `UPDATE episode_translations
+       SET status = 'PENDING', error_message = NULL, error_type = NULL,
+           quota_refunded = FALSE, updated_at = NOW()
+       WHERE episode_id = $1 AND language = $2`,
       [episodeId, language]
     );
 
-    // Worker Migration:
-    // 직접 호출하지 않고 PENDING 상태만 남기고 즉시 리턴
-    // 실제 번역은 Worker가 처리함
     return NextResponse.json({ language, status: "PENDING" });
 
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
     await db.query(
-      `
-      UPDATE episode_translations
-      SET status = 'FAILED',
-          error_message = $1,
-          updated_at = NOW()
-      WHERE episode_id = $2 AND language = $3
-      `,
-      [e.message, episodeId, language]
+      `UPDATE episode_translations
+       SET status = 'FAILED', error_message = $1, updated_at = NOW()
+       WHERE episode_id = $2 AND language = $3`,
+      [message, episodeId, language]
     );
 
     return NextResponse.json({
       language,
       status: "FAILED",
-      error: e.message,
+      error: message,
     });
   }
 }
+

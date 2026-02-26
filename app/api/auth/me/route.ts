@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
         u.id,
         u.username,
         u.name,
+        u.role,
         u.created_at
        FROM user_sessions us
        JOIN users u ON us.user_id = u.id
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
         id: user.id,
         username: user.username,
         name: user.name,
+        role: user.role,
         created_at: user.created_at,
       },
     });

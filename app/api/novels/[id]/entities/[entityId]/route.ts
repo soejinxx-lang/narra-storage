@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../../db";
+import { requireOwnerOrAdmin } from "../../../../../../lib/requireAuth";
+import fs from "fs";
+import path from "path";
+
+const PIPELINE_ENTITIES_DIR =
+  process.env.PIPELINE_ENTITIES_DIR || "/app/data/entities";
 
 export async function DELETE(
   req: NextRequest,
   context: { params: Promise<{ id: string; entityId: string }> }
 ) {
-  await initDb();
-
   const { id: novelId, entityId } = await context.params;
 
-  console.log("=== Storage DELETE Entity ===");
-  console.log("Novel ID:", novelId);
-  console.log("Entity ID:", entityId);
+  // 🔒 소유자 OR Admin 확인
+  const authResult = await requireOwnerOrAdmin(req, novelId);
+  if (authResult instanceof NextResponse) return authResult;
+
+  await initDb();
 
   try {
     const result = await db.query(
@@ -27,12 +33,34 @@ export async function DELETE(
       );
     }
 
-    console.log("DELETE success, rowCount:", result.rowCount);
+    // 🔄 DB → Pipeline entities 파일 재동기화
+    const allEntitiesRes = await db.query(
+      `SELECT source_text, translations, locked, category, notes
+       FROM entities WHERE novel_id = $1`,
+      [novelId]
+    );
+
+    const entityMap: Record<string, unknown> = {};
+    for (const e of allEntitiesRes.rows) {
+      entityMap[e.source_text] = {
+        translations: e.translations,
+        locked: e.locked,
+        category: e.category,
+        notes: e.notes,
+      };
+    }
+
+    fs.mkdirSync(PIPELINE_ENTITIES_DIR, { recursive: true });
+    const filePath = path.join(PIPELINE_ENTITIES_DIR, `${novelId}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(entityMap, null, 2), "utf-8");
+
+    console.log(`[entity-delete] Synced pipeline file for novel ${novelId}`);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("DELETE ENTITY ERROR:", error);
     return NextResponse.json(
-      { error: "INTERNAL_ERROR", detail: error.message },
+      { error: "INTERNAL_ERROR", detail: message },
       { status: 500 }
     );
   }

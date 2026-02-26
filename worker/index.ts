@@ -12,6 +12,7 @@ import { splitIntoChunks } from './chunker.js';
 import { translateWithPython, restructureParagraphsWithPython } from './translate.js';
 import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine.js';
 import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
+import { refundTranslationQuota } from '../lib/requireAuth.js';
 
 // 언어팩 동적 로더 (NodeNext moduleResolution 호환)
 async function loadLangPack(lang: string): Promise<LanguagePack> {
@@ -39,6 +40,7 @@ interface TranslationJob {
   novel_id: string;
   content: string;
   source_language: string;
+  author_id: string;
 }
 
 /**
@@ -52,11 +54,14 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
       status = 'RUNNING',
       updated_at = NOW()
     WHERE id = (
-      SELECT id
-      FROM episode_translations
-      WHERE status = 'PENDING'
-         OR (status = 'RUNNING' AND updated_at < NOW() - INTERVAL '15 minutes')
-      ORDER BY created_at ASC
+      SELECT et.id
+      FROM episode_translations et
+      JOIN episodes ep ON et.episode_id = ep.id
+      JOIN novels n ON ep.novel_id = n.id
+      WHERE (et.status = 'PENDING'
+         OR (et.status = 'RUNNING' AND et.updated_at < NOW() - INTERVAL '15 minutes'))
+        AND n.deleted_at IS NULL
+      ORDER BY et.created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
@@ -66,7 +71,8 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
       language,
       (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id) as novel_id,
       (SELECT content FROM episodes WHERE id = episode_translations.episode_id) as content,
-      (SELECT source_language FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as source_language
+      (SELECT source_language FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as source_language,
+      (SELECT author_id FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as author_id
   `);
 
   return result.rows[0] || null;
@@ -81,10 +87,13 @@ async function fetchAndClaimNextJob(): Promise<TranslationJob | null> {
 async function fetchAndClaimNextJobs(maxConcurrency: number): Promise<TranslationJob[]> {
   const result = await db.query(`
     WITH target AS (
-      SELECT episode_id FROM episode_translations
-      WHERE status = 'PENDING'
-         OR (status = 'RUNNING' AND updated_at < NOW() - INTERVAL '15 minutes')
-      ORDER BY created_at ASC
+      SELECT et.episode_id FROM episode_translations et
+      JOIN episodes ep ON et.episode_id = ep.id
+      JOIN novels n ON ep.novel_id = n.id
+      WHERE (et.status = 'PENDING'
+         OR (et.status = 'RUNNING' AND et.updated_at < NOW() - INTERVAL '15 minutes'))
+        AND n.deleted_at IS NULL
+      ORDER BY et.created_at ASC
       LIMIT 1
     )
     UPDATE episode_translations
@@ -102,7 +111,8 @@ async function fetchAndClaimNextJobs(maxConcurrency: number): Promise<Translatio
       language,
       (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id) as novel_id,
       (SELECT content FROM episodes WHERE id = episode_translations.episode_id) as content,
-      (SELECT source_language FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as source_language
+      (SELECT source_language FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as source_language,
+      (SELECT author_id FROM novels WHERE id = (SELECT novel_id FROM episodes WHERE id = episode_translations.episode_id)) as author_id
   `, [maxConcurrency]);
 
   return result.rows;
@@ -587,17 +597,45 @@ async function processJob(job: TranslationJob): Promise<void> {
     console.log(`[Worker] ✅ ${language} completed for ${novel_id}/${episode_id}`);
 
   } catch (error: any) {
-    // 6. Mark as FAILED
+    // error_type 분류
+    const errorMsg = error.message || 'Unknown error';
+    let errorType = 'SYSTEM_ERROR';
+    if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+      errorType = 'TIMEOUT';
+    } else if (errorMsg.includes('content') || errorMsg.includes('invalid')) {
+      errorType = 'INVALID_CONTENT';
+    }
+
+    // 6. Mark as FAILED + error_type
     await db.query(
       `UPDATE episode_translations 
        SET status = 'FAILED', 
-           error_message = $1, 
+           error_message = $1,
+           error_type = $2,
            updated_at = NOW() 
-       WHERE id = $2`,
-      [error.message || 'Unknown error', id]
+       WHERE id = $3`,
+      [errorMsg, errorType, id]
     );
 
-    console.error(`[Worker] ❌ ${language} failed for ${novel_id}/${episode_id}:`, error.message);
+    // 🔄 멱등 쿼터 환불 (quota_refunded = FALSE인 경우에만)
+    try {
+      const refundCheck = await db.query(
+        `SELECT quota_refunded FROM episode_translations WHERE id = $1`,
+        [id]
+      );
+      if (refundCheck.rows[0] && !refundCheck.rows[0].quota_refunded) {
+        await refundTranslationQuota(job.author_id);
+        await db.query(
+          `UPDATE episode_translations SET quota_refunded = TRUE WHERE id = $1`,
+          [id]
+        );
+        console.log(`[Worker] 💰 Quota refunded for author ${job.author_id}`);
+      }
+    } catch (refundErr) {
+      console.error(`[Worker] ⚠️ Refund failed:`, refundErr);
+    }
+
+    console.error(`[Worker] ❌ ${language} failed for ${novel_id}/${episode_id}: [${errorType}] ${errorMsg}`);
   }
 }
 

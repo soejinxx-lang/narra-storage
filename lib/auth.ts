@@ -39,10 +39,10 @@ export async function isAdmin(authHeader: string | null): Promise<boolean> {
 
     try {
         const res = await db.query(
-            `SELECT is_admin FROM users WHERE id = $1`,
+            `SELECT role FROM users WHERE id = $1`,
             [userId]
         );
-        return res.rows[0]?.is_admin === true;
+        return res.rows[0]?.role === 'admin';
     } catch (e) {
         console.error("Admin Check Error:", e);
         return false;

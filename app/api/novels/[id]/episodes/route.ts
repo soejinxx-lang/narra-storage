@@ -111,7 +111,15 @@ export async function POST(
 
     const LANGUAGES = ["ko", "en", "ja", "zh", "es", "fr", "de", "pt", "id"];
 
+    // 원문 언어 조회 → 원문 자기 자신 번역 방지
+    const novelLangRes = await client.query(
+      `SELECT source_language FROM novels WHERE id = $1`,
+      [id]
+    );
+    const srcLang = novelLangRes.rows[0]?.source_language ?? "ko";
+
     for (const language of LANGUAGES) {
+      if (language === srcLang) continue; // 원문 skip
       await client.query(
         `INSERT INTO episode_translations (id, episode_id, language, status, translated_text)
          VALUES ($1, $2, $3, 'PENDING', '')`,

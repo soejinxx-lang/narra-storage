@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../db";
 import { requireOwnerOrAdmin } from "../../../../lib/requireAuth";
 
-// GET - 작품 조회 (변경 없음)
+// GET - 작품 조회 (삭제된 소설 제외)
 export async function GET(
   _req: NextRequest,
   context: {
@@ -21,7 +21,7 @@ export async function GET(
        u.username as author_username
      FROM novels n
      LEFT JOIN users u ON n.author_id = u.id
-     WHERE n.id = $1`,
+     WHERE n.id = $1 AND n.deleted_at IS NULL`,
     [id]
   );
 
@@ -35,7 +35,7 @@ export async function GET(
   return NextResponse.json(result.rows[0]);
 }
 
-// DELETE - 작품 삭제 (소유자 OR Admin)
+// DELETE - 작품 Soft Delete (소유자 OR Admin)
 export async function DELETE(
   req: NextRequest,
   context: {
@@ -52,26 +52,24 @@ export async function DELETE(
   const snapshot = await db.query(
     `SELECT n.id, n.title, n.author_id, 
             (SELECT COUNT(*) FROM episodes e WHERE e.novel_id = n.id) as episode_count
-     FROM novels n WHERE n.id = $1`,
+     FROM novels n WHERE n.id = $1 AND n.deleted_at IS NULL`,
     [id]
   );
 
-  if (snapshot.rowCount && snapshot.rowCount > 0) {
-    const novel = snapshot.rows[0];
-    console.log(`🗑️ DELETE NOVEL | ${new Date().toISOString()} | id=${novel.id} | title="${novel.title}" | author=${novel.author_id} | episodes=${novel.episode_count}`);
-  }
-
-  const result = await db.query(
-    "DELETE FROM novels WHERE id = $1",
-    [id]
-  );
-
-  if (result.rowCount === 0) {
+  if (snapshot.rowCount === 0) {
     return NextResponse.json(
       { error: "NOVEL_NOT_FOUND" },
       { status: 404 }
     );
   }
+
+  const novel = snapshot.rows[0];
+  console.log(`🗑️ SOFT DELETE NOVEL | ${new Date().toISOString()} | id=${novel.id} | title="${novel.title}" | author=${novel.author_id} | episodes=${novel.episode_count}`);
+
+  await db.query(
+    "UPDATE novels SET deleted_at = NOW() WHERE id = $1",
+    [id]
+  );
 
   return NextResponse.json({ ok: true });
 }

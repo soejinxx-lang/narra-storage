@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     // Find user
     const userResult = await db.query(
-      "SELECT id, username, password_hash, name, created_at FROM users WHERE username = $1",
+      "SELECT id, username, password_hash, name, role, created_at FROM users WHERE username = $1",
       [username]
     );
 
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
         id: user.id,
         username: user.username,
         name: user.name,
+        role: user.role,
         created_at: user.created_at,
       },
       token,

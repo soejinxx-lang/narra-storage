@@ -40,12 +40,12 @@ export async function requireOwnerOrAdmin(
         return userId;
     }
 
-    // is_admin 유저 → 통과
+    // role='admin' 유저 → 통과
     const adminCheck = await db.query(
-        `SELECT is_admin FROM users WHERE id = $1`,
+        `SELECT role FROM users WHERE id = $1`,
         [userId]
     );
-    if (adminCheck.rows[0]?.is_admin === true) {
+    if (adminCheck.rows[0]?.role === 'admin') {
         return userId;
     }
 
@@ -93,14 +93,20 @@ export function getSecondsUntilKSTMidnight(): number {
  * 실패(쿼터 초과): { remaining: 0, resetIn: seconds }
  */
 export async function consumeTranslationQuota(
-    userId: string,
-    maxPerDay = 3
+    userId: string
 ): Promise<true | { remaining: number; resetIn: number }> {
     const today = getKSTDate();
     const client = await db.connect();
 
     try {
         await client.query("BEGIN");
+
+        // 0. 유저 플랜에서 limit 조회 (없으면 기본값 3)
+        const planRow = await client.query(
+            `SELECT translation_limit FROM user_plans WHERE user_id = $1`,
+            [userId]
+        );
+        const maxPerDay = planRow.rows[0]?.translation_limit ?? 3;
 
         // 1. row 없으면 INSERT (ON CONFLICT DO NOTHING으로 race condition 방지)
         await client.query(

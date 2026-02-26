@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../../db";
+import { requireOwnerOrAdmin } from "../../../../../lib/requireAuth";
+import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
-import { requireAdmin } from "../../../../../lib/admin";
 
 // 🔧 Pipeline entities 파일 경로
 const PIPELINE_ENTITIES_DIR =
@@ -46,18 +47,19 @@ export async function GET(
   }
 }
 
-// POST /api/novels/[id]/entities (Admin only)
+// POST /api/novels/[id]/entities (소유자 OR Admin)
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  // 🔒 쓰기 보호
-  const unauthorized = requireAdmin(req);
-  if (unauthorized) return unauthorized;
+  const { id: novelId } = await context.params;
+
+  // 🔒 소유자 OR Admin 확인
+  const authResult = await requireOwnerOrAdmin(req, novelId);
+  if (authResult instanceof NextResponse) return authResult;
 
   await initDb();
 
-  const { id: novelId } = await context.params;
   const body = await req.json();
 
   const { source_text, translations, category, notes } = body;

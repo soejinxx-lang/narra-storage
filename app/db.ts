@@ -261,8 +261,8 @@ export async function initDb() {
 
     // ✅ System Admin 유저 생성 (Admin API Key용)
     await client.query(`
-      INSERT INTO users (id, username, password_hash, name, is_admin, is_hidden)
-      VALUES ('bb2f8cbe-208a-4807-b542-ad2b8b247a9d', 'System', '', 'System Administrator', TRUE, TRUE)
+      INSERT INTO users (id, username, password_hash, name, is_hidden)
+      VALUES ('bb2f8cbe-208a-4807-b542-ad2b8b247a9d', 'System', '', 'System Administrator', TRUE)
       ON CONFLICT (id) DO NOTHING;
     `);
 
@@ -404,11 +404,51 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'reader';
     `);
 
+    // 🔄 is_admin → role 통합 마이그레이션 (SSOT: role)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'is_admin'
+        ) THEN
+          -- is_admin=TRUE인 유저를 role='admin'으로 동기화
+          UPDATE users SET role = 'admin' WHERE is_admin = TRUE AND role != 'admin';
+          -- is_admin 컬럼 제거
+          ALTER TABLE users DROP COLUMN is_admin;
+          RAISE NOTICE 'is_admin → role 마이그레이션 완료';
+        END IF;
+      END $$;
+    `);
+
     // ✅ 소설 출처: official (Admin 생성) | user (퍼블릭 작가 생성)
-    // 나중에 큐레이션/랭킹/홈 피드 분리에 사용
     await client.query(`
       ALTER TABLE novels
       ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'official';
+    `);
+
+    // ✅ Soft Delete (삭제 복구 + audit trail + Worker 충돌 방지)
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL;
+    `);
+
+    // ✅ 조건부 인덱스 (deleted_at IS NULL인 행만 인덱싱 — 성능 보장)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_novels_active
+      ON novels(id) WHERE deleted_at IS NULL;
+    `);
+
+    // ✅ 번역 실패 타입 (ENUM 대신 TEXT — 유연성 유지)
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS error_type TEXT DEFAULT NULL;
+    `);
+    // 값: 'SYSTEM_ERROR' | 'INVALID_CONTENT' | 'QUOTA_EXCEEDED' | 'TIMEOUT'
+
+    // ✅ 멱등 쿼터 환불 (refund 정확히 1회 보장)
+    await client.query(`
+      ALTER TABLE episode_translations
+      ADD COLUMN IF NOT EXISTS quota_refunded BOOLEAN DEFAULT FALSE;
     `);
 
     // ✅ 번역 쿼터 (AI 비용 보호) — 하루 3회, KST 자정 리셋
@@ -428,6 +468,18 @@ export async function initDb() {
         date DATE NOT NULL,
         used INTEGER DEFAULT 0,
         PRIMARY KEY (user_id, date)
+      );
+    `);
+
+    // ✅ 유저 플랜 (쿼터 정책 외부화 — 하드코딩 제거)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_plans (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        plan_type TEXT DEFAULT 'free',
+        translation_limit INTEGER DEFAULT 3,
+        novel_limit INTEGER DEFAULT 3,
+        entity_extract_limit INTEGER DEFAULT 5,
+        started_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
