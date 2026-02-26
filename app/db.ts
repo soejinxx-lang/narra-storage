@@ -72,7 +72,7 @@ export async function initDb() {
         -- Step 1: orphan author_id 정리 (users에 없는 ID → NULL)
         UPDATE novels SET author_id = NULL
           WHERE author_id IS NOT NULL
-          AND author_id NOT IN (SELECT id::text FROM users);
+          AND author_id NOT IN (SELECT id FROM users);
 
         -- Step 2: 기존 FK 삭제 (있을 때만)
         IF EXISTS (
