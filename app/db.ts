@@ -39,6 +39,12 @@ export async function initDb() {
       );
     `);
 
+    // ✅ novels.created_at (소설 목록 정렬용)
+    await client.query(`
+      ALTER TABLE novels
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    `);
+
     await client.query(`
       ALTER TABLE novels
       ADD COLUMN IF NOT EXISTS cover_url TEXT;
@@ -57,13 +63,16 @@ export async function initDb() {
     `);
 
     // 🔒 FK 마이그레이션: SET NULL → RESTRICT + NOT NULL
-    // 트랜잭션으로 무결성 공백 방지
+    // Advisory lock으로 동시 실행 데드락 방지
     await client.query(`
       DO $$ BEGIN
+        -- Advisory lock 획득 (동시 initDb 실행 직렬화)
+        PERFORM pg_advisory_xact_lock(42);
+
         -- Step 1: orphan author_id 정리 (users에 없는 ID → NULL)
         UPDATE novels SET author_id = NULL
           WHERE author_id IS NOT NULL
-          AND author_id NOT IN (SELECT id FROM users);
+          AND author_id NOT IN (SELECT id::text FROM users);
 
         -- Step 2: 기존 FK 삭제 (있을 때만)
         IF EXISTS (
