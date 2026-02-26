@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../db";
-import { isAdmin, getUserIdFromToken } from "../../../lib/auth";
+import { isAdmin, getUserIdFromToken, SYSTEM_ADMIN_ID } from "../../../lib/auth";
 import { requireAuth, consumeNovelQuota } from "../../../lib/requireAuth";
 
 export async function GET(req: NextRequest) {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const isAdminUser = await isAdmin(authHeader);
 
-  // Admin API Key → 기존 방식 그대로 (제한 없음, source='official')
+  // Admin API Key → 제한 없음, source='official'
   if (isAdminUser) {
     const body = await req.json();
     if (!body?.title) {
@@ -39,9 +39,21 @@ export async function POST(req: NextRequest) {
     }
     const id = body.id ?? `novel-${Date.now()}`;
     const sourceLanguage = body.source_language ?? "ko";
-    const authorId = await getUserIdFromToken(authHeader);
-    if (!authorId) {
-      return NextResponse.json({ error: "AUTHOR_ID_REQUIRED" }, { status: 401 });
+
+    // body.author_id → 실제 유저에 귀속 (DB 검증 필수)
+    // 없으면 시스템 계정 소유 (ADMIN_API_KEY → SYSTEM_ADMIN_ID)
+    let authorId: string;
+    if (body.author_id) {
+      const userExists = await db.query(
+        "SELECT id FROM users WHERE id = $1",
+        [body.author_id]
+      );
+      if (userExists.rowCount === 0) {
+        return NextResponse.json({ error: "AUTHOR_NOT_FOUND" }, { status: 404 });
+      }
+      authorId = body.author_id;
+    } else {
+      authorId = SYSTEM_ADMIN_ID;
     }
     const exists = await db.query("SELECT 1 FROM novels WHERE id = $1", [id]);
     if (exists.rowCount && exists.rowCount > 0) {
