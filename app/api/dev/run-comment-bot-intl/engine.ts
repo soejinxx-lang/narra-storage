@@ -321,54 +321,47 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
 }
 
 // ============================================================
-// 조회수 + 화수 + 나이 기반 동적 댓글 수 (90-9-1 법칙 + 노이즈)
+// 조회수 + 화수 + 나이 기반 동적 댓글 수 (Poisson + Power-law v4)
 // ============================================================
+
+function poissonSampleEngine(λ: number): number {
+    if (λ <= 0) return 0;
+    if (λ < 30) {
+        const L = Math.exp(-λ);
+        let k = 0, p = 1;
+        do { k++; p *= Math.random(); } while (p > L);
+        return k - 1;
+    }
+    const u1 = Math.random(), u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    return Math.max(0, Math.round(λ + Math.sqrt(λ) * z));
+}
+
 function calculateTargetCount(
     views: number,
     epNumber: number,
     daysSincePublished: number,
 ): number {
-    // 90-9-1 기반 비율 (신생 플랫폼 보정)
-    let ratio: number;
-    if (views <= 30) ratio = 0.10;
-    else if (views <= 100) ratio = 0.05;
-    else if (views <= 300) ratio = 0.03;
-    else if (views <= 1000) ratio = 0.015;
-    else ratio = 0.005;
+    if (views <= 0) return 0;
 
-    // 에피소드 번호 감소 곡선 (초반 화에 관심 집중)
-    let epDecay: number;
-    if (epNumber <= 3) epDecay = 1.0;
-    else if (epNumber <= 10) epDecay = 0.7;
-    else if (epNumber <= 20) epDecay = 0.5;
-    else if (epNumber <= 40) epDecay = 0.35;
-    else epDecay = 0.25;
+    const k = 0.08 * (0.85 + Math.random() * 0.30);
+    const b = 0.55 * (0.90 + Math.random() * 0.20);
 
-    // 🔥 나이 기반 감소 (게시 후 경과 일수)
-    // 1화: 오래돼도 꾸준히 댓글 유입 (신규 독자 진입점)
-    // 후반 화: 시간 지나면 급감
-    let ageFactor: number;
-    if (epNumber <= 3) {
-        // ep 1~3: 에버그린 (신규 독자 진입점 — 항상 80% 이상)
-        if (daysSincePublished <= 7) ageFactor = 1.0;
-        else if (daysSincePublished <= 30) ageFactor = 0.9;
-        else ageFactor = 0.8;
-    } else {
-        // ep 4+: 시간에 따라 급감
-        if (daysSincePublished <= 3) ageFactor = 1.0;
-        else if (daysSincePublished <= 7) ageFactor = 0.6;
-        else if (daysSincePublished <= 14) ageFactor = 0.3;
-        else if (daysSincePublished <= 30) ageFactor = 0.15;
-        else ageFactor = 0.1;
-    }
+    const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
+    const A = epNumber <= 3
+        ? Math.max(0.7, 1 / (1 + 0.01 * daysSincePublished))
+        : 1 / (1 + 0.15 * daysSincePublished);
 
-    const base = views * ratio * epDecay * ageFactor;
+    let λ = k * Math.pow(views, 1 - b) * D * A;
 
-    // 30~50% 노이즈 (패턴 예측 방지)
-    const noise = base * (0.7 + Math.random() * 0.6); // 70%~130%
+    // Activation threshold
+    if (views < 15) λ *= 0.3;
+    else if (views < 30) λ *= 0.6;
 
-    // 최소 0 허용, 최대 40
-    return Math.min(Math.floor(noise), 40);
+    // 비율 상한
+    λ = Math.min(λ, views * 0.02);
+
+    return poissonSampleEngine(λ);
 }
 
 // ============================================================

@@ -218,6 +218,7 @@ interface NovelInfo {
   avgViews: number;
   hoursSinceLastEp: number;
   bingeRate: number;
+  commentDensity: number;  // 댓글수/조회수 (피드백 루프용)
   episodeMap: Map<number, string>;  // ep번호 → episode_id
 }
 
@@ -261,13 +262,14 @@ function calcBingeRate(totalViews: number): number {
   return Math.min(0.8, 0.6 + popBonus);  // 0.6 ~ 0.8
 }
 
-// ── 소설 선택 가중치 ──
+// ── 소설 선택 가중치 (댓글 피드백 루프 포함) ──
 function novelWeight(novel: NovelInfo): number {
   const fresh = freshness(novel.hoursSinceLastEp);
   const popular = popularityFactor(novel.totalViews);
   const sat = saturationFactor(novel.avgViews);
   const boost = updateBoost(novel.hoursSinceLastEp);
-  return fresh * popular * sat * boost;
+  const cmtBoost = commentDensityBoost(novel.commentDensity * novel.totalViews, novel.totalViews);
+  return fresh * popular * sat * boost * cmtBoost;
 }
 
 // ── 가중치 기반 소설 선택 ──
@@ -478,6 +480,7 @@ async function updateViewCounts(): Promise<void> {
         avgViews: 0,
         hoursSinceLastEp,
         bingeRate: 0,
+        commentDensity: 0,
         episodeMap: new Map(),
       });
     }
@@ -485,6 +488,25 @@ async function updateViewCounts(): Promise<void> {
     novel.episodeMap.set(ep.ep, ep.id);
     novel.maxEp = Math.max(novel.maxEp, ep.ep);
     novel.totalViews += (ep.views || 0);
+  }
+
+  // 댓글 밀도 조회 (피드백 루프용)
+  try {
+    const cmtResult = await db.query(`
+      SELECT e.novel_id, COUNT(c.id)::int AS cnt
+      FROM comments c
+      JOIN episodes e ON e.id = c.episode_id
+      WHERE c.created_at > NOW() - INTERVAL '7 days'
+      GROUP BY e.novel_id
+    `);
+    for (const row of cmtResult.rows) {
+      const novel = novelMap.get(row.novel_id);
+      if (novel && novel.totalViews > 0) {
+        novel.commentDensity = (row.cnt || 0) / novel.totalViews;
+      }
+    }
+  } catch (e) {
+    // 댓글 테이블 접근 실패 시 무시 (density 0 유지)
   }
 
   // avg, bingeRate 계산
@@ -639,6 +661,120 @@ async function processJob(job: TranslationJob): Promise<void> {
   }
 }
 
+// ============================================================
+// 댓글-조회수 상관관계 v4 — 확률 기반 행동 모사
+// ============================================================
+
+// ── Poisson 샘플러 (Knuth 알고리즘) ──
+function poissonSample(λ: number): number {
+  if (λ <= 0) return 0;
+  if (λ < 30) {
+    const L = Math.exp(-λ);
+    let k = 0, p = 1;
+    do { k++; p *= Math.random(); } while (p > L);
+    return k - 1;
+  }
+  // λ ≥ 30: 정규 근사
+  return Math.max(0, Math.round(λ + Math.sqrt(λ) * gaussianRandom()));
+}
+
+function gaussianRandom(): number {
+  const u1 = Math.random(), u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+// ── 소설별 Quality Latent Variable Q (log-normal + drift) ──
+function simpleHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function generateNovelQ(novelId: string): number {
+  const hash = simpleHash(novelId);
+  // log-normal 분포: 대부분 mediocre, 소수 고품질, 극소수 폭발
+  const u1 = ((hash % 10000) + 1) / 10001;          // (0,1) 균등
+  const u2 = (((hash * 7919) % 10000) + 1) / 10001;
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const base = Math.exp(-0.15 + 0.45 * z);  // μ=-0.15, σ=0.45 → median ≈ 0.86
+
+  // 느린 drift: 월 단위 ±5%
+  const monthsSinceEpoch = Math.floor(Date.now() / (30 * 86400000));
+  const drift = Math.sin(hash + monthsSinceEpoch * 0.3) * 0.05;
+
+  return Math.max(0.2, Math.min(3.0, base + drift));
+}
+
+// ── Batch-level jitter (워커 실행 단위로 고정) ──
+let batchK = 0.08;
+let batchB = 0.55;
+let lastBatchJitterTime = 0;
+
+function refreshBatchJitter(): void {
+  const now = Date.now();
+  // 1시간마다 갱신 (같은 batch 내에선 고정)
+  if (now - lastBatchJitterTime > 3600_000) {
+    batchK = 0.08 * (0.85 + Math.random() * 0.30);  // ±15%
+    batchB = 0.55 * (0.90 + Math.random() * 0.20);  // ±10%
+    lastBatchJitterTime = now;
+  }
+}
+
+// ── 핵심 모델: λ = Q × k × views^(1-b) × D(ep) × A(age) ──
+function sampleCommentCount(
+  views: number, epNumber: number, daysSince: number, Q: number
+): number {
+  if (views <= 0) return 0;
+
+  refreshBatchJitter();
+
+  // 감쇠 팩터
+  const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
+  const A = epNumber <= 3
+    ? Math.max(0.7, 1 / (1 + 0.01 * daysSince))
+    : 1 / (1 + 0.15 * daysSince);
+
+  // λ 계산
+  let λ = Q * batchK * Math.pow(views, 1 - batchB) * D * A;
+
+  // Activation threshold: 매우 낮은 조회수 억제
+  if (views < 15) {
+    λ *= 0.3;
+  } else if (views < 30) {
+    λ *= 0.6;
+  }
+
+  // 비율 상한 (최대 2%)
+  λ = Math.min(λ, views * 0.02);
+
+  // Poisson 샘플링
+  return poissonSample(λ);
+}
+
+// ── Gini Guard (연속 감쇠) ──
+function giniGuardMultiplier(novels: NovelInfo[]): number {
+  if (novels.length < 3) return 1.0;
+  const sorted = novels.map(n => n.totalViews).sort((a, b) => b - a);
+  const total = sorted.reduce((a, b) => a + b, 0);
+  if (total <= 0) return 1.0;
+  const top10pct = sorted.slice(0, Math.max(1, Math.floor(sorted.length * 0.1)));
+  const top10sum = top10pct.reduce((a, b) => a + b, 0);
+  const concentration = top10sum / total;
+  // 연속 지수 감쇠: threshold 0.5 초과 시 부드럽게 억제
+  if (concentration <= 0.5) return 1.0;
+  return Math.exp(-3 * (concentration - 0.5));  // 0.6→0.74, 0.7→0.55, 0.8→0.41
+}
+
+// ── 댓글 밀도 → 조회수 부스트 (피드백 루프) ──
+function commentDensityBoost(recentComments: number, totalViews: number): number {
+  if (totalViews <= 0) return 1.0;
+  const density = recentComments / totalViews;
+  // log 스케일, 최대 +10%
+  return 1 + Math.min(0.10, Math.log10(density * 100 + 1) * 0.05);
+}
+
 /**
  * Worker 메인 루프
  */
@@ -668,28 +804,43 @@ function jitteredWeights(): Record<string, number> {
   return jittered;
 }
 
-// ── 댓글 자동 생성 (5분 주기, 에피소드당 다국어 혼합) ──
+// ── 댓글 자동 생성 (5분 주기, 조회수 기반 Poisson 모델) ──
 async function autoGenerateComments(): Promise<void> {
   const result = await db.query(`
-    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at
+    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
+           e.views,
+           COALESCE(cc.cnt, 0) AS comment_count
     FROM episodes e
     JOIN novels n ON e.novel_id = n.id
+    LEFT JOIN (
+      SELECT episode_id, COUNT(*) AS cnt
+      FROM comments GROUP BY episode_id
+    ) cc ON cc.episode_id = e.id
     WHERE e.status = 'published'
-      AND NOT EXISTS (
-        SELECT 1 FROM comments c WHERE c.episode_id = e.id
-      )
     ORDER BY e.created_at ASC
     LIMIT 100
   `);
 
   if (result.rows.length === 0) return;
 
-  console.log(`[CommentBot] 📋 Found ${result.rows.length} episodes without comments`);
+  let totalAdded = 0;
 
   for (const row of result.rows) {
     const { episode_id, novel_id, ep, created_at } = row;
     const publishedAt = new Date(created_at);
-    const totalBase = 60;
+    const viewCount = parseInt(row.views) || 0;
+    const existing = parseInt(row.comment_count) || 0;
+    const epNumber = parseInt(ep) || 1;
+    const daysSince = Math.floor(
+      (Date.now() - publishedAt.getTime()) / 86400000
+    );
+    const Q = generateNovelQ(novel_id);
+
+    // Poisson 샘플링으로 목표 댓글 수 결정
+    const target = sampleCommentCount(viewCount, epNumber, daysSince, Q);
+    const toAdd = Math.max(0, target - existing);
+
+    if (toAdd <= 0) continue;
 
     // 에피소드마다 다른 언어 비율 생성
     const weights = jitteredWeights();
@@ -701,15 +852,19 @@ async function autoGenerateComments(): Promise<void> {
       const lang = langs[i];
       const isLast = i === langs.length - 1;
       const count = isLast
-        ? totalBase - allocated  // 마지막 언어: 나머지 전부
-        : Math.round(totalBase * weights[lang]);
+        ? toAdd - allocated
+        : Math.round(toAdd * weights[lang]);
       if (count > 0) {
         langAllocations.push({ lang, count });
         allocated += count;
       }
     }
 
-    console.log(`[CommentBot] 💬 ep${ep}: ${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}`);
+    console.log(
+      `[CommentBot] ep${ep}: v=${viewCount} Q=${Q.toFixed(2)} `
+      + `λ→${target} existing=${existing} adding=${toAdd} `
+      + `[${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
+    );
 
     for (const { lang, count } of langAllocations) {
       try {
@@ -717,23 +872,25 @@ async function autoGenerateComments(): Promise<void> {
         const botResult = await runCommentBotIntl(
           novel_id,
           langPack,
-          count,          // 해당 언어 할당 수
+          count,
           1.0,
           true,           // useDeep
           episode_id,
           true,           // backfill
           publishedAt,
         );
-        console.log(`[CommentBot]   ✅ ${lang}: ${botResult.inserted} comments`);
+        totalAdded += botResult.inserted;
       } catch (langErr) {
         console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
       }
     }
 
-    console.log(`[CommentBot] ✅ ep${ep} done`);
-
     // 에피소드 간 3초 대기
     await new Promise(r => setTimeout(r, 3000));
+  }
+
+  if (totalAdded > 0) {
+    console.log(`[CommentBot] ✅ Total: ${totalAdded} comments added`);
   }
 }
 
