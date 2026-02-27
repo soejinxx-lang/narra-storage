@@ -3,19 +3,41 @@ import db, { initDb } from "@/db";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
-// CORS headers
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+// 🔒 허용 도메인 (CSRF + CORS)
+const ALLOWED_ORIGINS = [
+  "https://www.narra.kr",
+  "https://narra.kr",
+  "http://localhost:3000",
+  "http://localhost:3001",
+];
+
+// CORS headers — 특정 도메인만 허용 + credentials
+function getCorsHeaders(req: NextRequest) {
+  const origin = req.headers.get("origin") || "";
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
 export async function OPTIONS(req: NextRequest) {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return NextResponse.json({}, { headers: getCorsHeaders(req) });
 }
 
 export async function POST(req: NextRequest) {
   try {
+    // 🔒 CSRF: Origin 검증 (쿠키 기반 인증에 대비)
+    const origin = req.headers.get("origin");
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+      return NextResponse.json(
+        { error: "FORBIDDEN_ORIGIN" },
+        { status: 403 }
+      );
+    }
+
     await initDb();
     const { username, password } = await req.json();
 
@@ -64,16 +86,30 @@ export async function POST(req: NextRequest) {
       [user.id, token, expiresAt]
     );
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role: user.role,
-        created_at: user.created_at,
+    // 🔒 HttpOnly 쿠키 설정 (1단계: 듀얼 모드 — 쿠키 + JSON 토큰 둘 다)
+    const response = NextResponse.json(
+      {
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          created_at: user.created_at,
+        },
+        token, // 하위 호환: 기존 클라이언트 localStorage 지원
       },
-      token,
+      { headers: getCorsHeaders(req) }
+    );
+
+    response.cookies.set("session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60, // 30일
     });
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(
@@ -82,3 +118,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

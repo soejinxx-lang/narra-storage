@@ -4,6 +4,8 @@ import { requireOwnerOrAdmin } from "../../../../../lib/requireAuth";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
+import { validateFields, LIMITS } from "../../../../../lib/validation";
+import { checkBodySize } from "../../../../../lib/bodyLimit";
 
 // 🔧 Pipeline entities 파일 경로
 const PIPELINE_ENTITIES_DIR =
@@ -40,8 +42,9 @@ export async function GET(
 
     return NextResponse.json({ entities: result.rows });
   } catch (e: any) {
+    console.error("FAILED_TO_FETCH_ENTITIES:", e.message);
     return NextResponse.json(
-      { error: "FAILED_TO_FETCH_ENTITIES", detail: e.message },
+      { error: "FAILED_TO_FETCH_ENTITIES" },
       { status: 500 }
     );
   }
@@ -52,6 +55,10 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  // Body size 체크
+  const sizeErr = checkBodySize(req);
+  if (sizeErr) return sizeErr;
+
   const { id: novelId } = await context.params;
 
   // 🔒 소유자 OR Admin 확인
@@ -71,6 +78,12 @@ export async function POST(
     );
   }
 
+  // 입력 길이 검증
+  const validationErr = validateFields([
+    { value: source_text, field: "SOURCE_TEXT", max: LIMITS.ENTITY_SOURCE },
+  ]);
+  if (validationErr) return validationErr;
+
   try {
     const result = await db.query(
       `
@@ -85,8 +98,7 @@ export async function POST(
 
     /**
      * 🔄 DB → Pipeline entities 파일 동기화
-     * - Pipeline은 파일 시스템만 참조함
-     * - 여기서 단일 진실 소스(DB)를 기준으로 덮어씀
+     * - Path traversal 방어: basename + resolve + baseDir 검증
      */
     const allEntitiesRes = await db.query(
       `
@@ -109,10 +121,15 @@ export async function POST(
 
     fs.mkdirSync(PIPELINE_ENTITIES_DIR, { recursive: true });
 
-    const filePath = path.join(
-      PIPELINE_ENTITIES_DIR,
-      `${novelId}.json`
-    );
+    // 🔒 Path traversal 3중 방어
+    const safeId = path.basename(novelId).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filePath = path.resolve(PIPELINE_ENTITIES_DIR, `${safeId}.json`);
+    const baseDir = path.resolve(PIPELINE_ENTITIES_DIR);
+
+    if (!filePath.startsWith(baseDir + path.sep) && filePath !== path.join(baseDir, `${safeId}.json`)) {
+      console.error("Path traversal blocked:", novelId, "→", filePath);
+      return NextResponse.json({ error: "INVALID_PATH" }, { status: 400 });
+    }
 
     fs.writeFileSync(
       filePath,
@@ -129,9 +146,11 @@ export async function POST(
       );
     }
 
+    console.error("FAILED_TO_CREATE_ENTITY:", e.message);
     return NextResponse.json(
-      { error: "FAILED_TO_CREATE_ENTITY", detail: e.message },
+      { error: "FAILED_TO_CREATE_ENTITY" },
       { status: 500 }
     );
   }
 }
+

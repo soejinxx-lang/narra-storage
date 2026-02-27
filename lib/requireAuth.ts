@@ -3,11 +3,22 @@ import db from "../app/db";
 import { getUserIdFromToken } from "./auth";
 
 /**
- * 로그인 필수 미들웨어
+ * 로그인 필수 미들웨어 (듀얼 모드)
+ * 1️⃣ HttpOnly 쿠키 우선 (session)
+ * 2️⃣ Bearer 헤더 폴백 (전환기 호환)
+ *
  * 성공: userId (string) 반환
  * 실패: 401 NextResponse 반환
  */
 export async function requireAuth(req: NextRequest): Promise<string | NextResponse> {
+    // 1️⃣ HttpOnly 쿠키 우선
+    const cookieToken = req.cookies.get("session")?.value;
+    if (cookieToken) {
+        const userId = await getUserIdFromToken(`Bearer ${cookieToken}`);
+        if (userId) return userId;
+    }
+
+    // 2️⃣ Bearer 헤더 폴백
     const authHeader = req.headers.get("Authorization");
     const userId = await getUserIdFromToken(authHeader);
     if (!userId) {

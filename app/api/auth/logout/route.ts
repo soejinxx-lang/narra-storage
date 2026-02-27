@@ -4,17 +4,19 @@ import db, { initDb } from "@/db";
 export async function POST(req: NextRequest) {
   try {
     await initDb();
-    // Get token from Authorization header
-    const authHeader = req.headers.get("authorization");
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    // 🔒 듀얼 모드: 쿠키 우선, Bearer 폴백
+    const cookieToken = req.cookies.get("session")?.value;
+    const authHeader = req.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
+    const token = cookieToken || bearerToken;
+
+    if (!token) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
     }
-
-    const token = authHeader.substring(7); // Remove "Bearer " prefix
 
     // Delete session
     const result = await db.query(
@@ -29,10 +31,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    // 🔒 HttpOnly 쿠키 삭제
+    const response = NextResponse.json({
       success: true,
       message: "Logged out successfully",
     });
+
+    response.cookies.set("session", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0, // 즉시 만료
+    });
+
+    return response;
   } catch (error) {
     console.error("Logout error:", error);
     return NextResponse.json(
@@ -41,3 +54,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

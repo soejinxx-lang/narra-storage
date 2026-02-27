@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import db, { initDb } from "../../../db";
 import { requireOwnerOrAdmin } from "../../../../lib/requireAuth";
+import { validateFields, LIMITS } from "../../../../lib/validation";
 
 // GET - 작품 조회 (삭제된 소설 제외)
 export async function GET(
@@ -89,6 +90,13 @@ export async function PATCH(
   await initDb();
 
   const body = await req.json();
+
+  // 입력 길이 검증
+  const vErr = validateFields([
+    { value: body.title, field: "TITLE", max: LIMITS.TITLE },
+    { value: body.description, field: "DESCRIPTION", max: LIMITS.DESCRIPTION },
+  ]);
+  if (vErr) return vErr;
 
   const allowedFields = ["title", "description", "genre", "genre_taxonomy", "is_original", "serial_status", "episode_format"];
   const updates: string[] = [];

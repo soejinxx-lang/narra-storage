@@ -2,6 +2,8 @@ import { NextResponse, NextRequest } from "next/server";
 import db, { initDb } from "../../db";
 import { isAdmin, getUserIdFromToken, SYSTEM_ADMIN_ID } from "../../../lib/auth";
 import { requireAuth, consumeNovelQuota } from "../../../lib/requireAuth";
+import { validateFields, LIMITS } from "../../../lib/validation";
+import { checkBodySize } from "../../../lib/bodyLimit";
 
 export async function GET(req: NextRequest) {
   await initDb();
@@ -31,12 +33,22 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("Authorization");
   const isAdminUser = await isAdmin(authHeader);
 
+  // Body size 체크
+  const sizeErr = checkBodySize(req);
+  if (sizeErr) return sizeErr;
+
   // Admin API Key → 제한 없음, source='official'
   if (isAdminUser) {
     const body = await req.json();
     if (!body?.title) {
       return NextResponse.json({ error: "INVALID_NOVEL_DATA" }, { status: 400 });
     }
+    // 입력 길이 검증
+    const vErr = validateFields([
+      { value: body.title, field: "TITLE", max: LIMITS.TITLE },
+      { value: body.description, field: "DESCRIPTION", max: LIMITS.DESCRIPTION },
+    ]);
+    if (vErr) return vErr;
     const id = body.id ?? `novel-${Date.now()}`;
     const sourceLanguage = body.source_language ?? "ko";
 
@@ -122,6 +134,12 @@ export async function POST(req: NextRequest) {
   if (!body?.title) {
     return NextResponse.json({ error: "INVALID_NOVEL_DATA" }, { status: 400 });
   }
+  // 입력 길이 검증
+  const vErr2 = validateFields([
+    { value: body.title, field: "TITLE", max: LIMITS.TITLE },
+    { value: body.description, field: "DESCRIPTION", max: LIMITS.DESCRIPTION },
+  ]);
+  if (vErr2) return vErr2;
 
   const id = `novel-${Date.now()}`;
   const sourceLanguage = body.source_language ?? "ko";
