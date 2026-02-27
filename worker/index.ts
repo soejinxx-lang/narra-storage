@@ -781,10 +781,10 @@ function commentDensityBoost(recentComments: number, totalViews: number): number
 
 // ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포 + 한국어 부스트) ──
 const LANG_BASE_WEIGHTS: Record<string, number> = {
-  'ko': 0.30,   // 한국어 (최고 퀄리티 → 부스트)
-  'en': 0.30,   // 영어권 (Royal Road, Tapas 등)
-  'ja': 0.20,   // 일본어권 (소설가になろう 등)
-  'zh': 0.12,   // 중국어권 (Qidian 등)
+  'ko': 0.40,   // 한국어 (주요 타겟 시장)
+  'en': 0.25,   // 영어권 (Royal Road, Tapas 등)
+  'ja': 0.17,   // 일본어권 (소설家になろう 등)
+  'zh': 0.10,   // 중국어권 (Qidian 등)
   'es': 0.08,   // 스페인어권 (성장세 높은 시장)
 };
 
