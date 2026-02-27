@@ -226,16 +226,11 @@ interface NovelInfo {
 let readerPool: Map<string, VirtualReader> | null = null;
 const carryBuffer: Map<string, number> = new Map();
 
-// ── 신선도 — deeper long tail (GPT 검증) ──
+// ── 신선도 — stretched-exponential (콘텐츠 주의력 연구 기반) ──
+// 참고: NIH stretched-exponential decay, YouTube novelty curve
+// τ=48h (2일 반감기), β=0.6 (sub-exponential long tail)
 function freshness(hours: number): number {
-  if (hours < 6) return 2.0;       // 방금 올라옴
-  if (hours < 24) return 1.5;      // 당일
-  if (hours < 72) return 1.0;      // 3일
-  if (hours < 168) return 0.5;     // 7일
-  if (hours < 336) return 0.3;     // 14일
-  if (hours < 720) return 0.05;    // 30일
-  if (hours < 2160) return 0.01;   // 90일
-  return 0.003;                     // 거의 정지
+  return Math.max(0.003, 1.8 * Math.exp(-Math.pow(hours / 48, 0.6)));
 }
 
 // ── 업데이트 부스트 — 새 에피소드 올라오면 유입 증가 ──
@@ -312,7 +307,8 @@ function simulateBingeSession(
 
     currentEp++;
     if (Math.random() > continueProb) break;
-    continueProb *= 0.8;  // 70→56→45→36% 감쇠
+    // Royal Road 데이터: 1→2화 큰 이탈(작품 선택 실패), 이후 회차당 ~5% 이탈(콘텐츠 피로)
+    continueProb = i === 0 ? 0.55 : continueProb * 0.95;
   }
 
   reader.lastEp = Math.max(reader.lastEp, currentEp - 1);
@@ -352,8 +348,12 @@ function generateNewVisitors(
   pool: Map<string, VirtualReader>,
   buffer: Map<string, number>
 ): void {
-  // 시간대 변동 (sin 곡선 0.6~1.4)
-  const timeMul = 1.0 + 0.4 * Math.sin(hour * Math.PI / 12);
+  // 시간대 변동 — 비대칭 이중 harmonic (KST 21시=UTC 12시 피크)
+  // 저녁 상승 급함, 밤 유지 길다, 새벽 급락
+  const h = (hour + 24) % 24;
+  const timeMul = 1.0
+    + 0.35 * Math.sin((h - 6) * Math.PI / 12)   // 주 곡선: UTC 12 피크
+    + 0.10 * Math.sin((h - 6) * Math.PI / 6);    // 보조: 비대칭 보정
   const lambda = VIEW_CONFIG.NEW_VISITOR_RATE * novels.length * timeMul;
 
   // Poisson 근사: 정수 부분 + 소수 부분 확률
