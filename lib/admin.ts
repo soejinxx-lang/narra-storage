@@ -11,3 +11,4 @@ export function requireAdmin(req: NextRequest) {
         );
     }
 }
+
