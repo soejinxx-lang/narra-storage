@@ -28,7 +28,7 @@ export async function requireAuth(req: NextRequest): Promise<string | NextRespon
 }
 
 /**
- * 소유자 OR Admin 확인 미들웨어
+ * 소유자 OR Admin 확인 미들웨어 (듀얼 모드)
  * 성공: userId (string) 반환
  * 실패: 401 / 403 NextResponse 반환
  */
@@ -36,8 +36,19 @@ export async function requireOwnerOrAdmin(
     req: NextRequest,
     novelId: string
 ): Promise<string | NextResponse> {
-    const authHeader = req.headers.get("Authorization");
-    const userId = await getUserIdFromToken(authHeader);
+    // 1️⃣ HttpOnly 쿠키 우선
+    const cookieToken = req.cookies.get("session")?.value;
+    let userId: string | null = null;
+    let authHeader = req.headers.get("Authorization");
+
+    if (cookieToken) {
+        userId = await getUserIdFromToken(`Bearer ${cookieToken}`);
+    }
+
+    // 2️⃣ Bearer 헤더 폴백
+    if (!userId) {
+        userId = await getUserIdFromToken(authHeader);
+    }
 
     if (!userId) {
         return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
