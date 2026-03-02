@@ -413,6 +413,17 @@ export async function initDb() {
       ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'reader';
     `);
 
+    // ✅ 약관 동의 기록 (법적 증거 + 버전 추적)
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS agreed_to_terms_at TIMESTAMP;
+    `);
+
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS agreed_terms_version TEXT DEFAULT 'v1.0';
+    `);
+
     // 🔄 is_admin → role 통합 마이그레이션 (SSOT: role)
     await client.query(`
       DO $$ BEGIN

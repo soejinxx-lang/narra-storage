@@ -17,12 +17,20 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await initDb();
-    const { username, password, name } = await req.json();
+    const { username, password, name, agreedToTerms } = await req.json();
 
     // Validation
     if (!username || !password) {
       return NextResponse.json(
         { error: "Username and password are required" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // ✅ 약관 동의 필수 검증
+    if (!agreedToTerms) {
+      return NextResponse.json(
+        { error: "You must agree to the Terms of Service and Privacy Policy" },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -72,10 +80,10 @@ export async function POST(req: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user with terms agreement
     const userResult = await db.query(
-      `INSERT INTO users (username, password_hash, name)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (username, password_hash, name, agreed_to_terms_at, agreed_terms_version)
+       VALUES ($1, $2, $3, NOW(), 'v1.0')
        RETURNING id, username, name, created_at`,
       [username, passwordHash, name || null]
     );
