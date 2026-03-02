@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     } else {
       authorId = SYSTEM_ADMIN_ID;
     }
-    const exists = await db.query("SELECT 1 FROM novels WHERE id = $1", [id]);
+    const exists = await db.query("SELECT 1 FROM novels WHERE id = $1 AND deleted_at IS NULL", [id]);
     if (exists.rowCount && exists.rowCount > 0) {
       return NextResponse.json({ error: "NOVEL_ALREADY_EXISTS" }, { status: 409 });
     }
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
   const id = `novel-${Date.now()}`;
   const sourceLanguage = body.source_language ?? "ko";
 
-  const exists = await db.query("SELECT 1 FROM novels WHERE id = $1", [id]);
+  const exists = await db.query("SELECT 1 FROM novels WHERE id = $1 AND deleted_at IS NULL", [id]);
   if (exists.rowCount && exists.rowCount > 0) {
     return NextResponse.json({ error: "NOVEL_ALREADY_EXISTS" }, { status: 409 });
   }
