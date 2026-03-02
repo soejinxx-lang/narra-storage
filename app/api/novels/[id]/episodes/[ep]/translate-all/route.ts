@@ -15,11 +15,11 @@ export async function POST(
   const { id, ep } = await params;
 
   // 🔒 소유자 OR Admin
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
   const userId = authResult;
-
-  await initDb();
 
   const epNumber = Number(ep);
 

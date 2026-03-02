@@ -14,10 +14,10 @@ export async function DELETE(
   const { id: novelId, entityId } = await context.params;
 
   // 🔒 소유자 OR Admin 확인
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, novelId);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   try {
     const result = await db.query(

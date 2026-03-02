@@ -23,6 +23,7 @@ export async function GET(
     FROM episodes e
     JOIN novels n
       ON n.id = e.novel_id
+      AND n.deleted_at IS NULL
     LEFT JOIN episode_translations t
       ON t.episode_id = e.id
       AND t.is_public = TRUE

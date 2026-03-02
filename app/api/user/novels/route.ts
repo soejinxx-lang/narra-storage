@@ -7,11 +7,11 @@ import { requireAuth } from "../../../../lib/requireAuth";
  * 내 소설 목록 (로그인 유저 본인 것만)
  */
 export async function GET(req: NextRequest) {
+    await initDb();
+
     const authResult = await requireAuth(req);
     if (authResult instanceof NextResponse) return authResult;
     const userId = authResult;
-
-    await initDb();
 
     const result = await db.query(
         `SELECT 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
      FROM novels n
      LEFT JOIN episodes e ON e.novel_id = n.id
      LEFT JOIN episode_translations et ON et.episode_id = e.id
-     WHERE n.author_id = $1
+     WHERE n.author_id = $1 AND n.deleted_at IS NULL
      GROUP BY n.id
      ORDER BY n.created_at DESC`,
         [userId]

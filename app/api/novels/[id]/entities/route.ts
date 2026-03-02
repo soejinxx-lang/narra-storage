@@ -62,10 +62,10 @@ export async function POST(
   const { id: novelId } = await context.params;
 
   // 🔒 소유자 OR Admin 확인
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, novelId);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   const body = await req.json();
 

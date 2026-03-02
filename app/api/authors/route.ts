@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       SELECT u.id, u.username, u.name, u.bio, u.avatar_url, u.created_at, u.is_hidden, u.role,
              COUNT(n.id) as novel_count
       FROM users u
-      LEFT JOIN novels n ON n.author_id = u.id
+      LEFT JOIN novels n ON n.author_id = u.id AND n.deleted_at IS NULL
       ${whereClause}
       GROUP BY u.id
       ORDER BY u.created_at ASC
@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     FROM users u
     INNER JOIN novels n ON n.author_id = u.id
       AND n.is_hidden = FALSE
+      AND n.deleted_at IS NULL
       AND (n.source IS NULL OR n.source IN ('official', 'user'))
     WHERE u.role = 'author'
       AND u.is_hidden = FALSE

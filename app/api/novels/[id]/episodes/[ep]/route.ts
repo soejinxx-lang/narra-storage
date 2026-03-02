@@ -56,7 +56,7 @@ export async function GET(
       n.source_language
     FROM episodes e
     JOIN novels n ON n.id = e.novel_id
-    WHERE e.novel_id = $1 AND e.ep = $2
+    WHERE e.novel_id = $1 AND e.ep = $2 AND n.deleted_at IS NULL
     `,
     [id, epNumber]
   );
@@ -157,10 +157,10 @@ export async function POST(
   }
 
   // 소유자 OR Admin 확인
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   const { title, content } = await req.json();
 
@@ -172,7 +172,7 @@ export async function POST(
   }
 
   const novelRes = await db.query(
-    "SELECT source_language FROM novels WHERE id = $1",
+    "SELECT source_language FROM novels WHERE id = $1 AND deleted_at IS NULL",
     [id]
   );
 
@@ -241,10 +241,10 @@ export async function DELETE(
   }
 
   // 소유자 OR Admin 확인
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   // const audioRecords = await listEpisodeAudio(id, epNumber);
   // for (const record of audioRecords) {

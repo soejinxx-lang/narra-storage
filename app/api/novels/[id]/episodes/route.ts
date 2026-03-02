@@ -43,11 +43,11 @@ export async function POST(
   const { id } = await params;
 
   // 소유자 OR Admin 확인
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
   const userId = authResult;
-
-  await initDb();
 
   const body = await req.json();
 
@@ -113,7 +113,7 @@ export async function POST(
 
     // 원문 언어 조회 → 원문 자기 자신 번역 방지
     const novelLangRes = await client.query(
-      `SELECT source_language FROM novels WHERE id = $1`,
+      `SELECT source_language FROM novels WHERE id = $1 AND deleted_at IS NULL`,
       [id]
     );
     const srcLang = novelLangRes.rows[0]?.source_language ?? "ko";

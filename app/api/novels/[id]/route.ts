@@ -119,7 +119,7 @@ export async function PATCH(
   values.push(id);
 
   const result = await db.query(
-    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING id, title, description, cover_url, source_language, genre, genre_taxonomy, is_original, serial_status, episode_format, source`,
+    `UPDATE novels SET ${updates.join(", ")} WHERE id = $${paramIndex} AND deleted_at IS NULL RETURNING id, title, description, cover_url, source_language, genre, genre_taxonomy, is_original, serial_status, episode_format, source`,
     values
   );
 

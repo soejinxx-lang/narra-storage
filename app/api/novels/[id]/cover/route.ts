@@ -8,7 +8,7 @@ import { requireOwnerOrAdmin } from "../../../../../lib/requireAuth";
 
 async function saveCoverUrl(id: string, url: string) {
   const result = await db.query(
-    "UPDATE novels SET cover_url = $1 WHERE id = $2 RETURNING id",
+    "UPDATE novels SET cover_url = $1 WHERE id = $2 AND deleted_at IS NULL RETURNING id",
     [url, id]
   );
 
@@ -41,10 +41,10 @@ export async function POST(
   const { id } = await context.params;
 
   // 🔒 소유자 OR Admin
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   console.log("[STORAGE COVER] hit");
   console.log(

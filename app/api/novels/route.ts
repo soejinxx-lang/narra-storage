@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   let result;
   if (userIsAdmin) {
     result = await db.query(
-      `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format, is_hidden, source FROM novels`
+      `SELECT id, title, description, cover_url, source_language, author_id, genre, is_original, serial_status, episode_format, is_hidden, source, deleted_at FROM novels`
     );
   } else {
     result = await db.query(
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
        FROM novels n
        LEFT JOIN users u ON n.author_id = u.id
        WHERE n.is_hidden = FALSE
+         AND n.deleted_at IS NULL
          AND (u.is_hidden = FALSE OR u.is_hidden IS NULL)`
     );
   }

@@ -22,7 +22,7 @@ export async function GET(
 
     // 해당 작가의 소설 목록
     const novelsResult = await db.query(
-        "SELECT * FROM novels WHERE author_id = $1 ORDER BY id ASC",
+        "SELECT * FROM novels WHERE author_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
         [id]
     );
 
