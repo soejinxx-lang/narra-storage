@@ -507,6 +507,7 @@ export async function initDb() {
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS ls_customer_id TEXT;`);
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS ls_subscription_id TEXT;`);
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP;`);
 
     initialized = true;
   } finally {
