@@ -45,10 +45,10 @@ export async function DELETE(
 ) {
   const { id } = await context.params;
 
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   const snapshot = await db.query(
     `SELECT n.id, n.title, n.author_id, 
@@ -68,7 +68,7 @@ export async function DELETE(
   console.log(`🗑️ SOFT DELETE NOVEL | ${new Date().toISOString()} | id=${novel.id} | title="${novel.title}" | author=${novel.author_id} | episodes=${novel.episode_count}`);
 
   await db.query(
-    "UPDATE novels SET deleted_at = NOW() WHERE id = $1",
+    "UPDATE novels SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
     [id]
   );
 
@@ -84,10 +84,10 @@ export async function PATCH(
 ) {
   const { id } = await context.params;
 
+  await initDb();
+
   const authResult = await requireOwnerOrAdmin(req, id);
   if (authResult instanceof NextResponse) return authResult;
-
-  await initDb();
 
   const body = await req.json();
 

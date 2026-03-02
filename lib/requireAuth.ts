@@ -73,7 +73,7 @@ export async function requireOwnerOrAdmin(
 
     // 소설 소유자 확인
     const novelCheck = await db.query(
-        `SELECT author_id FROM novels WHERE id = $1`,
+        `SELECT author_id FROM novels WHERE id = $1 AND deleted_at IS NULL`,
         [novelId]
     );
 
