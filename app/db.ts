@@ -503,6 +503,11 @@ export async function initDb() {
       );
     `);
 
+    // ✅ Lemon Squeezy 구독 연동
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS ls_customer_id TEXT;`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS ls_subscription_id TEXT;`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
+
     initialized = true;
   } finally {
     client.release();
