@@ -6,9 +6,9 @@ import { isAdmin } from "../../../../lib/auth";
 // Plan별 쿼터 정의
 const PLAN_QUOTAS: Record<string, { novel: number; translation: number; entity: number }> = {
     free: { novel: 3, translation: 3, entity: 5 },
-    basic: { novel: 10, translation: 30, entity: 50 },
-    author_pro: { novel: 999, translation: 999, entity: 999 },
     reader_premium: { novel: 3, translation: 3, entity: 5 }, // 독자 Premium은 작가 쿼터 미변경
+    author_starter: { novel: 10, translation: 15, entity: 20 },
+    author_pro: { novel: 999, translation: 999, entity: 999 },
 };
 
 /**
