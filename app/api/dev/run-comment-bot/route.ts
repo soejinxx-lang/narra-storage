@@ -517,23 +517,33 @@ function pickComment(
 // ============================================================
 // 규칙 6번: 시간 분산 — 최근 24시간 60% (GPT 피드백)
 // ============================================================
-function randomTimestamp(): Date {
+function randomTimestamp(episodeCreatedAt?: Date): Date {
     const now = Date.now();
+    const earliest = episodeCreatedAt ? episodeCreatedAt.getTime() : now - 7 * 24 * 60 * 60 * 1000;
+    const range = now - earliest;
+
+    if (range <= 0) return new Date(now);
+
     const rand = Math.random();
     let offset: number;
 
     if (rand < 0.60) {
-        // 60% 최근 24시간
-        offset = Math.random() * 24 * 60 * 60 * 1000;
+        // 60% 최근 24시간 (범위 내)
+        offset = Math.random() * Math.min(24 * 60 * 60 * 1000, range);
     } else if (rand < 0.85) {
-        // 25% 1-3일
-        offset = (1 + Math.random() * 2) * 24 * 60 * 60 * 1000;
+        // 25% 1-3일 (범위 내)
+        offset = Math.random() * Math.min(3 * 24 * 60 * 60 * 1000, range);
     } else {
-        // 15% 3-7일
-        offset = (3 + Math.random() * 4) * 24 * 60 * 60 * 1000;
+        // 15% 3-7일 (범위 내)
+        offset = Math.random() * Math.min(7 * 24 * 60 * 60 * 1000, range);
     }
 
-    return new Date(now - offset);
+    const result = new Date(now - offset);
+    // 에피소드 업로드일보다 이전이면 보정
+    if (episodeCreatedAt && result.getTime() < earliest) {
+        return new Date(earliest + Math.random() * range);
+    }
+    return result;
 }
 
 // ============================================================
@@ -2816,7 +2826,7 @@ export async function GET(req: NextRequest) {
 
         // 1. 에피소드 ID 조회
         const episodeResult = await db.query(
-            `SELECT id FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
+            `SELECT id, created_at FROM episodes WHERE novel_id = $1 ORDER BY ep ASC LIMIT 1`,
             [novelId]
         );
 
@@ -2828,6 +2838,7 @@ export async function GET(req: NextRequest) {
         }
 
         const episodeId = episodeResult.rows[0].id;
+        const episodeCreatedAt = new Date(episodeResult.rows[0].created_at);
         console.log(`✅ Target episode: ${episodeId} `);
 
         // 1.5. 캐릭터 이름 로딩 (context-required 템플릿용)
@@ -2966,7 +2977,7 @@ export async function GET(req: NextRequest) {
                     }
                 }
                 content = humanize(content);
-                let createdAt = randomTimestamp();
+                let createdAt = randomTimestamp(episodeCreatedAt);
 
                 // 규칙 10: 같은 봇 댓글 간 5분~3시간 간격
                 if (lastCommentTime) {
