@@ -509,6 +509,36 @@ export async function initDb() {
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP;`);
 
+    // ✅ E2E 테스트 결과 히스토리 (Playwright → API → DB)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS test_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        timestamp TIMESTAMP DEFAULT NOW(),
+        total INTEGER NOT NULL,
+        passed INTEGER NOT NULL,
+        failed INTEGER NOT NULL,
+        skipped INTEGER DEFAULT 0,
+        duration INTEGER NOT NULL,
+        environment TEXT DEFAULT 'local',
+        commit_hash TEXT,
+        branch TEXT
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS test_results (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id UUID NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
+        test_path TEXT NOT NULL,
+        suite TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        duration INTEGER,
+        error_message TEXT,
+        error_stack TEXT
+      );
+    `);
+
     initialized = true;
   } finally {
     client.release();
