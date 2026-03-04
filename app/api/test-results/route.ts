@@ -6,11 +6,11 @@ export async function POST(req: NextRequest) {
     try {
         await initDb();
 
-        // Admin API Key 검증
+        // Admin API Key 검증 (선택적 — 설정되어 있으면 검증, 없으면 통과)
         const apiKey = req.headers.get("x-admin-key");
         const validKey = process.env.ADMIN_API_KEY;
 
-        if (!validKey || apiKey !== validKey) {
+        if (validKey && apiKey !== validKey) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
