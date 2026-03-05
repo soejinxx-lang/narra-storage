@@ -155,6 +155,7 @@ export interface CallPromptArgs {
     }[];
     primaryGenre: string;
     targetCommentCount: number;
+    examples?: string[];  // few-shot 예시 (lang.templates에서 랜덤 샘플링, 프롬프트 맨 마지막 삽입)
 }
 
 // ============================================================

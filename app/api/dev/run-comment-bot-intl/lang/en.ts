@@ -335,6 +335,10 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            : '';
+
         return `You just read a chapter on your phone. Type what comes to mind first. Don't think about it.
 
 ${args.sceneContext || 'N/A'}
@@ -345,7 +349,7 @@ No summaries. No explanations. No reflections. Don't describe what happened.
 Comment like you're half-distracted. Some thoughts don't finish.
 No emojis. Use pronouns after first mention.
 
-Generate ${args.targetCommentCount} comments.
+Generate ${args.targetCommentCount} comments.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -354,6 +358,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            : '';
 
         return `You just read a chapter on your phone. You liked it. Type fast.
 
@@ -364,7 +372,7 @@ ${profileList}
 Show excitement but don't explain why. No analysis. No "it adds depth" or "the way he".
 Mostly lowercase. No emojis.
 
-Generate ${args.targetCommentCount} comments.
+Generate ${args.targetCommentCount} comments.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -373,6 +381,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            : '';
 
         return `You read a chapter but you weren't really paying attention. Type something anyway.
 
@@ -383,7 +395,7 @@ ${profileList}
 You're confused, bored, or got the wrong idea. Don't correct yourself.
 No emojis.
 
-Generate ${args.targetCommentCount} comments.
+Generate ${args.targetCommentCount} comments.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -392,6 +404,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            : '';
 
         return `You just finished a chapter. Drop a quick hot take, not a review.
 
@@ -402,11 +418,16 @@ ${profileList}
 One thought max. No "adds depth" "nice touch" "the way he" "sets the mood".
 No literary analysis. No emojis.
 
-Generate ${args.targetCommentCount} comments.
+Generate ${args.targetCommentCount} comments.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `You're scrolling comments on a web novel chapter. Type like you're in a community, not writing a review.
+    buildCall5Prompt: (args) => {
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            : '';
+
+        return `You're scrolling comments on a web novel chapter. Type like you're in a community, not writing a review.
 
 ${args.sceneContext || 'N/A'}
 
@@ -418,8 +439,9 @@ Rules:
 - Some comments are just vibes: "bruh" "nah" "wait what"
 No emojis.
 
-Generate ${args.targetCommentCount} comments.
-JSON { "comments": [...] }`,
+Generate ${args.targetCommentCount} comments.${exampleBlock}
+JSON { "comments": [...] }`;
+    },
 
     buildReplyPrompt: (parentComment) => `You are a Royal Road reader. You just saw this comment:
 

@@ -334,6 +334,10 @@ ${trimmedContent}`,
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nEjemplos de comentarios reales (escribe con un estilo similar a estos):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nEscribe ya:`
+            : '';
+
         return `Acabas de leer un capítulo en tu celular. Escribe lo primero que se te viene a la mente. No lo pienses.
 
 ${args.sceneContext || 'N/A'}
@@ -344,7 +348,7 @@ Sin resúmenes. Sin explicaciones. Sin reflexiones. No describas lo que pasó.
 Comenta como si estuvieras medio distraído/a. Algunos pensamientos no terminan.
 Sin emojis. Usa pronombres después de la primera mención.
 
-Genera ${args.targetCommentCount} comentarios.
+Genera ${args.targetCommentCount} comentarios.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -353,6 +357,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nEjemplos de comentarios reales (escribe con un estilo similar a estos):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nEscribe ya:`
+            : '';
 
         return `Acabas de leer un capítulo en tu celular. Te gustó. Escribe rápido.
 
@@ -363,7 +371,7 @@ ${profileList}
 Muestra emoción pero no expliques por qué. Sin análisis. Sin "agrega profundidad" ni "la forma en que él".
 Mayormente minúsculas. Sin emojis.
 
-Genera ${args.targetCommentCount} comentarios.
+Genera ${args.targetCommentCount} comentarios.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -372,6 +380,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nEjemplos de comentarios reales (escribe con un estilo similar a estos):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nEscribe ya:`
+            : '';
 
         return `Leíste un capítulo pero no estabas prestando mucha atención. Escribe algo de todas formas.
 
@@ -382,7 +394,7 @@ ${profileList}
 Estás confundido/a, aburrido/a, o entendiste mal. No te corrijas.
 Sin emojis.
 
-Genera ${args.targetCommentCount} comentarios.
+Genera ${args.targetCommentCount} comentarios.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -391,6 +403,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nEjemplos de comentarios reales (escribe con un estilo similar a estos):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nEscribe ya:`
+            : '';
 
         return `Acabas de terminar un capítulo. Suelta una opinión rápida, no una reseña.
 
@@ -401,11 +417,16 @@ ${profileList}
 Un pensamiento máximo. Sin "agrega profundidad" "buen detalle" "la forma en que" "establece el ambiente".
 Sin análisis literario. Sin emojis.
 
-Genera ${args.targetCommentCount} comentarios.
+Genera ${args.targetCommentCount} comentarios.${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `Estás leyendo comentarios en un capítulo de novela web. Escribe como si estuvieras en una comunidad, no escribiendo una reseña.
+    buildCall5Prompt: (args) => {
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\nEjemplos de comentarios reales (escribe con un estilo similar a estos):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nEscribe ya:`
+            : '';
+
+        return `Estás leyendo comentarios en un capítulo de novela web. Escribe como si estuvieras en una comunidad, no escribiendo una reseña.
 
 ${args.sceneContext || 'N/A'}
 
@@ -417,8 +438,9 @@ Reglas:
 - Algunos comentarios son solo actitud: "wey" "neta" "va" "jaja"
 Sin emojis.
 
-Genera ${args.targetCommentCount} comentarios.
-JSON { "comments": [...] }`,
+Genera ${args.targetCommentCount} comentarios.${exampleBlock}
+JSON { "comments": [...] }`;
+    },
 
     buildReplyPrompt: (parentComment) => `Eres un lector de novelas web en español. Acabas de ver este comentario:
 

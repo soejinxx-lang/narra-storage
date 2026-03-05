@@ -414,7 +414,11 @@ function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode
 // ============================================================
 // Azure GPT / OpenAI Review 호출 (한국어 route.ts 동일)
 // ============================================================
-async function callAzureGPT(prompt: string): Promise<string> {
+async function callAzureGPT(
+    prompt: string,
+    temperature: number = 0.8,
+    maxTokens: number = 400,  // 1200→400: 댓글 생성 특화 (큰 budget = 설명형 문장 유도)
+): Promise<string> {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.AZURE_OPENAI_API_KEY;
     const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-10-01-preview';
@@ -439,8 +443,8 @@ async function callAzureGPT(prompt: string): Promise<string> {
             headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
             body: JSON.stringify({
                 messages: [{ role: 'user', content: prompt }],
-                temperature: 0.8,
-                max_tokens: 1200,
+                temperature,
+                max_tokens: maxTokens,
             }),
         });
 
@@ -456,6 +460,60 @@ async function callAzureGPT(prompt: string): Promise<string> {
         console.error('❌ Azure GPT call failed:', err);
         return '';
     }
+}
+
+// ============================================================
+// Few-shot 예시 샘플링 (lang.templates → buildCallXPrompt 주입용)
+// ============================================================
+
+/**
+ * AI 클리셰 필터: 기존 수집 examples에서 평균회귀 유발 패턴 제거
+ */
+function isGoodExample(ex: string): boolean {
+    return (
+        ex.length < 80 &&
+        !ex.startsWith('This ') &&    // "This chapter was amazing" 형
+        !ex.startsWith('I love ') &&  // "I love how~" 형
+        !ex.startsWith('I really ') &&
+        !ex.includes("Can't wait") &&
+        !ex.includes('This is so')
+    );
+}
+
+/**
+ * tone별 최소 1개 보장 + remaining 랜덤 샘플링
+ * 순수 랜덤 정렬 방식은 특정 tone이 0개 나올 수 있음 → 의도한 스타일 앵커 실패
+ */
+function sampleExamples(
+    templates: Record<string, string[]>,
+    tones: string[],
+    count: number
+): string[] {
+    const result: string[] = [];
+    const used = new Set<string>();
+
+    // 1단계: tone별 최소 1개 보장
+    for (const t of tones) {
+        const pool = (templates[t] || []).filter(ex => !used.has(ex) && isGoodExample(ex));
+        if (pool.length > 0) {
+            const picked = pool[Math.floor(Math.random() * pool.length)];
+            result.push(picked);
+            used.add(picked);
+        }
+    }
+
+    // 2단계: remaining 랜덤 (전체 pool에서)
+    const fullPool = tones
+        .flatMap(t => templates[t] || [])
+        .filter(ex => !used.has(ex) && isGoodExample(ex));
+    const shuffled = fullPool.sort(() => Math.random() - 0.5);
+    for (const ex of shuffled) {
+        if (result.length >= count) break;
+        result.push(ex);
+        used.add(ex);
+    }
+
+    return result.sort(() => Math.random() - 0.5);
 }
 
 async function callOpenAIReview(prompt: string): Promise<string> {
@@ -1068,17 +1126,43 @@ async function generateDeepContextComments(
         targetCommentCount: 0,  // filled per call
     };
 
-    // Build prompts via LanguagePack
-    const call1 = lang.buildCall1Prompt({ ...promptArgs, readerViews: immersedViews, targetCommentCount: Math.min(immersedViews.length * 2, 8) });
-    const call2 = lang.buildCall2Prompt({ ...promptArgs, readerViews: overreactorViews, targetCommentCount: Math.min(overreactorViews.length * 2, 6) });
-    const call3 = lang.buildCall3Prompt({ ...promptArgs, readerViews: chaosViews, targetCommentCount: Math.min(chaosViews.length * 2, 4) });
-    const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length * 2, 4) });
-    const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 15 });
+    // ── Few-shot 예시 샘플링 (lang.templates → 각 call 프롬프트 맨 마지막 주입) ──
+    // 일본어는 call4/5에서 theorist tone을 강제 포함 (복선추측/설정고찰 활성화)
+    const isJa = lang.code === 'ja';
+    const call1Examples = sampleExamples(lang.templates, ['short_reactor', 'emotional'], 3);
+    const call2Examples = sampleExamples(lang.templates, ['emotional', 'cheerleader'], 4);
+    const call3Examples = [
+        ...sampleExamples(lang.templates, ['critic'], 3),
+        // chaos call 하드코딩 믹스: 언어별 chaos 앵커 강화
+        ...(isJa
+            ? ['は？', 'これ誰だっけ', 'え、終わり？']
+            : ['lmao what', '??????', 'author drunk']),
+    ];
+    const call4Examples = sampleExamples(
+        lang.templates,
+        isJa ? ['theorist', 'short_reactor'] : ['theorist', 'critic'],
+        4
+    );
+    const call5Examples = sampleExamples(lang.templates, ['short_reactor', 'theorist'], 3);
 
-    // 5회 병렬 호출
-    console.log('🧠 [intl] Stage 4: Persona-based GPT calls...');
-    const prompts = [call1, call2, call3, call4, call5].filter(Boolean) as string[];
-    const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
+    // Build prompts via LanguagePack (examples 주입)
+    const call1 = lang.buildCall1Prompt({ ...promptArgs, readerViews: immersedViews, targetCommentCount: Math.min(immersedViews.length * 2, 8), examples: call1Examples });
+    const call2 = lang.buildCall2Prompt({ ...promptArgs, readerViews: overreactorViews, targetCommentCount: Math.min(overreactorViews.length * 2, 6), examples: call2Examples });
+    const call3 = lang.buildCall3Prompt({ ...promptArgs, readerViews: chaosViews, targetCommentCount: Math.min(chaosViews.length * 2, 4), examples: call3Examples });
+    const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length * 2, 4), examples: call4Examples });
+    const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 15, examples: call5Examples });
+
+    // 5회 병렬 호출 (call별 temperature 차등)
+    // call3(chaos) = 1.0 (1.1은 Azure에서 JSON 깨짐 위험), 나머지는 0.7~0.8
+    console.log('🧠 [intl] Stage 4: Persona-based GPT calls (few-shot enabled)...');
+    const [raw1, raw2, raw3, raw4, raw5] = await Promise.all([
+        call1 ? callAzureGPT(call1, 0.7) : Promise.resolve(''),
+        call2 ? callAzureGPT(call2, 0.8) : Promise.resolve(''),
+        call3 ? callAzureGPT(call3, 1.0) : Promise.resolve(''),  // chaos: high entropy
+        call4 ? callAzureGPT(call4, 0.8) : Promise.resolve(''),
+        callAzureGPT(call5, 0.7),
+    ]);
+    const rawResults = [raw1, raw2, raw3, raw4, raw5];
 
     // 결과 합치기
     const safeComments: string[] = [];
@@ -1114,14 +1198,14 @@ async function generateDeepContextComments(
         }
     };
 
-    let resultIdx = 0;
-    if (call1) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
-    if (call2) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
-    if (call3) chaosComments.push(...parseComments(rawResults[resultIdx++] || null));
-    if (call4) safeComments.push(...parseComments(rawResults[resultIdx++] || null));
+    // rawResults[0~4] = [call1, call2, call3, call4, call5] 고정 (call 없으면 빈 문자열)
+    safeComments.push(...parseComments(rawResults[0] || null));   // call1: immersed
+    safeComments.push(...parseComments(rawResults[1] || null));   // call2: overreactor
+    chaosComments.push(...parseComments(rawResults[2] || null));  // call3: chaos
+    safeComments.push(...parseComments(rawResults[3] || null));   // call4: casual
 
     // 중간밀도
-    const midComments: string[] = parseComments(rawResults[resultIdx++] || null)
+    const midComments: string[] = parseComments(rawResults[4] || null)
         .filter(c => c.length >= lang.midDensityRange[0] && c.length <= lang.midDensityRange[1]);
 
     console.log(`📊 [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);

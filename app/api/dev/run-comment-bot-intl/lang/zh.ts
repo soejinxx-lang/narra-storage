@@ -53,6 +53,10 @@ ${trimmedContent}
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
 
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\n真实读者评论示例（用类似这样的风格写）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n写吧：`
+            : '';
+
         return `读完章节。写下第一反应。
 
 ${args.sceneContext || 'N/A'}
@@ -62,7 +66,7 @@ ${profileList}
 不要总结。不要分析。随便写。
 必须用中文。禁止英语。
 
-生成${args.targetCommentCount}条评论。
+生成${args.targetCommentCount}条评论。${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -71,6 +75,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\n真实读者评论示例（用类似这样的风格写）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n写吧：`
+            : '';
 
         return `读完了。很爽。快速打字。
 
@@ -81,7 +89,7 @@ ${profileList}
 展示兴奋但不解释原因。禁止分析。
 必须用中文。禁止英语。
 
-生成${args.targetCommentCount}条评论。
+生成${args.targetCommentCount}条评论。${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -90,6 +98,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\n真实读者评论示例（用类似这样的风格写）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n写吧：`
+            : '';
 
         return `读了但没专心。随便写点。
 
@@ -100,7 +112,7 @@ ${profileList}
 迷糊、无聊、记错了。不纠正。
 必须用中文。绝对不要用英语。
 
-生成${args.targetCommentCount}条评论。
+生成${args.targetCommentCount}条评论。${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
@@ -109,6 +121,10 @@ JSON { "comments": [...] }`;
         const profileList = args.readerViews.map((rv, i) =>
             `${i + 1}. ${rv.profile.personaTone}\n   ${rv.view}`
         ).join('\n\n');
+
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\n真实读者评论示例（用类似这样的风格写）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n写吧：`
+            : '';
 
         return `读完章节。写即时感想。
 
@@ -119,11 +135,16 @@ ${profileList}
 一个想法就够。禁止文学分析。
 必须用中文。禁止英语。
 
-生成${args.targetCommentCount}条评论。
+生成${args.targetCommentCount}条评论。${exampleBlock}
 JSON { "comments": [...] }`;
     },
 
-    buildCall5Prompt: (args) => `网文章节评论区。以社区成员身份写。
+    buildCall5Prompt: (args) => {
+        const exampleBlock = args.examples && args.examples.length > 0
+            ? `\n真实读者评论示例（用类似这样的风格写）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n写吧：`
+            : '';
+
+        return `网文章节评论区。以社区成员身份写。
 
 ${args.sceneContext || 'N/A'}
 
@@ -134,8 +155,9 @@ ${args.sceneContext || 'N/A'}
 
 必须用中文。绝对不要用英语。
 
-生成${args.targetCommentCount}条评论。
-JSON { "comments": [...] }`,
+生成${args.targetCommentCount}条评论。${exampleBlock}
+JSON { "comments": [...] }`;
+    },
 
     buildReplyPrompt: (parentComment) => `网文评论。回复这条:
 
