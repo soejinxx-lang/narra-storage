@@ -1626,16 +1626,50 @@ export async function runCommentBotIntl(
         }
         const tone = pickPersonalityTone(personalityWeights);
 
-        // 1봇 1댓글: 중간밀도 우선, 없으면 deep
+        // 1봇 1댓글: 30% 확률로 템플릿 직접 사용, 나머지는 GPT 풀
         let content: string;
-        if (midDensityPool.length > 0) {
-            content = midDensityPool.pop()!;
-        } else if (deepComments.length > 0) {
-            content = deepComments.pop()!;
+        const useTemplate = Math.random() < 0.30;
+
+        if (useTemplate) {
+            // tone에 맞는 템플릿 먼저, 없으면 전체에서 랜덤
+            const toneTemplates = lang.templates[tone] ?? [];
+            const allTemplates = Object.values(lang.templates).flat();
+            const pool = toneTemplates.length > 0 ? toneTemplates : allTemplates;
+
+            if (pool.length > 0) {
+                // usedTemplates 중복 방지 (최대 3회 시도)
+                let picked = pool[Math.floor(Math.random() * pool.length)];
+                for (let t = 0; t < 3; t++) {
+                    if (!usedTemplates.has(picked)) break;
+                    picked = pool[Math.floor(Math.random() * pool.length)];
+                }
+                usedTemplates.add(picked);
+                content = picked;
+            } else if (midDensityPool.length > 0) {
+                content = midDensityPool.pop()!;
+            } else if (deepComments.length > 0) {
+                content = deepComments.pop()!;
+            } else {
+                break;
+            }
         } else {
-            break;
+            // GPT 풀 우선: 중간밀도 → deep → 없으면 템플릿 fallback
+            if (midDensityPool.length > 0) {
+                content = midDensityPool.pop()!;
+            } else if (deepComments.length > 0) {
+                content = deepComments.pop()!;
+            } else {
+                // GPT 풀 소진 시 템플릿으로 fallback
+                const allTemplates = Object.values(lang.templates).flat();
+                if (allTemplates.length > 0) {
+                    content = allTemplates[Math.floor(Math.random() * allTemplates.length)];
+                } else {
+                    break;
+                }
+            }
         }
         content = lang.humanize(content);
+
 
         // 스케줄링된 공개 시간 사용
         const scheduledAt = scheduledTimes[i] || new Date();
