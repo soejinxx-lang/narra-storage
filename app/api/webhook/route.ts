@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import db, { initDb } from "../../../db";
-import { isAdmin } from "../../../../lib/auth";
+import db, { initDb } from "../../db";
+import { isAdmin } from "../../../lib/auth";
 
 /**
  * GET /api/webhook/check?id=xxx — 중복 체크
