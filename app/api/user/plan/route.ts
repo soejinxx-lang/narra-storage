@@ -3,13 +3,7 @@ import db, { initDb } from "../../../db";
 import { requireAuth } from "../../../../lib/requireAuth";
 import { isAdmin } from "../../../../lib/auth";
 
-// Plan별 쿼터 정의
-const PLAN_QUOTAS: Record<string, { novel: number; translation: number; entity: number }> = {
-    free: { novel: 3, translation: 3, entity: 5 },
-    reader_premium: { novel: 3, translation: 3, entity: 5 }, // 독자 Premium은 작가 쿼터 미변경
-    author_starter: { novel: 10, translation: 15, entity: 20 },
-    author_pro: { novel: 999, translation: 999, entity: 999 },
-};
+import { PLAN_QUOTAS } from "../../../../lib/plans";
 
 /**
  * GET /api/user/plan
@@ -72,6 +66,22 @@ export async function GET(req: NextRequest) {
         plan.plan_type = "free";
     }
 
+    // past_due 3일 초과 → 자동 다운그레이드 (grace period)
+    if (plan.plan_status === "past_due" && plan.last_event_at) {
+        const daysSince = (Date.now() - new Date(plan.last_event_at).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince > 3) {
+            const freeQuota = PLAN_QUOTAS.free;
+            await db.query(
+                `UPDATE user_plans SET plan_type = 'free', plan_status = 'expired',
+                 translation_limit = $2, novel_limit = $3, entity_extract_limit = $4
+                 WHERE user_id = $1`,
+                [userId, freeQuota.translation, freeQuota.novel, freeQuota.entity]
+            );
+            plan.plan_type = "free";
+            plan.plan_status = "expired";
+        }
+    }
+
     return NextResponse.json(plan);
 }
 
@@ -89,33 +99,40 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { user_id, plan_type, ls_customer_id, ls_subscription_id, expires_at, trial_ends_at } = body;
+    const { user_id, plan_type, ls_customer_id, ls_subscription_id,
+            expires_at, trial_ends_at, plan_status, plan_source, last_event_at } = body;
 
     if (!user_id) {
         return NextResponse.json({ error: "MISSING_USER_ID" }, { status: 400 });
     }
 
     const planKey = plan_type ?? "free";
-    const quota = PLAN_QUOTAS[planKey] ?? PLAN_QUOTAS.free;
+    const quota = PLAN_QUOTAS[planKey as keyof typeof PLAN_QUOTAS] ?? PLAN_QUOTAS.free;
 
-    // UPSERT
+    // UPSERT with new columns
     await db.query(
         `INSERT INTO user_plans (user_id, plan_type, ls_customer_id, ls_subscription_id, expires_at, trial_ends_at,
-                             translation_limit, novel_limit, entity_extract_limit, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                             translation_limit, novel_limit, entity_extract_limit, started_at,
+                             plan_status, plan_source, last_event_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11, $12)
      ON CONFLICT (user_id) DO UPDATE SET
        plan_type = COALESCE($2, user_plans.plan_type),
        ls_customer_id = COALESCE($3, user_plans.ls_customer_id),
        ls_subscription_id = COALESCE($4, user_plans.ls_subscription_id),
        expires_at = COALESCE($5, user_plans.expires_at),
        trial_ends_at = COALESCE($6, user_plans.trial_ends_at),
-       translation_limit = $7,
-       novel_limit = $8,
-       entity_extract_limit = $9`,
-        [user_id, planKey, ls_customer_id ?? null, ls_subscription_id ?? null,
+       translation_limit = CASE WHEN $2 IS NOT NULL THEN $7 ELSE user_plans.translation_limit END,
+       novel_limit = CASE WHEN $2 IS NOT NULL THEN $8 ELSE user_plans.novel_limit END,
+       entity_extract_limit = CASE WHEN $2 IS NOT NULL THEN $9 ELSE user_plans.entity_extract_limit END,
+       plan_status = COALESCE($10, user_plans.plan_status),
+       plan_source = COALESCE($11, user_plans.plan_source),
+       last_event_at = COALESCE($12, user_plans.last_event_at)`,
+        [user_id, plan_type ?? null, ls_customer_id ?? null, ls_subscription_id ?? null,
             expires_at ?? null, trial_ends_at ?? null,
-            quota.translation, quota.novel, quota.entity]
+            quota.translation, quota.novel, quota.entity,
+            plan_status ?? null, plan_source ?? null, last_event_at ?? null]
     );
 
     return NextResponse.json({ ok: true });
 }
+

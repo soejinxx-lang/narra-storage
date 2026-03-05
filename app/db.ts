@@ -509,6 +509,34 @@ export async function initDb() {
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP;`);
 
+    // ✅ 결제 시스템 안정화 (Phase 3)
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS plan_status TEXT DEFAULT 'active';`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS plan_source TEXT DEFAULT 'system';`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMP;`);
+
+    // ✅ Webhook 중복 처리 방지 (idempotency)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS processed_webhooks (
+        event_id TEXT PRIMARY KEY,
+        event_name TEXT NOT NULL,
+        processed_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // ✅ 구독 이벤트 감사 로그
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        event_type TEXT NOT NULL,
+        event_source TEXT DEFAULT 'webhook',
+        plan_before TEXT,
+        plan_after TEXT,
+        raw_data JSONB,
+        received_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // ✅ E2E 테스트 결과 히스토리 (Playwright → API → DB)
     await client.query(`
       CREATE TABLE IF NOT EXISTS test_runs (
