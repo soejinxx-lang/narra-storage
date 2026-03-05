@@ -866,7 +866,49 @@ async function autoGenerateComments(): Promise<void> {
       + `[${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
     );
 
+    // ── 인터리빙: 전체 타임슬롯을 한번에 생성 후 섞어서 언어별 배분 ──
+    // 각 언어가 독립적으로 타임슬롯을 뽑으면 ko덩어리→en덩어리→ja덩어리가 생김.
+    // 대신 publishedAt~now 구간의 타임포인트를 toAdd개 생성 후 Fisher-Yates 셔플로
+    // 완전히 섞은 다음 앞에서부터 count개씩 각 언어에 배분한다.
+    const spanMs = Date.now() - publishedAt.getTime();
+    const allTimestamps: Date[] = [];
+    for (let n = 0; n < toAdd; n++) {
+      const roll = Math.random();
+      let offsetMs: number;
+      if (spanMs <= 0) {
+        // 에피소드가 방금 게시된 경우 → 미래 분산
+        offsetMs = (1 + Math.random() * 14) * 60 * 1000;
+        allTimestamps.push(new Date(Date.now() + offsetMs));
+      } else if (roll < 0.50) {
+        // 50% → 첫 24시간 내
+        const first24h = Math.min(spanMs, 24 * 3600 * 1000);
+        offsetMs = Math.random() * first24h;
+        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+      } else if (roll < 0.75) {
+        // 25% → 1~7일 내
+        const first7d = Math.min(spanMs, 7 * 24 * 3600 * 1000);
+        offsetMs = 24 * 3600 * 1000 + Math.random() * (first7d - 24 * 3600 * 1000);
+        if (offsetMs < 0) offsetMs = Math.random() * spanMs;
+        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+      } else {
+        // 25% → 전체 기간 랜덤
+        offsetMs = Math.random() * spanMs;
+        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+      }
+    }
+
+    // Fisher-Yates shuffle — 모든 언어 타임슬롯을 완전히 섞음
+    for (let i = allTimestamps.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allTimestamps[i], allTimestamps[j]] = [allTimestamps[j], allTimestamps[i]];
+    }
+
+    // 언어별로 슬롯 배분 (앞에서부터 count개씩)
+    let slotOffset = 0;
     for (const { lang, count } of langAllocations) {
+      const langTimestamps = allTimestamps.slice(slotOffset, slotOffset + count);
+      slotOffset += count;
+
       try {
         const langPack = await loadLangPack(lang);
         const botResult = await runCommentBotIntl(
@@ -878,6 +920,8 @@ async function autoGenerateComments(): Promise<void> {
           episode_id,
           true,           // backfill
           publishedAt,
+          [],             // recurringReaders
+          langTimestamps, // 인터리빙된 타임슬롯 주입
         );
         totalAdded += botResult.inserted;
       } catch (langErr) {

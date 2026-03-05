@@ -1403,6 +1403,7 @@ export async function runCommentBotIntl(
     backfill: boolean = false,
     publishedAt?: Date,
     recurringReaders: RecurringReader[] = [],
+    externalTimestamps?: Date[],  // 외부 주입 타임슬롯 (인터리빙용)
 ): Promise<CommentBotResult> {
     const totalCount = Math.round(baseCount * density);
     let personalityWeights = lang.defaultWeights;
@@ -1500,10 +1501,12 @@ export async function runCommentBotIntl(
     // 1봇 = 1댓글: 봇 수 = 댓글 수
     const botCount = totalCount;
 
-    // 🔥 타임스탬프 생성: backfill이면 과거, 아니면 미래 스케줄링
-    const scheduledTimes = backfill && publishedAt
-        ? distributeBackfillTimestamps(totalCount, publishedAt, lang.code)
-        : distributeTimestamps(totalCount, lang.code);
+    // 🔥 타임스탬프 생성: 외부 주입 우선 → backfill → 미래 스케줄링
+    const scheduledTimes = externalTimestamps && externalTimestamps.length >= totalCount
+        ? externalTimestamps.slice(0, totalCount).sort((a, b) => a.getTime() - b.getTime())
+        : backfill && publishedAt
+            ? distributeBackfillTimestamps(totalCount, publishedAt, lang.code)
+            : distributeTimestamps(totalCount, lang.code);
 
     for (let i = 0; i < botCount && totalCommentsPosted < totalCount; i++) {
         let userId: string;
