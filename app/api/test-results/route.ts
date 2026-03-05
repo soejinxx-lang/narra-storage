@@ -10,7 +10,13 @@ export async function POST(req: NextRequest) {
         const apiKey = req.headers.get("x-admin-key");
         const validKey = process.env.ADMIN_API_KEY;
 
+        // 🔍 디버그 로그
+        console.log("[test-results POST] 요청 수신");
+        console.log(`  X-Admin-Key: ${apiKey ? `있음 (${apiKey.length}자)` : "없음"}`);
+        console.log(`  ADMIN_API_KEY 설정: ${validKey ? "있음" : "없음"}`);
+
         if (validKey && apiKey !== validKey) {
+            console.warn("[test-results POST] 401 Unauthorized — 키 불일치");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -22,7 +28,10 @@ export async function POST(req: NextRequest) {
             tests = [],
         } = body;
 
+        console.log(`  payload: total=${total}, passed=${passed}, failed=${failed}, tests.length=${tests.length}, env=${environment}`);
+
         if (!total && total !== 0) {
+            console.warn("[test-results POST] 400 — total 필드 없음");
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
@@ -35,6 +44,7 @@ export async function POST(req: NextRequest) {
         );
 
         const runId = runResult.rows[0].id;
+        console.log(`[test-results POST] run_id=${runId} 생성됨`);
 
         // test_results INSERT (batch)
         for (const test of tests) {
@@ -54,6 +64,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        console.log(`[test-results POST] 완료 — ${tests.length}개 결과 저장`);
         return NextResponse.json({ success: true, run_id: runId });
     } catch (error) {
         console.error("Test results POST error:", error);
