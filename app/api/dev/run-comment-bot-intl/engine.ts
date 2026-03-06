@@ -1655,29 +1655,16 @@ export async function runCommentBotIntl(
         }
         const tone = pickPersonalityTone(personalityWeights);
 
-        // 1봇 1댓글: 30% 템플릿 / 40% midDensity / 30% deep (확률 기반)
+        // 1봇 1댓글: 딥컨텍스트 100%
         let content: string;
         const roll = Math.random();
         const allTemplates = Object.values(lang.templates).flat();
 
-        if (roll < 0.30 && allTemplates.length > 0) {
-            // ── 30% 템플릿 직접 사용 ──
-            const toneTemplates = lang.templates[tone] ?? [];
-            const pool = toneTemplates.length > 0 ? toneTemplates : allTemplates;
-            let picked = pool[Math.floor(Math.random() * pool.length)];
-            for (let t = 0; t < 3; t++) {
-                if (!usedTemplates.has(picked)) break;
-                picked = pool[Math.floor(Math.random() * pool.length)];
-            }
-            usedTemplates.add(picked);
-            content = picked;
-        } else if (roll < 0.70 && midDensityPool.length > 0) {
-            // ── 40% midDensity GPT (roll 0.30~0.70) ──
-            content = midDensityPool.pop()!;
-        } else if (deepComments.length > 0) {
-            // ── 30% deep GPT (roll 0.70~1.0) 또는 midDensity 소진 fallback ──
+        if (deepComments.length > 0) {
+            // ── 100% deep GPT ──
             content = deepComments.pop()!;
         } else if (midDensityPool.length > 0) {
+            // deep 소진 → midDensity fallback
             content = midDensityPool.pop()!;
         } else if (allTemplates.length > 0) {
             // 모든 GPT 풀 소진 → 템플릿 fallback
@@ -1685,6 +1672,7 @@ export async function runCommentBotIntl(
         } else {
             break;
         }
+
         content = lang.humanize(content);
 
 
