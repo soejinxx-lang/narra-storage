@@ -754,6 +754,38 @@ function sampleCommentCount(
   return poissonSample(λ);
 }
 
+// ── 누적 기대 봇 댓글 모델 (S-curve 포화) ──
+// 참고: engagement saturation 모델 (Botta et al. 2016 등)
+// C_max   = Q × views^0.4 × D(ep)
+// C_target = C_max × (1 − e^{−λ(t+t0)})  → 시간이 지날수록 증가
+// CYCLE_FACTOR: 매 주기에 gap의 일부만 채움 (자연스러운 분산)
+const CUM_LAMBDA      = 0.4;   // 50%: Day 1.7 / 90%: Day 5.8
+const CUM_T0          = 0.3;   // seed offset: Day 0에서도 ~11% 보장
+const CUM_BOT_RATIO   = 0.7;   // 총 기대 댓글 중 봇 비율
+const CUM_CYCLE_FACTOR = 0.15; // 매 5분 주기에 gap의 최대 15%만 채움
+
+function calcCumulativeTarget(
+  views: number, epNumber: number, daysSince: number, Q: number
+): { totalTarget: number; botTarget: number } {
+  if (views <= 0) return { totalTarget: 0, botTarget: 0 };
+
+  // 에피소드 감쇠: 초반 집중, 후반 급감 (0.15 계수)
+  const D = 1 / (1 + 0.15 * Math.max(0, epNumber - 1));
+
+  // 포화 S-curve
+  const C_max      = Q * Math.pow(views, 0.4) * D;
+  const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
+  const totalTarget = C_max * saturation;
+
+  // 최소 1개 seed 보장 (업로드 직후 daysSince<0.1)
+  const minBot    = daysSince < 0.1 ? 1 : 0;
+  const botTarget = Math.max(minBot, Math.floor(totalTarget * CUM_BOT_RATIO));
+
+  return { totalTarget, botTarget };
+}
+
+
+
 // ── Gini Guard (연속 감쇠) ──
 function giniGuardMultiplier(novels: NovelInfo[]): number {
   if (novels.length < 3) return 1.0;
@@ -879,13 +911,18 @@ async function autoGenerateComments(): Promise<void> {
       const daysSince    = Math.floor((now - publishedAt.getTime()) / 86400000);
       const Q            = generateNovelQ(novel_id);
 
-      // ④ bot ratio: 전체 target × 0.7 - 현재 봇 댓글 수
-      //    단, 유저 댓글이 이미 target을 초과해도 최소 0개
-      const totalTarget  = sampleCommentCount(viewCount, epNumber, daysSince, Q);
-      const targetBot    = Math.round(totalTarget * BOT_RATIO);
-      const toAdd        = Math.max(0, targetBot - botCount);
+      // 누적 S-curve 기반 bot 댓글 목표 계산
+      const { botTarget } = calcCumulativeTarget(viewCount, epNumber, daysSince, Q);
+      const gap = Math.max(0, botTarget - botCount);
 
-      if (toAdd <= 0) continue;
+      if (gap <= 0) continue;
+
+      // Rate control: 매 주기 gap의 최대 15%만 채움 (자연스러운 분산)
+      const expectedPerCycle = Math.max(1, Math.round(gap * CUM_CYCLE_FACTOR));
+      // Poisson 노이즈 + overshoot 방지 (gap 초과 불가)
+      const toAdd = Math.min(poissonSample(expectedPerCycle), gap);
+
+
       candidates.push({ episode_id, novel_id, ep: epNumber, publishedAt, viewCount, botCount, userCount, toAdd });
     }
 
@@ -907,12 +944,17 @@ async function autoGenerateComments(): Promise<void> {
         if (count > 0) { langAllocations.push({ lang, count }); allocated += count; }
       }
 
-      console.log(
-        `[CommentBot] ep${ep}: v=${toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0} `
-        + `target_bot=${Math.round(toAdd + (toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0))} `
-        + `existing_bot=${toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0} adding=${toAdd} `
-        + `[${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
+      const { botTarget } = calcCumulativeTarget(
+        toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0,
+        ep, Math.floor((now - publishedAt.getTime()) / 86400000),
+        generateNovelQ(novel_id)
       );
+      console.log(
+        `[CommentBot] ep${ep}: views=${toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0} `
+        + `botTarget=${botTarget} actual=${toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0} `
+        + `adding=${toAdd} [${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
+      );
+
 
       // 타임슬롯 생성
       const spanMs = now - publishedAt.getTime();

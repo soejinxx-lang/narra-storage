@@ -9,58 +9,31 @@ import { NextResponse, NextRequest } from "next/server";
 import db from "../../../db";
 import { requireAdmin } from "../../../../lib/admin";
 
-// worker/index.ts의 sampleCommentCount와 동일한 공식
-const K = 0.08;
-const B = 0.55;
-const BOT_RATIO = 0.7;
-
-function simpleHash(s: string): number {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-        h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-    }
-    return Math.abs(h);
-}
+// worker/index.ts의 calcCumulativeTarget와 동일한 공식
+// C_max = Q × views^0.4 × D(ep), C_target = C_max × (1-e^{-λ(t+t0)})
+const CUM_LAMBDA    = 0.4;
+const CUM_T0        = 0.3;
+const CUM_BOT_RATIO = 0.7;
 
 function generateNovelQ(novelId: string): number {
-    const hash = simpleHash(novelId);
+    let h = 0;
+    for (let i = 0; i < novelId.length; i++) h = ((h << 5) - h + novelId.charCodeAt(i)) | 0;
+    const hash = Math.abs(h);
     const u1 = ((hash % 10000) + 1) / 10001;
     const u2 = (((hash * 7919) % 10000) + 1) / 10001;
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    const base = Math.exp(-0.15 + 0.45 * z);
-    return Math.max(0.2, Math.min(3.0, base));
+    return Math.max(0.2, Math.min(3.0, Math.exp(-0.15 + 0.45 * z)));
 }
 
-// 기대 봇 댓글 = 에피소드 생애 동안의 peak target
-// gap-fill 시스템은 "현재 target - 현재 actual"을 주기적으로 채우므로
-// 누적 기대 = 에피소드 생애 중 lambda가 가장 높았던 순간의 target
-// 조회수는 선형 성장 가정 (0 → 현재)
+
 function calcTargetBot(views: number, epNumber: number, daysSince: number, novelId: string): number {
     if (views <= 0) return 0;
     const Q = generateNovelQ(novelId);
-    const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
-    const steps = Math.max(1, daysSince);
-
-    let peak = 0;
-    for (let d = 0; d <= steps; d++) {
-        // 조회수 선형 성장
-        const viewsAtD = Math.round(views * d / steps);
-        if (viewsAtD <= 0) continue;
-
-        // 시간 감쇠
-        const A = epNumber <= 3
-            ? Math.max(0.7, 1 / (1 + 0.01 * d))
-            : 1 / (1 + 0.15 * d);
-
-        let lambda = Q * K * Math.pow(viewsAtD, 1 - B) * D * A;
-        if (viewsAtD < 15) lambda *= 0.3;
-        else if (viewsAtD < 30) lambda *= 0.6;
-        lambda = Math.min(lambda, viewsAtD * 0.02);
-
-        if (lambda > peak) peak = lambda;
-    }
-
-    return Math.round(peak * BOT_RATIO);
+    const D = 1 / (1 + 0.15 * Math.max(0, epNumber - 1));
+    const C_max = Q * Math.pow(views, 0.4) * D;
+    const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
+    const minBot = daysSince < 0.1 ? 1 : 0;
+    return Math.max(minBot, Math.floor(C_max * saturation * CUM_BOT_RATIO));
 }
 
 export async function GET(req: NextRequest) {
