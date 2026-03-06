@@ -804,137 +804,186 @@ function jitteredWeights(): Record<string, number> {
   return jittered;
 }
 
+// ── Race condition 방지: 이전 실행 중이면 skip ──
+let commentBotRunning = false;
+
+// ── 최근 실패 에피소드 추적: episodeId → 마지막 실패 시각 ──
+const recentFailures = new Map<string, number>();
+const FAILURE_SKIP_MS = 60 * 60 * 1000; // 1시간 skip
+
+// ── bot 댓글 비율 (전체 target 중 봇이 채워야 하는 비율) ──
+const BOT_RATIO = 0.7;
+
+// ── 5분 주기 실행 한 번에 처리할 최대 에피소드 수 ──
+const MAX_EPISODES_PER_RUN = 15;
+
 // ── 댓글 자동 생성 (5분 주기, 조회수 기반 Poisson 모델) ──
 async function autoGenerateComments(): Promise<void> {
-  const result = await db.query(`
-    SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
-           e.views,
-           COALESCE(cc.cnt, 0) AS comment_count
-    FROM episodes e
-    JOIN novels n ON e.novel_id = n.id
-    LEFT JOIN (
-      SELECT episode_id, COUNT(*) AS cnt
-      FROM comments GROUP BY episode_id
-    ) cc ON cc.episode_id = e.id
-    WHERE e.status = 'published'
-    ORDER BY e.created_at ASC
-    LIMIT 100
-  `);
-
-  if (result.rows.length === 0) return;
-
-  let totalAdded = 0;
-
-  for (const row of result.rows) {
-    const { episode_id, novel_id, ep, created_at } = row;
-    const publishedAt = new Date(created_at);
-    const viewCount = parseInt(row.views) || 0;
-    const existing = parseInt(row.comment_count) || 0;
-    const epNumber = parseInt(ep) || 1;
-    const daysSince = Math.floor(
-      (Date.now() - publishedAt.getTime()) / 86400000
-    );
-    const Q = generateNovelQ(novel_id);
-
-    // Poisson 샘플링으로 목표 댓글 수 결정
-    const target = sampleCommentCount(viewCount, epNumber, daysSince, Q);
-    const toAdd = Math.max(0, target - existing);
-
-    if (toAdd <= 0) continue;
-
-    // 에피소드마다 다른 언어 비율 생성
-    const weights = jitteredWeights();
-    const langAllocations: { lang: string; count: number }[] = [];
-    let allocated = 0;
-
-    const langs = Object.keys(weights);
-    for (let i = 0; i < langs.length; i++) {
-      const lang = langs[i];
-      const isLast = i === langs.length - 1;
-      const count = isLast
-        ? toAdd - allocated
-        : Math.round(toAdd * weights[lang]);
-      if (count > 0) {
-        langAllocations.push({ lang, count });
-        allocated += count;
-      }
-    }
-
-    console.log(
-      `[CommentBot] ep${ep}: v=${viewCount} Q=${Q.toFixed(2)} `
-      + `λ→${target} existing=${existing} adding=${toAdd} `
-      + `[${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
-    );
-
-    // ── 인터리빙: 전체 타임슬롯을 한번에 생성 후 섞어서 언어별 배분 ──
-    // 각 언어가 독립적으로 타임슬롯을 뽑으면 ko덩어리→en덩어리→ja덩어리가 생김.
-    // 대신 publishedAt~now 구간의 타임포인트를 toAdd개 생성 후 Fisher-Yates 셔플로
-    // 완전히 섞은 다음 앞에서부터 count개씩 각 언어에 배분한다.
-    const spanMs = Date.now() - publishedAt.getTime();
-    const allTimestamps: Date[] = [];
-    for (let n = 0; n < toAdd; n++) {
-      const roll = Math.random();
-      let offsetMs: number;
-      if (spanMs <= 0) {
-        // 에피소드가 방금 게시된 경우 → 미래 분산
-        offsetMs = (1 + Math.random() * 14) * 60 * 1000;
-        allTimestamps.push(new Date(Date.now() + offsetMs));
-      } else if (roll < 0.50) {
-        // 50% → 첫 24시간 내
-        const first24h = Math.min(spanMs, 24 * 3600 * 1000);
-        offsetMs = Math.random() * first24h;
-        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
-      } else if (roll < 0.75) {
-        // 25% → 1~7일 내
-        const first7d = Math.min(spanMs, 7 * 24 * 3600 * 1000);
-        offsetMs = 24 * 3600 * 1000 + Math.random() * (first7d - 24 * 3600 * 1000);
-        if (offsetMs < 0) offsetMs = Math.random() * spanMs;
-        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
-      } else {
-        // 25% → 전체 기간 랜덤
-        offsetMs = Math.random() * spanMs;
-        allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
-      }
-    }
-
-    // Fisher-Yates shuffle — 모든 언어 타임슬롯을 완전히 섞음
-    for (let i = allTimestamps.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allTimestamps[i], allTimestamps[j]] = [allTimestamps[j], allTimestamps[i]];
-    }
-
-    // 언어별로 슬롯 배분 (앞에서부터 count개씩)
-    let slotOffset = 0;
-    for (const { lang, count } of langAllocations) {
-      const langTimestamps = allTimestamps.slice(slotOffset, slotOffset + count);
-      slotOffset += count;
-
-      try {
-        const langPack = await loadLangPack(lang);
-        const botResult = await runCommentBotIntl(
-          novel_id,
-          langPack,
-          count,
-          1.0,
-          true,           // useDeep
-          episode_id,
-          true,           // backfill
-          publishedAt,
-          [],             // recurringReaders
-          langTimestamps, // 인터리빙된 타임슬롯 주입
-        );
-        totalAdded += botResult.inserted;
-      } catch (langErr) {
-        console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
-      }
-    }
-
-    // 에피소드 간 3초 대기
-    await new Promise(r => setTimeout(r, 3000));
+  // ① Race condition 방지
+  if (commentBotRunning) {
+    console.log('[CommentBot] ⏭ Previous run still active, skipping');
+    return;
   }
+  commentBotRunning = true;
 
-  if (totalAdded > 0) {
-    console.log(`[CommentBot] ✅ Total: ${totalAdded} comments added`);
+  try {
+    // ③ 봇 댓글만 카운트 (유저 댓글은 별도 집계)
+    const result = await db.query(`
+      SELECT e.id AS episode_id, e.novel_id, e.ep, e.created_at,
+             e.views,
+             COALESCE(bc.bot_cnt, 0)  AS bot_count,
+             COALESCE(uc.user_cnt, 0) AS user_count
+      FROM episodes e
+      JOIN novels n ON e.novel_id = n.id
+      LEFT JOIN (
+        SELECT c.episode_id, COUNT(*) AS bot_cnt
+        FROM comments c JOIN users u ON c.user_id = u.id
+        WHERE u.role = 'bot'
+        GROUP BY c.episode_id
+      ) bc ON bc.episode_id = e.id
+      LEFT JOIN (
+        SELECT c.episode_id, COUNT(*) AS user_cnt
+        FROM comments c JOIN users u ON c.user_id = u.id
+        WHERE u.role != 'bot'
+        GROUP BY c.episode_id
+      ) uc ON uc.episode_id = e.id
+      WHERE e.status = 'published'
+        AND n.deleted_at IS NULL
+      ORDER BY e.created_at ASC
+      LIMIT 200
+    `);
+
+    if (result.rows.length === 0) return;
+
+    // ⑥ gap 계산 후 큰 것 우선 정렬, MAX_EPISODES_PER_RUN개만 처리
+    const now = Date.now();
+    const candidates: Array<{
+      episode_id: string; novel_id: string; ep: number;
+      publishedAt: Date; viewCount: number; botCount: number;
+      userCount: number; toAdd: number;
+    }> = [];
+
+    for (const row of result.rows) {
+      const { episode_id, novel_id, ep, created_at } = row;
+
+      // ② 최근 실패 에피소드 skip
+      const lastFail = recentFailures.get(episode_id);
+      if (lastFail && now - lastFail < FAILURE_SKIP_MS) continue;
+
+      const publishedAt  = new Date(created_at);
+      const viewCount    = parseInt(row.views)      || 0;
+      const botCount     = parseInt(row.bot_count)  || 0;
+      const userCount    = parseInt(row.user_count) || 0;
+      const epNumber     = parseInt(ep)             || 1;
+      const daysSince    = Math.floor((now - publishedAt.getTime()) / 86400000);
+      const Q            = generateNovelQ(novel_id);
+
+      // ④ bot ratio: 전체 target × 0.7 - 현재 봇 댓글 수
+      //    단, 유저 댓글이 이미 target을 초과해도 최소 0개
+      const totalTarget  = sampleCommentCount(viewCount, epNumber, daysSince, Q);
+      const targetBot    = Math.round(totalTarget * BOT_RATIO);
+      const toAdd        = Math.max(0, targetBot - botCount);
+
+      if (toAdd <= 0) continue;
+      candidates.push({ episode_id, novel_id, ep: epNumber, publishedAt, viewCount, botCount, userCount, toAdd });
+    }
+
+    // gap 큰 것부터
+    candidates.sort((a, b) => b.toAdd - a.toAdd);
+    const toProcess = candidates.slice(0, MAX_EPISODES_PER_RUN);
+
+    let totalAdded = 0;
+
+    for (const { episode_id, novel_id, ep, publishedAt, toAdd } of toProcess) {
+      const weights = jitteredWeights();
+      const langAllocations: { lang: string; count: number }[] = [];
+      let allocated = 0;
+      const langs = Object.keys(weights);
+      for (let i = 0; i < langs.length; i++) {
+        const lang = langs[i];
+        const isLast = i === langs.length - 1;
+        const count = isLast ? toAdd - allocated : Math.round(toAdd * weights[lang]);
+        if (count > 0) { langAllocations.push({ lang, count }); allocated += count; }
+      }
+
+      console.log(
+        `[CommentBot] ep${ep}: v=${toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0} `
+        + `target_bot=${Math.round(toAdd + (toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0))} `
+        + `existing_bot=${toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0} adding=${toAdd} `
+        + `[${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
+      );
+
+      // 타임슬롯 생성
+      const spanMs = now - publishedAt.getTime();
+      const allTimestamps: Date[] = [];
+      for (let n = 0; n < toAdd; n++) {
+        const roll = Math.random();
+        let offsetMs: number;
+        if (spanMs <= 0) {
+          offsetMs = (1 + Math.random() * 14) * 60 * 1000;
+          allTimestamps.push(new Date(now + offsetMs));
+        } else if (roll < 0.50) {
+          const first24h = Math.min(spanMs, 24 * 3600 * 1000);
+          offsetMs = Math.random() * first24h;
+          allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+        } else if (roll < 0.75) {
+          const first7d = Math.min(spanMs, 7 * 24 * 3600 * 1000);
+          offsetMs = 24 * 3600 * 1000 + Math.random() * (first7d - 24 * 3600 * 1000);
+          if (offsetMs < 0) offsetMs = Math.random() * spanMs;
+          allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+        } else {
+          offsetMs = Math.random() * spanMs;
+          allTimestamps.push(new Date(publishedAt.getTime() + offsetMs));
+        }
+      }
+      // Fisher-Yates shuffle
+      for (let i = allTimestamps.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allTimestamps[i], allTimestamps[j]] = [allTimestamps[j], allTimestamps[i]];
+      }
+
+      // ⑤ 언어별 타임슬롯 사전 분배 (shared slotOffset 버그 방지)
+      const langTsMap: { lang: string; count: number; timestamps: Date[] }[] = [];
+      let slotOffset = 0;
+      for (const { lang, count } of langAllocations) {
+        langTsMap.push({ lang, count, timestamps: allTimestamps.slice(slotOffset, slotOffset + count) });
+        slotOffset += count;
+      }
+
+      // Promise.allSettled로 언어 병렬 실행
+      let episodeAdded = 0;
+      let episodeFailed = false;
+
+      await Promise.allSettled(langTsMap.map(async ({ lang, count, timestamps }) => {
+        try {
+          const langPack = await loadLangPack(lang);
+          const botResult = await runCommentBotIntl(
+            novel_id, langPack, count, 1.0, true,
+            episode_id, true, publishedAt, [], timestamps,
+          );
+          episodeAdded += botResult.inserted;
+          totalAdded   += botResult.inserted;
+        } catch (langErr) {
+          console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
+          episodeFailed = true;
+        }
+      }));
+
+      // ② 실패 기록
+      if (episodeFailed && episodeAdded === 0) {
+        recentFailures.set(episode_id, now);
+        console.warn(`[CommentBot]   ⚠️ ep${ep} all languages failed → skip for 1h`);
+      }
+
+      // 에피소드 간 1초 대기 (언어 병렬화로 3초 불필요)
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (totalAdded > 0) {
+      console.log(`[CommentBot] ✅ Total: ${totalAdded} comments added`);
+    }
+  } finally {
+    commentBotRunning = false;
   }
 }
 
