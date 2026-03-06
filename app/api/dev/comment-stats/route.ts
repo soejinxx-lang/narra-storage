@@ -31,19 +31,36 @@ function generateNovelQ(novelId: string): number {
     return Math.max(0.2, Math.min(3.0, base));
 }
 
-// worker/index.ts의 sampleCommentCount + autoGenerateComments와 동일한 공식
+// 기대 봇 댓글 = 에피소드 생애 동안의 peak target
+// gap-fill 시스템은 "현재 target - 현재 actual"을 주기적으로 채우므로
+// 누적 기대 = 에피소드 생애 중 lambda가 가장 높았던 순간의 target
+// 조회수는 선형 성장 가정 (0 → 현재)
 function calcTargetBot(views: number, epNumber: number, daysSince: number, novelId: string): number {
     if (views <= 0) return 0;
     const Q = generateNovelQ(novelId);
     const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
-    const A = epNumber <= 3
-        ? Math.max(0.7, 1 / (1 + 0.01 * daysSince))
-        : 1 / (1 + 0.15 * daysSince);
-    let lambda = Q * K * Math.pow(views, 1 - B) * D * A;
-    if (views < 15) lambda *= 0.3;
-    else if (views < 30) lambda *= 0.6;
-    lambda = Math.min(lambda, views * 0.02);
-    return Math.round(lambda * BOT_RATIO);
+    const steps = Math.max(1, daysSince);
+
+    let peak = 0;
+    for (let d = 0; d <= steps; d++) {
+        // 조회수 선형 성장
+        const viewsAtD = Math.round(views * d / steps);
+        if (viewsAtD <= 0) continue;
+
+        // 시간 감쇠
+        const A = epNumber <= 3
+            ? Math.max(0.7, 1 / (1 + 0.01 * d))
+            : 1 / (1 + 0.15 * d);
+
+        let lambda = Q * K * Math.pow(viewsAtD, 1 - B) * D * A;
+        if (viewsAtD < 15) lambda *= 0.3;
+        else if (viewsAtD < 30) lambda *= 0.6;
+        lambda = Math.min(lambda, viewsAtD * 0.02);
+
+        if (lambda > peak) peak = lambda;
+    }
+
+    return Math.round(peak * BOT_RATIO);
 }
 
 export async function GET(req: NextRequest) {
