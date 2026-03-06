@@ -284,7 +284,8 @@ function weightedSelectNovel(novels: NovelInfo[]): NovelInfo {
 // ── 조회수 감쇠 (출력 스케일링) ──
 // 시뮬레이션 분포는 유지하되 절대값만 축소
 // carry가 fractional로 누적 → Math.floor 기존 로직이 자연스럽게 처리
-const VIEW_DAMPENING = 0.04;  // ~1/25 스케일 → 주당 ~1,500 views
+const VIEW_DAMPENING = 0.02;  // ~1/50 스케일 → 주당 ~750 views (기존 대비 절반)
+
 
 // ── 정주행 세션 — 핵심 행동 모델 ──
 function simulateBingeSession(
