@@ -695,17 +695,34 @@ async function extractEvents(content: string, lang: LanguagePack): Promise<Event
     const raw = await callAzureGPT(prompt);
     if (!raw) return { events: [], dominantEmotion: '' };
 
+    // 1차: 코드블록 제거 후 JSON.parse
     try {
-        const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const cleaned = raw
+            .replace(/^```(?:json)?\s*\n?/i, '')  // ```json 또는 ``` 제거
+            .replace(/\n?```\s*$/i, '')             // 끝 ``` 제거
+            .trim();
         const data = JSON.parse(cleaned);
         if (data.events && Array.isArray(data.events)) {
             return { events: data.events, dominantEmotion: data.dominantEmotion || '' };
         }
-    } catch (e) {
-        console.warn('⚠️ [intl] Event extraction parse failed');
-    }
+    } catch (_) { /* 1차 실패 → 2차 시도 */ }
+
+    // 2차: 응답에서 { ... } JSON 블록만 추출
+    try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const data = JSON.parse(jsonMatch[0]);
+            if (data.events && Array.isArray(data.events)) {
+                console.log('⚠️ [intl] Event extraction used JSON substring fallback');
+                return { events: data.events, dominantEmotion: data.dominantEmotion || '' };
+            }
+        }
+    } catch (_) { /* 2차도 실패 */ }
+
+    console.warn(`⚠️ [intl] Event extraction parse failed. Raw (first 200): ${raw.slice(0, 200)}`);
     return { events: [], dominantEmotion: '' };
 }
+
 
 // ============================================================
 // Stage 2: Reader Profiles (한국어 route.ts 동일 — 숫자 구조)

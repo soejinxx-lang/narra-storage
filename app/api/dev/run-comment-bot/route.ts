@@ -2761,33 +2761,48 @@ async function generateContextualReply(parentComment: string): Promise<string> {
 [원댓글]
 ${parentComment}
 
-이 댓글에 대한 짧은 반응(대댓글) 1개만 써줘.
+위 댓글에 어울리는 짧은 반응 1개만 써줘.
 
 [규칙]
 - 5~15자 이내 초단문
 - ㅇㅈ, ㄹㅇ, ㅋㅋ, ㅠㅠ 자유
 - 원댓글 맥락에 맞춰서
 - ~다 어미 금지
-- JSON 말고 댓글 텍스트만 출력
+- 텍스트만 출력 (레이블, 따옴표, 설명 일절 금지)
 
 예시:
-원댓글: "미쳤음ㅋㅋ" → 반응: "ㄹㅇ"
-원댓글: "카일 죽을 듯" → 반응: "아니지 살 거야"
-원댓글: "전개 개빠름" → 반응: "인정ㅋㅋ"`;
+미쳤음ㅋㅋ → ㄹㅇ
+카일 죽을 듯 → 아니지 살 거야
+전개 개빠름 → 인정ㅋㅋ
+소름 → ㄷㄷㄷ`;
 
     const raw = await callAzureGPT(prompt);
     if (!raw) return '';
 
-    // GPT 응답 정제
-    let reply = raw.trim()
-        .replace(/^```.*\n?/i, '')
-        .replace(/\n?```.*$/i, '')
-        .replace(/^["']|["']$/g, '')
-        // GPT가 예시 형식 그대로 뱉는 경우: '원댓글: "..." → 반응: "실제답"'
-        .replace(/^원댓글:.*?[→→]\s*반응:\s*/g, '')
-        .replace(/^반응:\s*/g, '')
-        .replace(/^["']|["']$/g, '')
-        .trim();
+    let reply = raw.trim();
+
+    // ─── 후처리 3단계 ───────────────────────────────────────
+    // ① 코드블록 제거
+    reply = reply.replace(/^```[\s\S]*?```/g, '').trim();
+
+    // ② 줄바꿈 이후 레이블만 있는 첫 줄 제거
+    //    예: "Reply:\nㄹㅇ" → "ㄹㅇ"
+    reply = reply.replace(/^.{0,10}[:：]\s*\n/, '').trim();
+
+    // ③ colon prefix: "대댓글: X", "반응: X", "Reply: X" 등
+    //    첫 줄에서 콜론 앞이 10자 이하면 콜론 뒤만 추출
+    const colonMatch = reply.match(/^[^:：\n]{1,10}[:：]\s*(.+)/);
+    if (colonMatch) {
+        reply = colonMatch[1];
+    }
+
+    // ④ bullet prefix: "- X", "• X", "> X", "* X"
+    reply = reply.replace(/^[-•>*]\s+/, '');
+
+    // ⑤ 따옴표 제거 (앞뒤)
+    reply = reply.replace(/^["'"'「【\[]+|["'"'」】\]]+$/g, '').trim();
+
+    // ─────────────────────────────────────────────────────────
 
     // 너무 길면 폐기
     if (reply.length > 50) return '';
