@@ -31,8 +31,10 @@ function generateNovelQ(novelId: string): number {
     return Math.max(0.2, Math.min(3.0, base));
 }
 
-function calcTargetBot(views: number, epNumber: number, daysSince: number, Q: number): number {
+// worker/index.ts의 sampleCommentCount + autoGenerateComments와 동일한 공식
+function calcTargetBot(views: number, epNumber: number, daysSince: number, novelId: string): number {
     if (views <= 0) return 0;
+    const Q = generateNovelQ(novelId);
     const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
     const A = epNumber <= 3
         ? Math.max(0.7, 1 / (1 + 0.01 * daysSince))
@@ -41,7 +43,6 @@ function calcTargetBot(views: number, epNumber: number, daysSince: number, Q: nu
     if (views < 15) lambda *= 0.3;
     else if (views < 30) lambda *= 0.6;
     lambda = Math.min(lambda, views * 0.02);
-    // Poisson 아닌 λ 자체를 expected value로 사용 (통계 표시용)
     return Math.round(lambda * BOT_RATIO);
 }
 
@@ -90,9 +91,10 @@ export async function GET(req: NextRequest) {
             const views     = parseInt(row.views) || 0;
             const ep        = parseInt(row.ep) || 1;
             const daysSince = Math.floor((now - new Date(row.created_at).getTime()) / 86400000);
-            const Q         = generateNovelQ(row.novel_id);
-            const target    = calcTargetBot(views, ep, daysSince, Q);
+            const target    = calcTargetBot(views, ep, daysSince, row.novel_id);
             const actual    = parseInt(row.bot_count) || 0;
+
+
             const gap       = Math.max(0, target - actual);
 
             totalTarget += target;
