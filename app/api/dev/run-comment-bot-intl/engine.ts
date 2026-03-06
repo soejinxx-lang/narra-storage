@@ -1575,6 +1575,7 @@ export async function runCommentBotIntl(
 
         if (episodeContent && episodeContent.length > 50) {
             let calls = 0;
+            let consecutiveEmpty = 0;
             while (deepComments.length < totalCount && calls < 6) {
                 const result = await generateDeepContextComments(
                     episodeContent, genreWeights, lang, 15, contentLanguage
@@ -1584,6 +1585,17 @@ export async function runCommentBotIntl(
                 if (calls === 0) sceneTags = result.detectedTags;
                 calls++;
                 console.log(`   → [intl] Batch ${calls}: +${result.comments.length} (total ${deepComments.length}/${totalCount})`);
+
+                // 연속 2회 빈 배치 → 이벤트 추출 실패 상태 → 루프 중단
+                if (result.comments.length === 0 && result.midComments.length === 0) {
+                    consecutiveEmpty++;
+                    if (consecutiveEmpty >= 2) {
+                        console.warn(`⚠️ [intl] 연속 ${consecutiveEmpty}회 빈 배치 → 루프 중단, 템플릿 fallback`);
+                        break;
+                    }
+                } else {
+                    consecutiveEmpty = 0;
+                }
             }
         }
     }
