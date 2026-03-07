@@ -976,7 +976,7 @@ async function autoGenerateComments(): Promise<void> {
       const { botTarget } = calcCumulativeTarget(
         toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0,
         ep, Math.floor((now - publishedAt.getTime()) / 86400000),
-        generateNovelQ(novel_id)
+        episode_id
       );
       console.log(
         `[CommentBot] ep${ep}: views=${toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0} `
