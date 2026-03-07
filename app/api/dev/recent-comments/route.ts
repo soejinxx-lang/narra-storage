@@ -43,6 +43,20 @@ export async function GET(req: NextRequest) {
         });
     } catch (err) {
         console.error("[recent-comments]", err);
-        return NextResponse.json({ error: String(err) }, { status: 500 });
+        // 디버깅: 실제 users/episodes 컬럼 목록 반환
+        try {
+            const colRes = await db.query(`
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_name IN ('users','episodes','comments')
+                ORDER BY table_name, ordinal_position
+            `);
+            return NextResponse.json({
+                error: String(err),
+                debug_columns: colRes.rows,
+            }, { status: 500 });
+        } catch (e2) {
+            return NextResponse.json({ error: String(err) }, { status: 500 });
+        }
     }
 }

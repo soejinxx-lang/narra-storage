@@ -163,6 +163,20 @@ export async function GET(req: NextRequest) {
         });
     } catch (err) {
         console.error("[comment-stats] Error:", err);
-        return NextResponse.json({ error: String(err) }, { status: 500 });
+        // 디버깅: 실제 테이블 컬럼 목록 반환
+        try {
+            const colRes = await db.query(`
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_name IN ('users','episodes','comments','novels')
+                ORDER BY table_name, ordinal_position
+            `);
+            return NextResponse.json({
+                error: String(err),
+                debug_columns: colRes.rows,
+            }, { status: 500 });
+        } catch {
+            return NextResponse.json({ error: String(err) }, { status: 500 });
+        }
     }
 }
