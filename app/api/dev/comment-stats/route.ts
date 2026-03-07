@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
             // Derived
             daysSinceUpload: number; daysSinceLastComment: number | null;
             // Model output
-            Q: number; D: number; epBoost: number;
+            D: number; epBoost: number;
             C_max: number; saturation: number; botTarget: number;
             // Runtime
             actual: number; gap: number;
