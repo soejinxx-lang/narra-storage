@@ -1174,11 +1174,11 @@ async function generateDeepContextComments(
     // call3(chaos) = 1.0 (1.1은 Azure에서 JSON 깨짐 위험), 나머지는 0.7~0.8
     console.log('🧠 [intl] Stage 4: Persona-based GPT calls (few-shot enabled)...');
     const [raw1, raw2, raw3, raw4, raw5] = await Promise.all([
-        call1 ? callAzureGPT(call1, 0.7) : Promise.resolve(''),
-        call2 ? callAzureGPT(call2, 0.8) : Promise.resolve(''),
-        call3 ? callAzureGPT(call3, 1.0) : Promise.resolve(''),  // chaos: high entropy
-        call4 ? callAzureGPT(call4, 0.8) : Promise.resolve(''),
-        callAzureGPT(call5, 0.7),
+        call1 ? callAzureGPT(call1, 0.7, 600) : Promise.resolve(''),
+        call2 ? callAzureGPT(call2, 0.8, 600) : Promise.resolve(''),
+        call3 ? callAzureGPT(call3, 1.0, 600) : Promise.resolve(''),  // chaos: high entropy
+        call4 ? callAzureGPT(call4, 0.8, 600) : Promise.resolve(''),
+        callAzureGPT(call5, 0.7, 800),  // mid-density 15개 → 더 넉넉하게
     ]);
     const rawResults = [raw1, raw2, raw3, raw4, raw5];
 
