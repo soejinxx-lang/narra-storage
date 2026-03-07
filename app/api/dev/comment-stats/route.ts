@@ -44,7 +44,6 @@ export async function GET(req: NextRequest) {
                 e.ep,
                 e.views,
                 e.created_at  AS published_at,
-                e.word_count,
                 n.title       AS novel_title,
                 COALESCE(bc.bot_cnt, 0)        AS bot_count,
                 lc.last_comment_at
@@ -102,7 +101,6 @@ export async function GET(req: NextRequest) {
                 ? Math.floor((now - lastCommentAt.getTime()) / 86400000)
                 : null;
             const actual = parseInt(row.bot_count) || 0;
-            const wordCount = row.word_count ? parseInt(row.word_count) : null;
 
             // Model output
             const Q          = generateNovelQ(row.novel_id);
@@ -130,7 +128,7 @@ export async function GET(req: NextRequest) {
             }
             byNovel[row.novel_id].episodes.push({
                 // Observed
-                ep, views, wordCount,
+                ep, views,
                 publishedAt: publishedAt.toISOString(),
                 lastCommentAt: lastCommentAt?.toISOString() ?? null,
                 // Derived

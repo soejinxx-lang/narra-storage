@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
                 c.content,
                 c.created_at,
                 c.parent_id,
-                u.nickname,
+                u.name AS nickname,
                 u.role AS user_role,
                 e.ep,
                 n.id    AS novel_id,
