@@ -692,7 +692,8 @@ function selectPersonasForGenre(
 async function extractEvents(content: string, lang: LanguagePack): Promise<EventExtraction> {
     const trimmed = content.length > 3000 ? content.slice(-3000) : content;
     const prompt = lang.extractEventsPrompt(trimmed);
-    const raw = await callAzureGPT(prompt);
+    // JSON 구조 응답이라 토큰 충분히 줘야 파싱 성공 (default 400이면 잘려서 항상 실패)
+    const raw = await callAzureGPT(prompt, 0.3, 1200);
     if (!raw) return { events: [], dominantEmotion: '' };
 
     // 1차: 코드블록 제거 후 JSON.parse
