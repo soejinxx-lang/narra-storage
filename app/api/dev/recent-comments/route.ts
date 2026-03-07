@@ -18,21 +18,12 @@ export async function GET(req: NextRequest) {
                 u.nickname,
                 u.role AS user_role,
                 e.ep,
-                n.id   AS novel_id,
-                n.title AS novel_title,
-                lg.language_code
+                n.id    AS novel_id,
+                n.title AS novel_title
             FROM comments c
             JOIN users u ON c.user_id = u.id
             JOIN episodes e ON c.episode_id = e.id
             JOIN novels n ON e.novel_id = n.id
-            LEFT JOIN episode_translations lt
-                ON lt.episode_id = e.id AND lt.language = 'ko'
-            LEFT JOIN (
-                SELECT DISTINCT ON (episode_id) episode_id, language_code
-                FROM episode_translations
-                WHERE status = 'completed'
-                ORDER BY episode_id, created_at DESC
-            ) lg ON lg.episode_id = e.id
             ORDER BY c.created_at DESC
             LIMIT $1
         `, [limit]);
