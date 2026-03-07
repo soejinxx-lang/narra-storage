@@ -1536,17 +1536,18 @@ export async function runCommentBotIntl(
 
     // 2. 기존 댓글 캐싱 (답글 가중치용)
     const existingResult = await db.query(
-        `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content, c.created_at
+        `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content, c.created_at, c.bot_lang
          FROM comments c
          LEFT JOIN comments r ON r.parent_id = c.id
          WHERE c.episode_id = $1
          GROUP BY c.id`,
         [episodeId]
     );
-    const commentPool: { id: string; content: string; reply_count: number; created_at: Date | null }[] = existingResult.rows.map(
-        (r: { id: string; content: string; reply_count: string; created_at: string | null }) => ({
+    const commentPool: { id: string; content: string; reply_count: number; created_at: Date | null; bot_lang: string | null }[] = existingResult.rows.map(
+        (r: { id: string; content: string; reply_count: string; created_at: string | null; bot_lang: string | null }) => ({
             id: r.id, content: r.content, reply_count: parseInt(r.reply_count) || 0,
             created_at: r.created_at ? new Date(r.created_at) : null,
+            bot_lang: r.bot_lang ?? null,
         })
     );
 
@@ -1678,7 +1679,13 @@ export async function runCommentBotIntl(
         }
 
         content = lang.humanize(content);
-
+        // GPT footer 클리닝: © 저작권 표시, URL, narra.kr 등 제거
+        content = content
+            .split('\n')
+            .filter(line => !/©|narra\.kr|AI training|unauthorized use/i.test(line))
+            .join('\n')
+            .trim();
+        if (!content) continue; // 클리닝 후 빈 문자열이면 skip
 
         // 스케줄링된 공개 시간 사용
         const scheduledAt = scheduledTimes[i] || new Date();
@@ -1686,14 +1693,16 @@ export async function runCommentBotIntl(
 
         // 답글 10% (pool에 3개 이상 있을 때만)
         let parentId: string | null = null;
-        if (Math.random() < 0.10 && commentPool.length >= 3) {
+        // 동일 언어 댓글만 reply 대상으로 필터 (bot_lang 없는 유저 댓글도 허용)
+        const sameLangPool = commentPool.filter(c => c.bot_lang === lang.code || c.bot_lang === null);
+        if (Math.random() < 0.10 && sameLangPool.length >= 3) {
             const parentCommentId = weightedRandom(
-                commentPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
+                sameLangPool.map(c => ({ item: c.id, weight: c.reply_count > 0 ? 2.0 : 1.0 }))
             );
             parentId = parentCommentId;
 
-            // #2 답글 시간 보정: 부모 댓글 시간 + 로그 정규 지연
-            const parentComment = commentPool.find(c => c.id === parentCommentId);
+            // reply 풀은 sameLangPool 기반으로
+            const parentComment = sameLangPool.find(c => c.id === parentCommentId);
             if (parentComment && parentComment.created_at) {
                 const delayMs = replyDelay();
                 createdAt = new Date(parentComment.created_at.getTime() + delayMs);
@@ -1724,17 +1733,18 @@ export async function runCommentBotIntl(
         // backfill: 즉시 표시 (과거 댓글), schedule: 숨김 + 예약
         const insertResult = backfill
             ? await db.query(
-                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden)
-                 VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING id`,
-                [episodeId, userId, content, parentId, createdAt]
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, bot_lang)
+                 VALUES ($1, $2, $3, $4, $5, FALSE, $6) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt, lang.code]
             )
             : await db.query(
-                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at)
-                 VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
-                [episodeId, userId, content, parentId, createdAt, scheduledAt]
+                `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at, bot_lang)
+                 VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7) RETURNING id`,
+                [episodeId, userId, content, parentId, createdAt, scheduledAt, lang.code]
             );
 
-        commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0, created_at: createdAt });
+        commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0, created_at: createdAt, bot_lang: lang.code });
+
         totalCommentsPosted++;
 
         // #3 likes 롱테일 분포

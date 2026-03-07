@@ -358,6 +358,11 @@ export async function initDb() {
       ALTER TABLE comments ALTER COLUMN user_id DROP NOT NULL;
     `);
 
+    // ✅ bot_lang: 봇 댓글 언어 코드 (대댓 동일 언어 필터링용)
+    await client.query(`
+      ALTER TABLE comments ADD COLUMN IF NOT EXISTS bot_lang TEXT;
+    `);
+
     // ✅ Community: Posts System
     await client.query(`
       CREATE TABLE IF NOT EXISTS community_posts (
