@@ -754,36 +754,51 @@ function sampleCommentCount(
   return poissonSample(λ);
 }
 
-// ── 누적 기대 봇 댓글 모델 (S-curve 포화) ──
-// 참고: engagement saturation 모델 (Botta et al. 2016 등)
-// C_max   = Q × views^0.4 × D(ep)
-// C_target = C_max × (1 − e^{−λ(t+t0)})  → 시간이 지날수록 증가
-// CYCLE_FACTOR: 매 주기에 gap의 일부만 채움 (자연스러운 분산)
-const CUM_LAMBDA      = 0.4;   // 50%: Day 1.7 / 90%: Day 5.8
-const CUM_T0          = 0.3;   // seed offset: Day 0에서도 ~11% 보장
-const CUM_BOT_RATIO   = 0.7;   // 총 기대 댓글 중 봇 비율
-const CUM_CYCLE_FACTOR = 0.15; // 매 5분 주기에 gap의 최대 15%만 채움
+// ── 댓글 기대값 모델 (Synthetic Engagement System v3) ──
+// C_max = ENGAGEMENT_RATE × views_eff × D(ep), cap = 300 × D(ep)
+const ENGAGEMENT_RATE            = 0.05;   // 5%: 소규모 플랫폼 현실적 상단
+const CUM_BOT_RATIO              = 0.6;    // bot 비율 (총량 낮추고 비율 조절)
+const MAX_COMMENT_CAP_BASE       = 300;    // ep1 기준 상한 (D(ep) 적용으로 ep별 감소)
+const MAX_BACKFILL_PER_EPISODE   = 40;     // GPT burst / timeout 방지
+const CUM_LAMBDA                 = 0.4;
+const CUM_T0                     = 0.3;
+const VIEW_DRIFT_MAX_MULTIPLIER  = 1.3;    // 사이클당 views 최대 30% 증가만 반영
+const BACKFILL_ENTRY_THRESHOLD   = 0.8;    // actual < target×0.8 → backfill 모드
+const BACKFILL_EXIT_THRESHOLD    = 0.9;    // actual ≥ target×0.9 → ongoing 모드
+const ONGOING_CYCLE_FACTOR       = 0.15;
+
+// views_eff: view bot + comment bot 강화 루프 방지 (급격한 views 반영 억제)
+const viewsCache = new Map<string, number>(); // episodeId → 이전 cycle views
+function getViewsEff(episodeId: string, views: number): number {
+  const prev = viewsCache.get(episodeId) ?? views;
+  const eff  = Math.min(views, prev * VIEW_DRIFT_MAX_MULTIPLIER);
+  viewsCache.set(episodeId, eff);
+  return eff;
+}
 
 function calcCumulativeTarget(
-  views: number, epNumber: number, daysSince: number, Q: number
+  views: number, epNumber: number, daysSince: number, episodeId: string
 ): { totalTarget: number; botTarget: number } {
   if (views <= 0) return { totalTarget: 0, botTarget: 0 };
 
-  // 에피소드 감쇠: 초반 집중, 후반 급감 (0.15 계수)
-  const D = 1 / (1 + 0.15 * Math.max(0, epNumber - 1));
+  // ep-index 감쇠 (ep1=1.0, ep10=0.53, ep20=0.32)
+  const D = 1 / (1 + 0.08 * Math.max(0, epNumber - 1));
 
-  // 포화 S-curve
-  const C_max      = Q * Math.pow(views, 0.4) * D;
-  const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
+  // view drift 방지
+  const views_eff = getViewsEff(episodeId, views);
+
+  // ep-aware cap: 후반 에피소드일수록 상한도 낮아짐
+  const cap   = MAX_COMMENT_CAP_BASE * D;
+  const C_max = Math.min(ENGAGEMENT_RATE * views_eff * D, cap);
+
+  const saturation  = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
   const totalTarget = C_max * saturation;
 
-  // 최소 1개 seed 보장 (업로드 직후 daysSince<0.1)
   const minBot    = daysSince < 0.1 ? 1 : 0;
   const botTarget = Math.max(minBot, Math.floor(totalTarget * CUM_BOT_RATIO));
 
   return { totalTarget, botTarget };
 }
-
 
 
 // ── Gini Guard (연속 감쇠) ──
@@ -911,18 +926,32 @@ async function autoGenerateComments(): Promise<void> {
       const daysSince    = Math.floor((now - publishedAt.getTime()) / 86400000);
       const Q            = generateNovelQ(novel_id);
 
-      // 누적 S-curve 기반 bot 댓글 목표 계산
-      const { botTarget } = calcCumulativeTarget(viewCount, epNumber, daysSince, Q);
+      const { botTarget } = calcCumulativeTarget(viewCount, epNumber, daysSince, episode_id);
       const gap = Math.max(0, botTarget - botCount);
 
       if (gap <= 0) continue;
 
-      // Rate control: 매 주기 gap의 최대 15%만 채움 (자연스러운 분산)
-      const expectedPerCycle = Math.max(1, Math.round(gap * CUM_CYCLE_FACTOR));
-      // Poisson 노이즈 + overshoot 방지 (gap 초과 불가)
-      const toAdd = Math.min(poissonSample(expectedPerCycle), gap);
+      // ── Backfill / Ongoing 모드 분기 ──
+      // 진입: actual < target×0.8 → backfill (소급 전량, burst 제한 40/사이클)
+      // 종료: actual ≥ target×0.9 → ongoing (15% Poisson 티클링)
+      // 완충 구간 [80%~90%]: 이미 backfill이면 계속, ongoing이면 그대로
+      const fillRatio = botTarget > 0 ? botCount / botTarget : 1;
+      const isBackfill = fillRatio < BACKFILL_ENTRY_THRESHOLD;
+      const isOngoing  = fillRatio >= BACKFILL_EXIT_THRESHOLD;
 
+      let toAdd: number;
+      if (isBackfill) {
+        // 소급: gap 전량, 단 한 사이클에 40개 제한
+        toAdd = Math.min(gap, MAX_BACKFILL_PER_EPISODE);
+      } else if (isOngoing) {
+        // 자연스러운 점진 추가
+        toAdd = Math.min(poissonSample(Math.max(1, Math.round(gap * ONGOING_CYCLE_FACTOR))), gap);
+      } else {
+        // 완충 구간: 양쪽 율 절충
+        toAdd = Math.min(Math.ceil(gap * 0.5), MAX_BACKFILL_PER_EPISODE);
+      }
 
+      if (toAdd <= 0) continue;
       candidates.push({ episode_id, novel_id, ep: epNumber, publishedAt, viewCount, botCount, userCount, toAdd });
     }
 

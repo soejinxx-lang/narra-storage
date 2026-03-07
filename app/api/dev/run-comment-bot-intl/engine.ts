@@ -1655,20 +1655,24 @@ export async function runCommentBotIntl(
         }
         const tone = pickPersonalityTone(personalityWeights);
 
-        // 1봇 1댓글: 딥컨텍스트 100%
+        // 콘텐츠 비율: 딥컨텍스트 50% / 중간밀도 25% / 템플릿 25%
         let content: string;
         const roll = Math.random();
         const allTemplates = Object.values(lang.templates).flat();
 
-        if (deepComments.length > 0) {
-            // ── 100% deep GPT ──
+        if (roll < 0.50 && deepComments.length > 0) {
+            // 50% deep context
             content = deepComments.pop()!;
-        } else if (midDensityPool.length > 0) {
-            // deep 소진 → midDensity fallback
+        } else if (roll < 0.75 && midDensityPool.length > 0) {
+            // 25% mid density
             content = midDensityPool.pop()!;
         } else if (allTemplates.length > 0) {
-            // 모든 GPT 풀 소진 → 템플릿 fallback
+            // 25% template (또는 fallback)
             content = allTemplates[Math.floor(Math.random() * allTemplates.length)];
+        } else if (deepComments.length > 0) {
+            content = deepComments.pop()!;
+        } else if (midDensityPool.length > 0) {
+            content = midDensityPool.pop()!;
         } else {
             break;
         }

@@ -10,11 +10,12 @@ import db from "../../../db";
 import { requireAdmin } from "../../../../lib/admin";
 
 // ── formula 파라미터 (worker/index.ts calcCumulativeTarget와 동기화) ──
-const CUM_K         = 1.0;
-const CUM_EXP       = 0.4;
-const CUM_LAMBDA    = 0.4;
-const CUM_T0        = 0.3;
-const CUM_BOT_RATIO = 0.7;
+const ENGAGEMENT_RATE    = 0.05;
+const CUM_BOT_RATIO      = 0.6;
+const MAX_COMMENT_CAP    = 300;   // ep-aware: cap × D(ep)
+const CUM_LAMBDA         = 0.4;
+const CUM_T0             = 0.3;
+
 
 function generateNovelQ(novelId: string): number {
     let h = 0;
@@ -102,11 +103,11 @@ export async function GET(req: NextRequest) {
                 : null;
             const actual = parseInt(row.bot_count) || 0;
 
-            // Model output
-            const Q          = generateNovelQ(row.novel_id);
-            const D          = 1 / (1 + 0.08 * Math.max(0, ep - 1));   // ep-index decay
-            const epBoost    = 1.0;                                       // reserved
-            const C_max      = CUM_K * Q * Math.pow(Math.max(views, 1), CUM_EXP) * D * epBoost;
+            // Model output (worker/index.ts calcCumulativeTarget와 동기화)
+            const D          = 1 / (1 + 0.08 * Math.max(0, ep - 1));
+            const epBoost    = 1.0;
+            const cap        = MAX_COMMENT_CAP * D;
+            const C_max      = Math.min(ENGAGEMENT_RATE * Math.max(views, 1) * D, cap);
             const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSinceUpload + CUM_T0));
             const minBot     = daysSinceUpload < 0.1 ? 1 : 0;
             const botTarget  = Math.max(minBot, Math.floor(C_max * saturation * CUM_BOT_RATIO));
@@ -152,7 +153,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             // formula 파라미터 노출 (어드민에서 현재 공식 즉시 확인 가능)
-            formulaParams: { K: CUM_K, exp: CUM_EXP, lambda: CUM_LAMBDA, t0: CUM_T0, botRatio: CUM_BOT_RATIO },
+            formulaParams: { engagementRate: ENGAGEMENT_RATE, botRatio: CUM_BOT_RATIO, cap: MAX_COMMENT_CAP, lambda: CUM_LAMBDA, t0: CUM_T0 },
             summary: {
                 totalTarget,
                 totalActual,
