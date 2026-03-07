@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
         type EpStat = {
             // Observed
-            ep: number; views: number; wordCount: number | null;
+            ep: number; views: number;
             publishedAt: string; lastCommentAt: string | null;
             // Derived
             daysSinceUpload: number; daysSinceLastComment: number | null;
