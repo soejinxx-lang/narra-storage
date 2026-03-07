@@ -135,7 +135,6 @@ export async function GET(req: NextRequest) {
                 // Derived
                 daysSinceUpload, daysSinceLastComment,
                 // Model output
-                Q: parseFloat(Q.toFixed(2)),
                 D: parseFloat(D.toFixed(2)),
                 epBoost,
                 C_max: parseFloat(C_max.toFixed(2)),
