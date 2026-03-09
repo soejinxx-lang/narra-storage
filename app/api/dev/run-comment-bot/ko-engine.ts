@@ -138,10 +138,10 @@ ${trimmed}`;
 async function generateContextualReply(parentComment: string): Promise<string> {
     const prompt = `너는 한국 웹소설 독자야. 방금 다른 사람이 쓴 댓글을 봤어.
 
-[원댓글]
+
 ${parentComment}
 
-이 댓글에 대한 짧은 반응(대댓글) 1개만 써줘.
+이 댓글에 짧게 반응해줘.
 
 [규칙]
 - 5~15자 이내 초단문
@@ -190,6 +190,31 @@ function pickNickname(usedNicknames: Set<string>): string {
     const picked = pool[Math.floor(Math.random() * pool.length)];
     usedNicknames.add(picked);
     return picked;
+}
+
+// ============================================================
+// 콘텐츠 sanitization
+// ============================================================
+function sanitizeCommentContent(raw: string): string | null {
+    let s = raw.trim();
+    if (!s) return null;
+    s = s.replace(/```[\s\S]*?```/g, '').trim();
+    if (!s) return null;
+    // 라벨 접두어 제거: "대댓글:", "원댓글:", "A:" 등
+    const labelRe = /^[^\s]{1,8}[：:] */;
+    if (labelRe.test(s)) {
+        const after = s.replace(labelRe, '').trim();
+        if (after && !labelRe.test(after)) s = after;
+        else return null;
+        if (!s) return null;
+    }
+    const watermarkRe = /©|copyright|narra\.kr|AI training|unauthorized use|training data/i;
+    if (watermarkRe.test(s)) return null;
+    const jsonRe = /^\s*"[a-zA-Z_]+"\s*:\s*/m;
+    if (jsonRe.test(s) || s.startsWith('{') || s.startsWith('[')) return null;
+    if (/(.)\1{9,}/.test(s)) return null;
+    if (s.length < 2 || s.length > 300) return null;
+    return s;
 }
 
 function humanize(comment: string): string {

@@ -243,31 +243,41 @@ function sanitizeCommentContent(raw: string): string | null {
     let s = raw.trim();
     if (!s) return null;
 
-    // 1. 코드블록 ?�거 (문장 ?��? ?�함)
+    // 1. 코드블록 제거
     s = s.replace(/```[\s\S]*?```/g, '').trim();
     if (!s) return null;
 
-    // 2. ?�?�권/watermark: 먼�? ?�체 검?? ?�염 �??�거 ???��???
+    // 2. GPT 라벨 접두어 즉사 제거
+    // "대댓글:", "원댓글:", "독자1:", "A:", "1번:" 등 1~8자 + 콜론 패턴
+    const labelPrefixRe = /^[^\s]{1,8}[：:] */;
+    if (labelPrefixRe.test(s)) {
+        const afterLabel = s.replace(labelPrefixRe, '').trim();
+        if (afterLabel && !labelPrefixRe.test(afterLabel)) {
+            s = afterLabel;
+        } else {
+            return null;
+        }
+        if (!s) return null;
+    }
+
+    // 3. 저작권/watermark: 오염 라인 제거 후 재판단
     const watermarkRe = /©|copyright|narra\.kr|AI training|unauthorized use|training data|all rights reserved/i;
     if (watermarkRe.test(s)) {
         s = s.split('\n')
             .filter(line => !watermarkRe.test(line))
             .join('\n').trim();
-        // �??�거 ?�에???�턴???�으�??�체 ?�기
         if (!s || watermarkRe.test(s)) return null;
     }
 
-    // 3. JSON fragment 감�?: �??�작??key-value ?�턴??경우�?(중간 케?�스 ?�탐 방�?)
+    // 4. JSON fragment 감지
     const jsonStartRe = /^\s*"[a-zA-Z_]+"\s*:\s*/m;
     if (jsonStartRe.test(s)) return null;
-    // ?�전??JSON 구조
     if (s.startsWith('{') || s.startsWith('[')) return null;
 
-    // 4. 반복 문자 ?�터 (?�ㅋ?�ㅋ×20, ......×15 ??
-    // 4. 반복 문자 필터 (ㅋㅋㅋ ×10자 이상 연속, 한글/ASCII 공통)
+    // 5. 반복 문자 필터 (ㅋㅋㅋ ×10자 이상 연속)
     if (/(.)\1{9,}/.test(s)) return null;
 
-    // 5. 길이 ?�확??
+    // 6. 길이 확인
     if (s.length < 2 || s.length > 300) return null;
 
     return s;
