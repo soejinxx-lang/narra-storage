@@ -1189,9 +1189,9 @@ async function generateDeepContextComments(
     const call2Examples = sampleExamples(lang.templates, ['emotional', 'cheerleader'], 4);
     const call3Examples = [
         ...sampleExamples(lang.templates, ['critic'], 3),
-        // chaos call ?�드코딩 믹스: ?�어�?chaos ?�커 강화
+        // chaos call 하드코딩 믹스: 언어별 chaos 앵커 강화
         ...(isJa
-            ? ['??��', '?�れ誰だ?�け', '?�、終?�り�?]
+            ? ['は？', 'これ誰だっけ', 'え、終わり？']
             : ['lmao what', '??????', 'author drunk']),
     ];
     const call4Examples = sampleExamples(
