@@ -11,6 +11,7 @@ import db, { initDb } from '../app/db.js';
 import { splitIntoChunks } from './chunker.js';
 import { translateWithPython, restructureParagraphsWithPython } from './translate.js';
 import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine.js';
+import { runKoreanCommentBot } from '../app/api/dev/run-comment-bot/ko-engine.js';
 import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
 import { refundTranslationQuota } from '../lib/requireAuth.js';
 
@@ -1028,13 +1029,22 @@ async function autoGenerateComments(): Promise<void> {
 
       await Promise.allSettled(langTsMap.map(async ({ lang, count, timestamps }) => {
         try {
-          const langPack = await loadLangPack(lang);
-          const botResult = await runCommentBotIntl(
-            novel_id, langPack, count, 1.0, true,
-            episode_id, true, publishedAt, [], timestamps,
-          );
-          episodeAdded += botResult.inserted;
-          totalAdded += botResult.inserted;
+          // 한국어는 예전 전용 한국어 봇 로직 사용
+          if (lang === 'ko') {
+            const botResult = await runKoreanCommentBot(
+              novel_id, count, episode_id, true, publishedAt, timestamps,
+            );
+            episodeAdded += botResult.inserted;
+            totalAdded += botResult.inserted;
+          } else {
+            const langPack = await loadLangPack(lang);
+            const botResult = await runCommentBotIntl(
+              novel_id, langPack, count, 1.0, true,
+              episode_id, true, publishedAt, [], timestamps,
+            );
+            episodeAdded += botResult.inserted;
+            totalAdded += botResult.inserted;
+          }
         } catch (langErr) {
           console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
           episodeFailed = true;
