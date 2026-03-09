@@ -1248,15 +1248,15 @@ async function generateDeepContextComments(
                 .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'))
                 // JSON 파싱 성공 경로에도 watermark/fragment 차단
                 .map((c: string) => sanitizeCommentContent(c))
-                .filter((c): c is string => c !== null);
+                .filter((c: string | null): c is string => c !== null);
         } catch {
-            // JSON ?�싱 ?�패 ??raw fallback: JSON fragment ?�함 줄�? 즉시 ?�기
+            // JSON 파싱 실패 시 raw fallback: JSON fragment 포함 줄만 즉시 버림
             return raw.split('\n')
                 .map((l: string) => lang.stripLabel(l.replace(/^\d+[.)\\ -]\s*/, '')))
                 .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength)
                 .filter((l: string) => !l.includes('```') && !l.includes('"comments"') && !l.includes('{'))
                 // ?�심: fallback 경로?�서??JSON fragment, watermark ?�전 차단
-                .map((l: string) => sanitizeCommentContent(l))
+                // 핑심: fallback 경로에서도 JSON fragment, watermark 완전 차단
                 .filter((l): l is string => l !== null);
         }
     };
