@@ -1,21 +1,21 @@
 /**
- * 다국어 댓글봇 엔진 — engine.ts
+ * ?�국???��?�??�진 ??engine.ts
  * 
- * 한국어 route.ts의 구조를 정확히 따름.
- * 숫자/구조 로직은 여기, 문자열 로직은 LanguagePack.
+ * ?�국??route.ts??구조�??�확???�름.
+ * ?�자/구조 로직?� ?�기, 문자??로직?� LanguagePack.
  * 
  * 7-Stage Pipeline:
  *   1. Event Extraction (GPT)
  *   1.5. Genre-based Persona Selection
  *   2. Reader Profiles
- *   3. Info Restriction + 왜곡
+ *   3. Info Restriction + ?�곡
  *   4. Comment Generation (4+1 GPT calls)
- *   5. Herd Effect (집단 동조)
+ *   5. Herd Effect (집단 ?�조)
  *   6. Emotion Amplification
  *   7. GPT-5 Curator
  * 
- * + 70/20/10 비율 시스템
- * + 봇 생성 & 댓글 작성
+ * + 70/20/10 비율 ?�스??
+ * + �??�성 & ?��? ?�성
  */
 
 import crypto from 'crypto';
@@ -32,7 +32,7 @@ import type {
 } from "./types";
 
 // ============================================================
-// 장르 → 상위 카테고리 매핑 (언어 무관 — 공유)
+// ?�르 ???�위 카테고리 매핑 (?�어 무�? ??공유)
 // ============================================================
 const GENRE_CATEGORY_MAP: Record<string, string> = {
     'High Fantasy': 'fantasy', 'Dark Fantasy': 'fantasy',
@@ -76,7 +76,7 @@ const GENRE_CATEGORY_MAP: Record<string, string> = {
 };
 
 // ============================================================
-// 장르별 페르소나 풀 매핑 (구조 동일, 언어 무관)
+// ?�르�??�르?�나 ?� 매핑 (구조 ?�일, ?�어 무�?)
 // ============================================================
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
     // Deep context test: more C(chaos) + D(analyst) for energy diversity, fewer A/B(excited)
@@ -95,7 +95,7 @@ const GENRE_PERSONA_MAP: Record<string, string[]> = {
 };
 
 // ============================================================
-// 유틸리티 함수 (한국어 route.ts 동일)
+// ?�틸리티 ?�수 (?�국??route.ts ?�일)
 // ============================================================
 
 export function weightedRandom<T>(items: { item: T; weight: number }[]): T {
@@ -119,7 +119,7 @@ function pickCommentCount(weights: { count: number; weight: number }[]): number 
 function pickNickname(pool: string[], usedNicknames: Set<string>): string {
     const available = pool.filter(n => !usedNicknames.has(n));
     if (available.length === 0) {
-        // 풀 소진 시: 중복 없을 때까지 반복 시도
+        // ?� ?�진 ?? 중복 ?�을 ?�까지 반복 ?�도
         let nn: string;
         let attempts = 0;
         do {
@@ -137,7 +137,7 @@ function pickNickname(pool: string[], usedNicknames: Set<string>): string {
 }
 
 // ============================================================
-// #1 현실적 username 생성 (닉네임 파생, 다양한 스타일)
+// #1 ?�실??username ?�성 (?�네???�생, ?�양???��???
 // ============================================================
 function generateRealisticUsername(nickname: string): string {
     const clean = nickname.replace(/[^a-zA-Z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uac00-\ud7af]/g, '');
@@ -155,14 +155,14 @@ function generateRealisticUsername(nickname: string): string {
 }
 
 // ============================================================
-// #5 랜덤 비밀번호 해시 (더미 bcrypt 형식)
+// #5 ?�덤 비�?번호 ?�시 (?��? bcrypt ?�식)
 // ============================================================
 function randomPasswordHash(): string {
     return `$2b$10$${crypto.randomBytes(22).toString('base64').replace(/[+/=]/g, 'a').slice(0, 22)}`;
 }
 
 // ============================================================
-// #3 likes 롱테일 분포 (power law)
+// #3 likes 롱테??분포 (power law)
 // ============================================================
 function randomLikes(): number {
     const r = Math.random();
@@ -174,73 +174,111 @@ function randomLikes(): number {
 }
 
 // ============================================================
-// #2 답글 시간 지연 (Pareto-like 헤비테일)
-// 현실: 즉답 ~ 몇 달 후까지 다양한 범위
+// #2 ?��? ?�간 지??(Pareto-like ?�비?�일)
+// ?�실: 즉답 ~ �????�까지 ?�양??범위
 // ============================================================
 function replyDelay(): number {
     const r = Math.random();
     let baseMs: number;
 
     if (r < 0.40) {
-        // 40%: 즉답 (10초~5분)
+        // 40%: 즉답 (10�?5�?
         baseMs = 10000 + Math.random() * 290000;
     } else if (r < 0.65) {
-        // 25%: 빠른 답글 (5~60분)
+        // 25%: 빠른 ?��? (5~60�?
         baseMs = 5 * 60000 + Math.random() * 55 * 60000;
     } else if (r < 0.80) {
-        // 15%: 수시간 후 (1~6시간)
+        // 15%: ?�시�???(1~6?�간)
         baseMs = 3600000 + Math.random() * 5 * 3600000;
     } else if (r < 0.90) {
-        // 10%: 다음날 (6~48시간)
+        // 10%: ?�음??(6~48?�간)
         baseMs = 6 * 3600000 + Math.random() * 42 * 3600000;
     } else if (r < 0.95) {
-        // 5%: 며칠 후 (2~14일)
+        // 5%: 며칠 ??(2~14??
         baseMs = 2 * 86400000 + Math.random() * 12 * 86400000;
     } else {
-        // 5%: 늦은 답글 (2주~3개월)
+        // 5%: ??? ?��? (2�?3개월)
         baseMs = 14 * 86400000 + Math.random() * 76 * 86400000;
     }
 
-    // 관일화 방지: 0.5x~1.5x 랜덤 배율
+    // 관?�화 방�?: 0.5x~1.5x ?�덤 배율
     const jitterMultiplier = 0.5 + Math.random();
     return Math.floor(baseMs * jitterMultiplier);
 }
 
 // ============================================================
-// #6 Backfill 계정 생성일 (범위: 1일 ~ 2년 전)
+// #6 Backfill 계정 ?�성??(범위: 1??~ 2????
 // ============================================================
 function generateAccountCreatedAt(publishedAt: Date): Date {
     const r = Math.random();
     let daysBeforePublish: number;
     if (r < 0.30) {
-        // 30%: 신규 가입 (1~7일 전)
+        // 30%: ?�규 가??(1~7????
         daysBeforePublish = 1 + Math.random() * 6;
     } else if (r < 0.60) {
-        // 30%: 기존 유저 (1~3개월 전)
+        // 30%: 기존 ?��? (1~3개월 ??
         daysBeforePublish = 30 + Math.random() * 60;
     } else if (r < 0.85) {
-        // 25%: 오래된 유저 (3~12개월 전)
+        // 25%: ?�래???��? (3~12개월 ??
         daysBeforePublish = 90 + Math.random() * 270;
     } else {
-        // 15%: 초기 유저 (1~2년 전)
+        // 15%: 초기 ?��? (1~2????
         daysBeforePublish = 365 + Math.random() * 365;
     }
     return new Date(publishedAt.getTime() - daysBeforePublish * 86400000);
 }
 
 // ============================================================
-// #8 콘텐츠 중복 검사 정규화
+// #8 콘텐�?중복 검???�규??
 // ============================================================
 function normalizeForDedup(s: string): string {
-    return s.replace(/[。、！？!?.,\s]/g, '').slice(0, 20).toLowerCase();
+    return s.replace(/[?�、！�??.,\s]/g, '').slice(0, 20).toLowerCase();
 }
 
 // ============================================================
-// 시간대별 가중치 (현지 피크 시간 기반)
-// 리서치: 19~21시 최대 피크, 점심/통근 부피크
+// #9 ?��? 콘텐�?sanitization (GPT ?�이�??�처�????�롬?�트 건드리�? ?�음)
+// return null ?????��??� 버린??
+// ============================================================
+function sanitizeCommentContent(raw: string): string | null {
+    let s = raw.trim();
+    if (!s) return null;
+
+    // 1. 코드블록 ?�거 (문장 ?��? ?�함)
+    s = s.replace(/```[\s\S]*?```/g, '').trim();
+    if (!s) return null;
+
+    // 2. ?�?�권/watermark: 먼�? ?�체 검?? ?�염 �??�거 ???��???
+    const watermarkRe = /©|copyright|narra\.kr|AI training|unauthorized use|training data|all rights reserved/i;
+    if (watermarkRe.test(s)) {
+        s = s.split('\n')
+            .filter(line => !watermarkRe.test(line))
+            .join('\n').trim();
+        // �??�거 ?�에???�턴???�으�??�체 ?�기
+        if (!s || watermarkRe.test(s)) return null;
+    }
+
+    // 3. JSON fragment 감�?: �??�작??key-value ?�턴??경우�?(중간 케?�스 ?�탐 방�?)
+    const jsonStartRe = /^\s*"[a-zA-Z_]+"\s*:\s*/m;
+    if (jsonStartRe.test(s)) return null;
+    // ?�전??JSON 구조
+    if (s.startsWith('{') || s.startsWith('[')) return null;
+
+    // 4. 반복 문자 ?�터 (?�ㅋ?�ㅋ×20, ......×15 ??
+    // 4. 반복 문자 필터 (ㅋㅋㅋ ×10자 이상 연속, 한글/ASCII 공통)
+    if (/(.)\1{9,}/.test(s)) return null;
+
+    // 5. 길이 ?�확??
+    if (s.length < 2 || s.length > 300) return null;
+
+    return s;
+}
+
+// ============================================================
+// ?�간?��?가중치 (?��? ?�크 ?�간 기반)
+// 리서�? 19~21??최�? ?�크, ?�심/?�근 부?�크
 // ============================================================
 const HOUR_WEIGHTS: Record<string, number[]> = {
-    // 24시간 가중치 [00~23], 합계 ≈ 1.0
+    // 24?�간 가중치 [00~23], ?�계 ??1.0
     'ko': [.01, .01, .01, .01, .01, .02, .03, .06, .06, .03, .03, .04,
         .06, .06, .04, .04, .05, .05, .07, .10, .10, .07, .05, .03], // KST
     'ja': [.01, .01, .01, .01, .01, .02, .03, .06, .06, .03, .03, .04,
@@ -262,9 +300,9 @@ function weightedRandomHour(weights: number[]): number {
 }
 
 // ============================================================
-// 5단 클러스터링 시간 분배
-// 30% 즉시(1~15분), 25% 중기(1~3시간), 20% 당일(6~18시간),
-// 15% 1주 내(1~7일), 10% 롱테일(1~4주)
+// 5???�러?�터�??�간 분배
+// 30% 즉시(1~15�?, 25% 중기(1~3?�간), 20% ?�일(6~18?�간),
+// 15% 1�???1~7??, 10% 롱테??1~4�?
 // ============================================================
 function distributeTimestamps(count: number, langCode: string): Date[] {
     const now = new Date();
@@ -275,13 +313,13 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
         let offsetMs: number;
 
         if (roll < 0.30) {
-            // 30% → 게시 직후 1~15분
+            // 30% ??게시 직후 1~15�?
             offsetMs = (1 + Math.random() * 14) * 60 * 1000;
         } else if (roll < 0.55) {
-            // 25% → 1~3시간 후
+            // 25% ??1~3?�간 ??
             offsetMs = (60 + Math.random() * 120) * 60 * 1000;
         } else if (roll < 0.75) {
-            // 20% → 6~18시간 후 (시간대 가중치 적용)
+            // 20% ??6~18?�간 ??(?�간?� 가중치 ?�용)
             const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
             const targetHour = weightedRandomHour(weights);
             const ts = new Date(now);
@@ -291,7 +329,7 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
             }
             offsetMs = ts.getTime() - now.getTime();
         } else if (roll < 0.90) {
-            // 15% → 1~7일 후 (다음주 독자)
+            // 15% ??1~7????(?�음�??�자)
             const days = 1 + Math.random() * 6;
             const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
             const targetHour = weightedRandomHour(weights);
@@ -300,7 +338,7 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
             ts.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
             offsetMs = ts.getTime() - now.getTime();
         } else {
-            // 10% → 1~4주 후 (롱테일 독자)
+            // 10% ??1~4�???(롱테???�자)
             const days = 7 + Math.random() * 21;
             const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
             const targetHour = weightedRandomHour(weights);
@@ -310,7 +348,7 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
             offsetMs = ts.getTime() - now.getTime();
         }
 
-        // 관일화 방지: 초단위 랜덤 + 0.8x~1.2x 변동
+        // 관?�화 방�?: 초단???�덤 + 0.8x~1.2x 변??
         offsetMs = Math.floor(offsetMs * (0.8 + Math.random() * 0.4));
         offsetMs += Math.floor(Math.random() * 60) * 1000;
 
@@ -321,7 +359,7 @@ function distributeTimestamps(count: number, langCode: string): Date[] {
 }
 
 // ============================================================
-// 조회수 + 화수 + 나이 기반 동적 댓글 수 (Poisson + Power-law v4)
+// 조회??+ ?�수 + ?�이 기반 ?�적 ?��? ??(Poisson + Power-law v4)
 // ============================================================
 
 function poissonSampleEngine(λ: number): number {
@@ -358,16 +396,16 @@ function calculateTargetCount(
     if (views < 15) λ *= 0.3;
     else if (views < 30) λ *= 0.6;
 
-    // 비율 상한
+    // 비율 ?�한
     λ = Math.min(λ, views * 0.02);
 
     return poissonSampleEngine(λ);
 }
 
 // ============================================================
-// 소급 생성용 과거 타임스탬프 분배
-// publishedAt ~ now 사이에 자연스럽게 분포
-// 현실 패턴: 게시 직후 폭발 → 며칠간 산발 → 이후 드물게
+// ?�급 ?�성??과거 ?�?�스?�프 분배
+// publishedAt ~ now ?�이???�연?�럽�?분포
+// ?�실 ?�턴: 게시 직후 ??�� ??며칠�??�발 ???�후 ?�물�?
 // ============================================================
 function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode: string): Date[] {
     const now = new Date();
@@ -381,26 +419,26 @@ function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode
         let offsetMs: number;
 
         if (roll < 0.50) {
-            // 50% → 게시 후 첫 24시간 내
+            // 50% ??게시 ??�?24?�간 ??
             const first24h = Math.min(totalSpanMs, 24 * 3600 * 1000);
             offsetMs = Math.random() * first24h;
         } else if (roll < 0.75) {
-            // 25% → 게시 후 1~7일 내
+            // 25% ??게시 ??1~7????
             const first7d = Math.min(totalSpanMs, 7 * 24 * 3600 * 1000);
             offsetMs = 24 * 3600 * 1000 + Math.random() * (first7d - 24 * 3600 * 1000);
             if (offsetMs < 0) offsetMs = Math.random() * totalSpanMs;
         } else {
-            // 25% → 전체 기간 중 랜덤
+            // 25% ???�체 기간 �??�덤
             offsetMs = Math.random() * totalSpanMs;
         }
 
-        // 시간대 가중치로 시간 보정
+        // ?�간?� 가중치�??�간 보정
         const baseTime = new Date(publishedAt.getTime() + offsetMs);
         const weights = HOUR_WEIGHTS[langCode] || HOUR_WEIGHTS['en'];
         const targetHour = weightedRandomHour(weights);
         baseTime.setHours(targetHour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60));
 
-        // now를 넘지 않도록
+        // now�??��? ?�도�?
         if (baseTime.getTime() > now.getTime()) {
             baseTime.setTime(publishedAt.getTime() + Math.random() * totalSpanMs);
         }
@@ -412,12 +450,12 @@ function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode
 }
 
 // ============================================================
-// Azure GPT / OpenAI Review 호출 (한국어 route.ts 동일)
+// Azure GPT / OpenAI Review ?�출 (?�국??route.ts ?�일)
 // ============================================================
 async function callAzureGPT(
     prompt: string,
     temperature: number = 0.8,
-    maxTokens: number = 400,  // 1200→400: 댓글 생성 특화 (큰 budget = 설명형 문장 유도)
+    maxTokens: number = 400,  // 1200??00: ?��? ?�성 ?�화 (??budget = ?�명??문장 ?�도)
 ): Promise<string> {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.AZURE_OPENAI_API_KEY;
@@ -425,7 +463,7 @@ async function callAzureGPT(
     const deployment = 'gpt-4omini';
 
     if (!endpoint || !apiKey) {
-        console.warn('⚠️ Azure OpenAI not configured, skipping deep context');
+        console.warn('?�️ Azure OpenAI not configured, skipping deep context');
         return '';
     }
 
@@ -450,30 +488,30 @@ async function callAzureGPT(
 
         if (!response.ok) {
             const errorBody = await response.text();
-            console.error(`❌ Azure GPT error: ${response.status} — ${errorBody.substring(0, 200)}`);
+            console.error(`??Azure GPT error: ${response.status} ??${errorBody.substring(0, 200)}`);
             return '';
         }
 
         const data = await response.json();
         return data.choices?.[0]?.message?.content || '';
     } catch (err) {
-        console.error('❌ Azure GPT call failed:', err);
+        console.error('??Azure GPT call failed:', err);
         return '';
     }
 }
 
 // ============================================================
-// Few-shot 예시 샘플링 (lang.templates → buildCallXPrompt 주입용)
+// Few-shot ?�시 ?�플�?(lang.templates ??buildCallXPrompt 주입??
 // ============================================================
 
 /**
- * AI 클리셰 필터: 기존 수집 examples에서 평균회귀 유발 패턴 제거
+ * AI ?�리???�터: 기존 ?�집 examples?�서 ?�균?��? ?�발 ?�턴 ?�거
  */
 function isGoodExample(ex: string): boolean {
     return (
         ex.length < 80 &&
-        !ex.startsWith('This ') &&    // "This chapter was amazing" 형
-        !ex.startsWith('I love ') &&  // "I love how~" 형
+        !ex.startsWith('This ') &&    // "This chapter was amazing" ??
+        !ex.startsWith('I love ') &&  // "I love how~" ??
         !ex.startsWith('I really ') &&
         !ex.includes("Can't wait") &&
         !ex.includes('This is so')
@@ -481,8 +519,8 @@ function isGoodExample(ex: string): boolean {
 }
 
 /**
- * tone별 최소 1개 보장 + remaining 랜덤 샘플링
- * 순수 랜덤 정렬 방식은 특정 tone이 0개 나올 수 있음 → 의도한 스타일 앵커 실패
+ * tone�?최소 1�?보장 + remaining ?�덤 ?�플�?
+ * ?�수 ?�덤 ?�렬 방식?� ?�정 tone??0�??�올 ???�음 ???�도???��????�커 ?�패
  */
 function sampleExamples(
     templates: Record<string, string[]>,
@@ -492,7 +530,7 @@ function sampleExamples(
     const result: string[] = [];
     const used = new Set<string>();
 
-    // 1단계: tone별 최소 1개 보장
+    // 1?�계: tone�?최소 1�?보장
     for (const t of tones) {
         const pool = (templates[t] || []).filter(ex => !used.has(ex) && isGoodExample(ex));
         if (pool.length > 0) {
@@ -502,7 +540,7 @@ function sampleExamples(
         }
     }
 
-    // 2단계: remaining 랜덤 (전체 pool에서)
+    // 2?�계: remaining ?�덤 (?�체 pool?�서)
     const fullPool = tones
         .flatMap(t => templates[t] || [])
         .filter(ex => !used.has(ex) && isGoodExample(ex));
@@ -521,7 +559,7 @@ async function callOpenAIReview(prompt: string): Promise<string> {
     const model = process.env.OPENAI_REVIEW_MODEL || 'o3-mini';
 
     if (!apiKey) {
-        console.warn('⚠️ OpenAI Review API key not configured');
+        console.warn('?�️ OpenAI Review API key not configured');
         return '';
     }
 
@@ -544,19 +582,19 @@ async function callOpenAIReview(prompt: string): Promise<string> {
         const data = await response.json();
         return data.choices?.[0]?.message?.content || '';
     } catch (err) {
-        console.error('❌ OpenAI Review call failed:', err);
+        console.error('??OpenAI Review call failed:', err);
         return '';
     }
 }
 
 // ============================================================
-// getEpisodeContent — 타겟 언어 우선 + 한국어 fallback
+// getEpisodeContent ???��??�어 ?�선 + ?�국??fallback
 // ============================================================
 async function getEpisodeContent(
     episodeId: string,
     targetLang: string
 ): Promise<{ content: string; contentLanguage: string }> {
-    // 1차: episode_translations에서 타겟 언어 번역본 시도
+    // 1�? episode_translations?�서 ?��??�어 번역�??�도
     if (targetLang !== 'ko') {
         try {
             const translationResult = await db.query(
@@ -566,25 +604,25 @@ async function getEpisodeContent(
             );
             const row = translationResult.rows[0];
             if (row && row.status === 'DONE' && row.translated_text && row.translated_text.length > 50) {
-                console.log(`📖 [intl] Using ${targetLang} translation (${row.translated_text.length} chars)`);
+                console.log(`?�� [intl] Using ${targetLang} translation (${row.translated_text.length} chars)`);
                 return { content: row.translated_text, contentLanguage: targetLang };
             }
         } catch (e) {
-            console.warn(`⚠️ [intl] Translation table query failed, falling back to Korean`);
+            console.warn(`?�️ [intl] Translation table query failed, falling back to Korean`);
         }
     }
 
-    // 2차: 원본 한국어
+    // 2�? ?�본 ?�국??
     const contentResult = await db.query(
         `SELECT content FROM episodes WHERE id = $1`, [episodeId]
     );
     const content = contentResult.rows[0]?.content || '';
-    console.log(`📖 [intl] Using Korean original (${content.length} chars)`);
+    console.log(`?�� [intl] Using Korean original (${content.length} chars)`);
     return { content, contentLanguage: 'ko' };
 }
 
 // ============================================================
-// 장르 유틸 (한국어 route.ts 동일)
+// ?�르 ?�틸 (?�국??route.ts ?�일)
 // ============================================================
 function getGenreWeights(genreData: string | string[] | null): Record<string, number> {
     if (!genreData) return {};
@@ -609,7 +647,7 @@ function getGenreWeights(genreData: string | string[] | null): Record<string, nu
 }
 
 // ============================================================
-// 페르소나 선택 (한국어 route.ts 동일 구조, 언어팩 페르소나 사용)
+// ?�르?�나 ?�택 (?�국??route.ts ?�일 구조, ?�어???�르?�나 ?�용)
 // ============================================================
 function selectPersonasForGenre(
     genreWeights: Record<string, number>,
@@ -625,7 +663,7 @@ function selectPersonasForGenre(
         return shuffled.map(id => personaMap.get(id)).filter(Boolean) as PersonaDef[];
     }
 
-    // Largest Remainder Method (한국어 route.ts 동일)
+    // Largest Remainder Method (?�국??route.ts ?�일)
     const rawSlots = categories.map(cat => ({
         cat,
         raw: genreWeights[cat] * count,
@@ -659,7 +697,7 @@ function selectPersonasForGenre(
         }
     }
 
-    // 부족하면 기본 풀에서 보충
+    // 부족하�?기본 ?�?�서 보충
     if (selected.length < count) {
         const fallback = defaultPool.filter(id => !usedIds.has(id)).sort(() => Math.random() - 0.5);
         for (const id of fallback) {
@@ -687,46 +725,46 @@ function selectPersonasForGenre(
 }
 
 // ============================================================
-// Stage 1: Event Extraction (언어팩 프롬프트 사용)
+// Stage 1: Event Extraction (?�어???�롬?�트 ?�용)
 // ============================================================
 async function extractEvents(content: string, lang: LanguagePack): Promise<EventExtraction> {
     const trimmed = content.length > 3000 ? content.slice(-3000) : content;
     const prompt = lang.extractEventsPrompt(trimmed);
-    // JSON 구조 응답이라 토큰 충분히 줘야 파싱 성공 (default 400이면 잘려서 항상 실패)
+    // JSON 구조 ?�답?�라 ?�큰 충분??줘야 ?�싱 ?�공 (default 400?�면 ?�려????�� ?�패)
     const raw = await callAzureGPT(prompt, 0.3, 1200);
     if (!raw) return { events: [], dominantEmotion: '' };
 
-    // 1차: 코드블록 제거 후 JSON.parse
+    // 1�? 코드블록 ?�거 ??JSON.parse
     try {
         const cleaned = raw
-            .replace(/^```(?:json)?\s*\n?/i, '')  // ```json 또는 ``` 제거
-            .replace(/\n?```\s*$/i, '')             // 끝 ``` 제거
+            .replace(/^```(?:json)?\s*\n?/i, '')  // ```json ?�는 ``` ?�거
+            .replace(/\n?```\s*$/i, '')             // ??``` ?�거
             .trim();
         const data = JSON.parse(cleaned);
         if (data.events && Array.isArray(data.events)) {
             return { events: data.events, dominantEmotion: data.dominantEmotion || '' };
         }
-    } catch (_) { /* 1차 실패 → 2차 시도 */ }
+    } catch (_) { /* 1�??�패 ??2�??�도 */ }
 
-    // 2차: 응답에서 { ... } JSON 블록만 추출
+    // 2�? ?�답?�서 { ... } JSON 블록�?추출
     try {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             const data = JSON.parse(jsonMatch[0]);
             if (data.events && Array.isArray(data.events)) {
-                console.log('⚠️ [intl] Event extraction used JSON substring fallback');
+                console.log('?�️ [intl] Event extraction used JSON substring fallback');
                 return { events: data.events, dominantEmotion: data.dominantEmotion || '' };
             }
         }
-    } catch (_) { /* 2차도 실패 */ }
+    } catch (_) { /* 2차도 ?�패 */ }
 
-    console.warn(`⚠️ [intl] Event extraction parse failed. Raw (first 200): ${raw.slice(0, 200)}`);
+    console.warn(`?�️ [intl] Event extraction parse failed. Raw (first 200): ${raw.slice(0, 200)}`);
     return { events: [], dominantEmotion: '' };
 }
 
 
 // ============================================================
-// Stage 2: Reader Profiles (한국어 route.ts 동일 — 숫자 구조)
+// Stage 2: Reader Profiles (?�국??route.ts ?�일 ???�자 구조)
 // ============================================================
 function generateReaderProfiles(
     events: StoryEvent[], personas: PersonaDef[], dominantEmotion: string = ''
@@ -809,12 +847,12 @@ function generateReaderProfiles(
             profile.bandwagonTarget = bandwagonChar;
         }
 
-        // 감정 부스트 (구조 동일, 감정 키워드는 추후 언어팩으로 이동 가능)
+        // 감정 부?�트 (구조 ?�일, 감정 ?�워?�는 추후 ?�어?�으�??�동 가??
         if (dominantEmotion) {
             const moodIntensityBoost: Record<string, number> = {
-                '슬픔': 1.08, '소름': 1.06, '감동': 1.06,
+                '?�픔': 1.08, '?�름': 1.06, '감동': 1.06,
                 '긴장': 1.04, '분노': 1.05,
-                '설렘': 1.0, '웃김': 1.0, '허탈': 1.0,
+                '?�렘': 1.0, '?��?': 1.0, '?�탈': 1.0,
                 // English
                 'tension': 1.04, 'sadness': 1.08, 'anger': 1.05,
                 'humor': 1.0, 'thrill': 1.06, 'romance': 1.0,
@@ -831,7 +869,7 @@ function generateReaderProfiles(
 }
 
 // ============================================================
-// Stage 3: Info Restriction (한국어 route.ts 구조 동일)
+// Stage 3: Info Restriction (?�국??route.ts 구조 ?�일)
 // ============================================================
 function buildReaderView(events: StoryEvent[], profile: ReaderProfile, lang: LanguagePack): string {
     const visibleCount = Math.max(1, Math.round(events.length * profile.attentionSpan));
@@ -846,7 +884,7 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile, lang: Lan
         visibleEvents = shuffled.slice(0, visibleCount);
     }
 
-    // misreader 왜곡 (언어팩 distort 함수 사용)
+    // misreader ?�곡 (?�어??distort ?�수 ?�용)
     if (profile.type === 'misreader' && profile.memoryNoise > 0.3) {
         visibleEvents = visibleEvents.map(e => {
             if (Math.random() < profile.memoryNoise) {
@@ -866,20 +904,20 @@ function buildReaderView(events: StoryEvent[], profile: ReaderProfile, lang: Lan
         case 'lurker':
             return visibleEvents.map(e => e.characters.join('/') + ': ' + e.type).join(', ');
         case 'troll':
-            return visibleEvents.map(e => `${e.characters[0] || '?'} — ${e.summary}`).join('\n');
+            return visibleEvents.map(e => `${e.characters[0] || '?'} ??${e.summary}`).join('\n');
         case 'analyst':
             return visibleEvents.map(e =>
-                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` [${e.detail}]` : ''}`
+                `[${e.type}] ${e.summary} (${e.characters.join(', ')})${e.quote ? ` ??"${e.quote}"` : ''}${e.detail ? ` [${e.detail}]` : ''}`
             ).join('\n');
         default:
             return visibleEvents.map(e =>
-                `${e.summary}${e.quote ? ` — "${e.quote}"` : ''}${e.detail ? ` (${e.detail})` : ''}`
+                `${e.summary}${e.quote ? ` ??"${e.quote}"` : ''}${e.detail ? ` (${e.detail})` : ''}`
             ).join('\n');
     }
 }
 
 // ============================================================
-// Stage 5: 집단 동조 파동 (언어팩 문자열 사용)
+// Stage 5: 집단 ?�조 ?�동 (?�어??문자???�용)
 // ============================================================
 function injectHerdEffect(comments: string[], lang: LanguagePack): string[] {
     if (Math.random() > 0.15 || comments.length < 4) return comments; // 50% reduced for testing (was 0.3)
@@ -892,7 +930,7 @@ function injectHerdEffect(comments: string[], lang: LanguagePack): string[] {
     const keyword = lang.extractKeyword(seed);
     if (!keyword) return comments;
 
-    console.log(`👥 [intl] Herd: seed="${seed}", keyword="${keyword}"`);
+    console.log(`?�� [intl] Herd: seed="${seed}", keyword="${keyword}"`);
 
     const echoTemplates = lang.herdEchoTemplates(keyword);
     const counterTemplates = lang.herdCounterTemplates(keyword);
@@ -916,7 +954,7 @@ function injectHerdEffect(comments: string[], lang: LanguagePack): string[] {
 }
 
 // ============================================================
-// Stage 6: 감정 증폭 (언어팩 패턴 사용)
+// Stage 6: 감정 증폭 (?�어???�턴 ?�용)
 // ============================================================
 function amplifyEmotions(comments: string[], lang: LanguagePack): string[] {
     const result = [...comments];
@@ -941,32 +979,32 @@ function amplifyEmotions(comments: string[], lang: LanguagePack): string[] {
 }
 
 // ============================================================
-// Stage 7: Curator (언어팩 curateScoring + GPT-5)
+// Stage 7: Curator (?�어??curateScoring + GPT-5)
 // ============================================================
 async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCount: number = 8): Promise<string[]> {
-    // 코드 사전필터: 언어팩 기반 AI 티 감점
+    // 코드 ?�전?�터: ?�어??기반 AI ??감점
     const scored = comments.map(comment => {
         const cleaned = comment.replace(/\.$/g, '').trim();
         const { score } = lang.curateScoring(cleaned);
         return { text: cleaned, score };
     });
 
-    // === Spectrum Preservation (스펙트럼 보존) ===
-    // 하위 20% 제거 대신: Tier 1 즉사(0점)만 제거, 나머지는 보존
+    // === Spectrum Preservation (?�펙?�럼 보존) ===
+    // ?�위 20% ?�거 ?�?? Tier 1 즉사(0??�??�거, ?�머지??보존
     scored.sort((a, b) => b.score - a.score);
 
-    // Tier 1 즉사만 제거 (score === 0)
+    // Tier 1 즉사�??�거 (score === 0)
     const alive = scored.filter(s => s.score > 0);
     const killed = scored.filter(s => s.score === 0);
     for (const d of killed) {
-        console.log(`🔪 [intl] AI-DNA kill (${d.score}): "${d.text}"`);
+        console.log(`?�� [intl] AI-DNA kill (${d.score}): "${d.text}"`);
     }
 
-    // 상위 10% "너무 완벽한" 댓글 제거 (균질화 방지)
+    // ?�위 10% "?�무 ?�벽?? ?��? ?�거 (균질??방�?)
     const topCut = Math.ceil(alive.length * 0.1);
     const tooClean = alive.slice(0, topCut).filter(s => s.score >= 90 && s.text.length > 50);
     for (const d of tooClean) {
-        console.log(`✨ [intl] Too-clean removal (${d.score}): "${d.text}"`);
+        console.log(`??[intl] Too-clean removal (${d.score}): "${d.text}"`);
     }
     const preFiltered = alive.filter(s => !tooClean.includes(s));
 
@@ -980,19 +1018,19 @@ async function curateWithGPT5(comments: string[], lang: LanguagePack, targetCoun
     const minLong = Math.max(1, Math.ceil(targetCount * 0.15));
     const maxMed = Math.ceil(targetCount * 0.40);
 
-    console.log(`📏 [intl] Length dist: short=${shortComments.length}(min${minShort}), med=${medComments.length}(max${maxMed}), long=${longComments.length}(min${minLong})`);
+    console.log(`?�� [intl] Length dist: short=${shortComments.length}(min${minShort}), med=${medComments.length}(max${maxMed}), long=${longComments.length}(min${minLong})`);
 
-    // === 30% Curator Bypass (자연 무질서 보존) ===
+    // === 30% Curator Bypass (?�연 무질??보존) ===
     const bypassCount = Math.ceil(preFiltered.length * 0.3);
     const shuffledPre = [...preFiltered].sort(() => Math.random() - 0.5);
     const bypassed = shuffledPre.slice(0, bypassCount);
     const toCurate = shuffledPre.slice(bypassCount);
 
-    // GPT-5 큐레이터 (직관 기반 — 언어별 커뮤니티 페르소나)
+    // GPT-5 ?�레?�터 (직�? 기반 ???�어�?커�??�티 ?�르?�나)
     const commentList = toCurate.map((s, i) => `${i}: "${s.text}"`).join('\n');
     const targetCurateCount = Math.max(1, targetCount - Math.ceil(bypassCount * 0.3));
 
-    // 언어별 curator 프롬프트 사용 (없으면 기본 영어 프롬프트)
+    // ?�어�?curator ?�롬?�트 ?�용 (?�으�?기본 ?�어 ?�롬?�트)
     const curatorPrompt = lang.curatorPrompt
         ? lang.curatorPrompt(commentList, targetCurateCount)
         : `You've been on ${lang.platformString || 'Royal Road'} for years. You scroll fast. You don't overthink.
@@ -1008,8 +1046,8 @@ Just ask yourself:
 
 If you saw this comment in a real chapter, would you pause and think "huh, that sounds generated"?
 
-If yes → remove it.
-If no → keep it.
+If yes ??remove it.
+If no ??keep it.
 
 Real comment sections are messy.
 Some people didn't read carefully.
@@ -1038,11 +1076,11 @@ Output only JSON:
                     .map((idx: number) => toCurate[idx].text);
             }
         } catch (e) {
-            console.warn('⚠️ [intl] GPT-5 curator parse failed');
+            console.warn('?�️ [intl] GPT-5 curator parse failed');
         }
     }
 
-    // 바이패스된 댓글 중 일부 삽입 (무질서 보존)
+    // 바이?�스???��? �??��? ?�입 (무질??보존)
     const bypassInsert = bypassed.sort(() => Math.random() - 0.5).slice(0, Math.ceil(bypassCount * 0.3)).map(s => s.text);
     finalComments.push(...bypassInsert);
 
@@ -1052,12 +1090,12 @@ Output only JSON:
         finalComments.push(...remaining.slice(0, needed));
     }
     finalComments = finalComments.slice(0, targetCount);
-    console.log(`🎯 [intl] Curator: ${toCurate.length} curated + ${bypassInsert.length} bypassed = ${finalComments.length} final`);
+    console.log(`?�� [intl] Curator: ${toCurate.length} curated + ${bypassInsert.length} bypassed = ${finalComments.length} final`);
 
-    // 후처리 노이즈 (언어팩)
+    // ?�처�??�이�?(?�어??
     const noised = finalComments.map(text => lang.applyPostNoise(text));
 
-    // 셔플 (70% 랜덤)
+    // ?�플 (70% ?�덤)
     for (let i = noised.length - 1; i > 0; i--) {
         if (Math.random() < 0.7) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -1069,7 +1107,7 @@ Output only JSON:
 }
 
 // ============================================================
-// 7-Stage Pipeline 메인 함수
+// 7-Stage Pipeline 메인 ?�수
 // ============================================================
 async function generateDeepContextComments(
     episodeContent: string,
@@ -1079,12 +1117,12 @@ async function generateDeepContextComments(
     sourceLanguage: string = 'ko'
 ): Promise<{ comments: string[]; midComments: string[]; detectedTags: string[] }> {
     // Stage 1: Event Extraction
-    console.log('📋 [intl] Stage 1: Extracting events...');
+    console.log('?�� [intl] Stage 1: Extracting events...');
     const extraction = await extractEvents(episodeContent, lang);
     const { events, dominantEmotion } = extraction;
 
     if (events.length === 0) {
-        console.warn('⚠️ [intl] No events extracted');
+        console.warn('?�️ [intl] No events extracted');
         return { comments: [], midComments: [], detectedTags: [] };
     }
 
@@ -1092,20 +1130,20 @@ async function generateDeepContextComments(
     const personas = selectPersonasForGenre(genreWeights, lang, count);
 
     // Stage 2: Reader Profiles
-    console.log('👥 [intl] Stage 2: Reader profiles...');
+    console.log('?�� [intl] Stage 2: Reader profiles...');
     const profiles = generateReaderProfiles(events, personas, dominantEmotion);
 
     // Stage 3: Info Restriction
-    console.log('🔒 [intl] Stage 3: Reader views...');
+    console.log('?�� [intl] Stage 3: Reader views...');
     const readerViews = profiles.map(p => ({
         profile: p,
         view: buildReaderView(events, p, lang),
     }));
 
-    // Stage 4: callGroup별 분리 GPT 호출
+    // Stage 4: callGroup�?분리 GPT ?�출
     const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const moodHint = dominantEmotion ? `\nMood: "${dominantEmotion}"` : '';
-    const genreHint = ''; // 언어팩 프롬프트 빌더가 처리
+    const genreHint = ''; // ?�어???�롬?�트 빌더가 처리
 
     const sceneContext = events.slice(0, 3)
         .filter(e => e.quote && e.quote.length > 0)
@@ -1144,16 +1182,16 @@ async function generateDeepContextComments(
         targetCommentCount: 0,  // filled per call
     };
 
-    // ── Few-shot 예시 샘플링 (lang.templates → 각 call 프롬프트 맨 마지막 주입) ──
-    // 일본어는 call4/5에서 theorist tone을 강제 포함 (복선추측/설정고찰 활성화)
+    // ?�?� Few-shot ?�시 ?�플�?(lang.templates ??�?call ?�롬?�트 �?마�?�?주입) ?�?�
+    // ?�본?�는 call4/5?�서 theorist tone??강제 ?�함 (복선추측/?�정고찰 ?�성??
     const isJa = lang.code === 'ja';
     const call1Examples = sampleExamples(lang.templates, ['short_reactor', 'emotional'], 3);
     const call2Examples = sampleExamples(lang.templates, ['emotional', 'cheerleader'], 4);
     const call3Examples = [
         ...sampleExamples(lang.templates, ['critic'], 3),
-        // chaos call 하드코딩 믹스: 언어별 chaos 앵커 강화
+        // chaos call ?�드코딩 믹스: ?�어�?chaos ?�커 강화
         ...(isJa
-            ? ['は？', 'これ誰だっけ', 'え、終わり？']
+            ? ['??��', '?�れ誰だ?�け', '?�、終?�り�?]
             : ['lmao what', '??????', 'author drunk']),
     ];
     const call4Examples = sampleExamples(
@@ -1170,19 +1208,19 @@ async function generateDeepContextComments(
     const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length * 2, 4), examples: call4Examples });
     const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 15, examples: call5Examples });
 
-    // 5회 병렬 호출 (call별 temperature 차등)
-    // call3(chaos) = 1.0 (1.1은 Azure에서 JSON 깨짐 위험), 나머지는 0.7~0.8
-    console.log('🧠 [intl] Stage 4: Persona-based GPT calls (few-shot enabled)...');
+    // 5??병렬 ?�출 (call�?temperature 차등)
+    // call3(chaos) = 1.0 (1.1?� Azure?�서 JSON 깨짐 ?�험), ?�머지??0.7~0.8
+    console.log('?�� [intl] Stage 4: Persona-based GPT calls (few-shot enabled)...');
     const [raw1, raw2, raw3, raw4, raw5] = await Promise.all([
         call1 ? callAzureGPT(call1, 0.7, 600) : Promise.resolve(''),
         call2 ? callAzureGPT(call2, 0.8, 600) : Promise.resolve(''),
         call3 ? callAzureGPT(call3, 1.0, 600) : Promise.resolve(''),  // chaos: high entropy
         call4 ? callAzureGPT(call4, 0.8, 600) : Promise.resolve(''),
-        callAzureGPT(call5, 0.7, 800),  // mid-density 15개 → 더 넉넉하게
+        callAzureGPT(call5, 0.7, 800),  // mid-density 15�??????�넉?�게
     ]);
     const rawResults = [raw1, raw2, raw3, raw4, raw5];
 
-    // 결과 합치기
+    // 결과 ?�치�?
     const safeComments: string[] = [];
     const chaosComments: string[] = [];
     let detectedTags: string[] = [];
@@ -1207,26 +1245,33 @@ async function generateDeepContextComments(
             return (parsed.comments || [])
                 .map((c: string) => lang.stripLabel(c))
                 .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength)
-                .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'));
+                .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'))
+                // JSON 파싱 성공 경로에도 watermark/fragment 차단
+                .map((c: string) => sanitizeCommentContent(c))
+                .filter((c): c is string => c !== null);
         } catch {
+            // JSON ?�싱 ?�패 ??raw fallback: JSON fragment ?�함 줄�? 즉시 ?�기
             return raw.split('\n')
-                .map((l: string) => lang.stripLabel(l.replace(/^\d+[\.)\\-]\s*/, '')))
+                .map((l: string) => lang.stripLabel(l.replace(/^\d+[.)\\ -]\s*/, '')))
                 .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength)
-                .filter((l: string) => !l.includes('```') && !l.includes('"comments"') && !l.includes('{'));
+                .filter((l: string) => !l.includes('```') && !l.includes('"comments"') && !l.includes('{'))
+                // ?�심: fallback 경로?�서??JSON fragment, watermark ?�전 차단
+                .map((l: string) => sanitizeCommentContent(l))
+                .filter((l): l is string => l !== null);
         }
     };
 
-    // rawResults[0~4] = [call1, call2, call3, call4, call5] 고정 (call 없으면 빈 문자열)
+    // rawResults[0~4] = [call1, call2, call3, call4, call5] 고정 (call ?�으�?�?문자??
     safeComments.push(...parseComments(rawResults[0] || null));   // call1: immersed
     safeComments.push(...parseComments(rawResults[1] || null));   // call2: overreactor
     chaosComments.push(...parseComments(rawResults[2] || null));  // call3: chaos
     safeComments.push(...parseComments(rawResults[3] || null));   // call4: casual
 
-    // 중간밀도
+    // 중간밀??
     const midComments: string[] = parseComments(rawResults[4] || null)
         .filter(c => c.length >= lang.midDensityRange[0] && c.length <= lang.midDensityRange[1]);
 
-    console.log(`📊 [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
+    console.log(`?�� [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
 
     // Keyword-based semantic dedup: prevent same event keyword from dominating
     const eventKeywords = events
@@ -1246,12 +1291,12 @@ async function generateDeepContextComments(
         return !dominated;
     });
     if (dedupedSafe.length < safeComments.length) {
-        console.log(`🔁 [intl] Semantic dedup: ${safeComments.length} → ${dedupedSafe.length}`);
+        console.log(`?�� [intl] Semantic dedup: ${safeComments.length} ??${dedupedSafe.length}`);
     }
 
     // --- Post-processing filters (probabilistic, not deterministic) ---
 
-    // Fix B: Slang frequency limiter — decay probability, not hard cutoff
+    // Fix B: Slang frequency limiter ??decay probability, not hard cutoff
     const slangPatterns: [RegExp, string][] = [
         [/\bfr fr\b/i, 'fr fr'], [/\blowkey\b/i, 'lowkey'], [/\bngl\b/i, 'ngl'],
         [/\btbh\b/i, 'tbh'], [/\bno cap\b/i, 'no cap'], [/\bbruh\b/i, 'bruh'],
@@ -1280,7 +1325,7 @@ async function generateDeepContextComments(
         return true;
     });
 
-    // Fix D: CAPS limiter — softening not killing
+    // Fix D: CAPS limiter ??softening not killing
     const capsMax = 2 + Math.floor(Math.random() * 4);
     let capsCount = 0;
     const lolSuffixes = [' lol', ' lmao', ' haha', ' bruh', ''];
@@ -1291,7 +1336,7 @@ async function generateDeepContextComments(
         if (upperRatio > 0.5) {
             capsCount++;
             if (capsCount > capsMax) {
-                // 에너지 흐리게 (전부 소문자 + lol 붙이기)
+                // ?�너지 ?�리�?(?��? ?�문??+ lol 붙이�?
                 const suffix = lolSuffixes[Math.floor(Math.random() * lolSuffixes.length)];
                 return comment.toLowerCase() + suffix;
             }
@@ -1299,7 +1344,7 @@ async function generateDeepContextComments(
         return comment;
     });
 
-    // Fix E: Word-overlap dedup — 70% threshold, allow 2 natural dupes
+    // Fix E: Word-overlap dedup ??70% threshold, allow 2 natural dupes
     let dupeAllowance = 2; // humans repeat similar things
     const afterDedup: string[] = [];
     for (const comment of afterCaps) {
@@ -1319,11 +1364,11 @@ async function generateDeepContextComments(
         }
     }
 
-    console.log(`🧹 [intl] Filters: ${dedupedSafe.length} → slang:${afterSlang.length} → caps_adj → dedup:${afterDedup.length}`);
+    console.log(`?�� [intl] Filters: ${dedupedSafe.length} ??slang:${afterSlang.length} ??caps_adj ??dedup:${afterDedup.length}`);
 
-    // === 🔥 Messiness Layer (덜 정돈되게 만드는 레이어) ===
+    // === ?�� Messiness Layer (???�돈?�게 만드???�이?? ===
     const messied = afterDedup.map(comment => {
-        // (0) "The X is/was Y" → 구어체 변환 (살아남은 리뷰톤 잡기)
+        // (0) "The X is/was Y" ??구어�?변??(?�아?��? 리뷰???�기)
         const theMatch = comment.match(/^The (\w+(?:\s+\w+)?)\s+(is|was|felt|are|were)\s+(.+)/i);
         if (theMatch) {
             const options = [
@@ -1333,25 +1378,25 @@ async function generateDeepContextComments(
             ];
             return options[Math.floor(Math.random() * options.length)];
         }
-        // (1) 이유-결과 40% 절단: "shows a deeper side to him" → "shows a deeper side"
+        // (1) ?�유-결과 40% ?�단: "shows a deeper side to him" ??"shows a deeper side"
         if (Math.random() < 0.4) {
             const truncMatch = comment.match(/^(.+?\b(?:makes?|shows?|adds?|gives?)\s+\w+(?:\s+\w+)?)\s+(?:to|of|for|about|in)\b/i);
             if (truncMatch) return truncMatch[1];
         }
-        // (2) 마지막 단어 5% 절단 (미완성 문장)
+        // (2) 마�?�??�어 5% ?�단 (미완??문장)
         if (Math.random() < 0.05 && comment.split(' ').length > 4) {
             const words = comment.split(' ');
             words.pop();
             return words.join(' ');
         }
-        // (3) 마침표 8% 제거 (끊김 효과)
+        // (3) 마침??8% ?�거 (?��? ?�과)
         if (Math.random() < 0.08 && /\.$/.test(comment)) {
             return comment.slice(0, -1);
         }
         return comment;
     });
 
-    // === 🔁 Structure Pattern Dedup (같은 시작 패턴 통계 컷) ===
+    // === ?�� Structure Pattern Dedup (같�? ?�작 ?�턴 ?�계 �? ===
     const patternMap = new Map<string, string[]>();
     for (const comment of messied) {
         const words = comment.toLowerCase().split(/\s+/).slice(0, 2).join(' ');
@@ -1362,19 +1407,19 @@ async function generateDeepContextComments(
     const afterPatternDedup: string[] = [];
     for (const [pattern, group] of patternMap) {
         if (group.length > 2) {
-            // 같은 시작 패턴 3개 이상 → 2개만 유지 (랜덤)
+            // 같�? ?�작 ?�턴 3�??�상 ??2개만 ?��? (?�덤)
             const shuffled = group.sort(() => Math.random() - 0.5);
             afterPatternDedup.push(...shuffled.slice(0, 2));
-            console.log(`🔁 [intl] Pattern dedup: "${pattern}" ${group.length} → 2`);
+            console.log(`?�� [intl] Pattern dedup: "${pattern}" ${group.length} ??2`);
         } else {
             afterPatternDedup.push(...group);
         }
     }
 
-    // === 📊 Hard Quota Enforcement (비율 하드캡) ===
-    const maxTwoSentence = Math.ceil(afterPatternDedup.length * 0.20); // 2문장 이상 최대 20%
-    const maxLong = Math.ceil(afterPatternDedup.length * 0.25); // 15단어+ 최대 25%
-    const maxExplanation = Math.ceil(afterPatternDedup.length * 0.10); // 설명형 동사 최대 10%
+    // === ?�� Hard Quota Enforcement (비율 ?�드�? ===
+    const maxTwoSentence = Math.ceil(afterPatternDedup.length * 0.20); // 2문장 ?�상 최�? 20%
+    const maxLong = Math.ceil(afterPatternDedup.length * 0.25); // 15?�어+ 최�? 25%
+    const maxExplanation = Math.ceil(afterPatternDedup.length * 0.10); // ?�명???�사 최�? 10%
 
     let twoSentCount = 0;
     let longCount = 0;
@@ -1398,9 +1443,9 @@ async function generateDeepContextComments(
         }
         return true;
     });
-    console.log(`📊 [intl] Quotas: 2sent=${twoSentCount}(max${maxTwoSentence}), long=${longCount}(max${maxLong}), explain=${explanationCount}(max${maxExplanation})`);
+    console.log(`?�� [intl] Quotas: 2sent=${twoSentCount}(max${maxTwoSentence}), long=${longCount}(max${maxLong}), explain=${explanationCount}(max${maxExplanation})`);
 
-    // === 🧠 Cognitive Break Injection (인지 오류 주입) ===
+    // === ?�� Cognitive Break Injection (?��? ?�류 주입) ===
     const cognitiveBreaks = [
         'wait who said that',
         'wasn\'t that the other guy',
@@ -1424,13 +1469,13 @@ async function generateDeepContextComments(
         const insertIdx = Math.floor(Math.random() * withBreaks.length);
         withBreaks.splice(insertIdx, 0, cognitiveBreaks.splice(breakIdx, 1)[0]);
     }
-    console.log(`🧠 [intl] Cognitive breaks: +${breakCount} injected (total ${withBreaks.length})`);
-    console.log(`🎲 [intl] Diversity pipeline: ${afterDedup.length} → mess:${messied.length} → pattern:${afterPatternDedup.length} → quota:${afterQuota.length} → breaks:${withBreaks.length}`);
+    console.log(`?�� [intl] Cognitive breaks: +${breakCount} injected (total ${withBreaks.length})`);
+    console.log(`?�� [intl] Diversity pipeline: ${afterDedup.length} ??mess:${messied.length} ??pattern:${afterPatternDedup.length} ??quota:${afterQuota.length} ??breaks:${withBreaks.length}`);
 
-    // Stage 5: Emotion Amplification (감정 먼저 → 자연스러운 깨짐)
+    // Stage 5: Emotion Amplification (감정 먼�? ???�연?�러??깨짐)
     const withEmotion = amplifyEmotions(withBreaks, lang);
 
-    // Stage 6: Herd Effect (50% 감소 — 테스트 중 연출감 방지)
+    // Stage 6: Herd Effect (50% 감소 ???�스??�??�출�?방�?)
     const withHerd = injectHerdEffect(withEmotion, lang);
 
     // Stage 7: Curator
@@ -1439,7 +1484,7 @@ async function generateDeepContextComments(
     const curatorTarget = Math.max(1, count - chaosInsertCount);
     const filtered = await curateWithGPT5(withEmotion, lang, curatorTarget);
 
-    // chaos 삽입
+    // chaos ?�입
     const selectedChaos = chaosComments.sort(() => Math.random() - 0.5).slice(0, chaosInsertCount);
     const finalMerged = [...filtered];
     for (const chaos of selectedChaos) {
@@ -1451,7 +1496,7 @@ async function generateDeepContextComments(
 }
 
 // ============================================================
-// pickComment — 템플릿 기반 댓글 선택 (한국어 route.ts 동일 구조)
+// pickComment ???�플�?기반 ?��? ?�택 (?�국??route.ts ?�일 구조)
 // ============================================================
 function pickComment(
     tone: PersonalityTone,
@@ -1460,7 +1505,7 @@ function pickComment(
     characterNames: string[],
     genreKey: string = ''
 ): string {
-    // 25% 장르 템플릿
+    // 25% ?�르 ?�플�?
     if (genreKey && Math.random() < 0.25) {
         const genrePool = lang.genreTemplates[genreKey];
         if (genrePool && genrePool.length > 0) {
@@ -1475,7 +1520,7 @@ function pickComment(
         }
     }
 
-    // Universal 템플릿
+    // Universal ?�플�?
 
     const pool = lang.templates[tone];
     const available = pool.filter(t => !usedTemplates.has(t));
@@ -1493,7 +1538,7 @@ function pickComment(
 }
 
 // ============================================================
-// 메인 실행 함수 — 한국어 GET handler의 내부 로직 추출
+// 메인 ?�행 ?�수 ???�국??GET handler???��? 로직 추출
 // ============================================================
 export async function runCommentBotIntl(
     novelId: string,
@@ -1505,14 +1550,14 @@ export async function runCommentBotIntl(
     backfill: boolean = false,
     publishedAt?: Date,
     recurringReaders: RecurringReader[] = [],
-    externalTimestamps?: Date[],  // 외부 주입 타임슬롯 (인터리빙용)
+    externalTimestamps?: Date[],  // ?��? 주입 ?�?�슬�?(?�터리빙??
 ): Promise<CommentBotResult> {
     const totalCount = Math.round(baseCount * density);
     let personalityWeights = lang.defaultWeights;
 
-    console.log(`🤖[intl] Starting comment bot for ${novelId} (lang=${lang.code}, count=${totalCount})...`);
+    console.log(`?��[intl] Starting comment bot for ${novelId} (lang=${lang.code}, count=${totalCount})...`);
 
-    // 1. 에피소드 ID 결정
+    // 1. ?�피?�드 ID 결정
     let episodeId: string;
     if (targetEpisodeId) {
         episodeId = targetEpisodeId;
@@ -1528,14 +1573,14 @@ export async function runCommentBotIntl(
     }
     const episodeIds = [episodeId];
 
-    // 1.5. 캐릭터 이름 로딩
+    // 1.5. 캐릭???�름 로딩
     const entityResult = await db.query(
         `SELECT source_text FROM entities WHERE novel_id = $1 AND (category = 'character' OR category IS NULL) LIMIT 20`,
         [novelId]
     );
     const characterNames: string[] = entityResult.rows.map((r: { source_text: string }) => r.source_text);
 
-    // 2. 기존 댓글 캐싱 (답글 가중치용)
+    // 2. 기존 ?��? 캐싱 (?��? 가중치??
     const existingResult = await db.query(
         `SELECT c.id, COALESCE(COUNT(r.id), 0) AS reply_count, c.content, c.created_at, c.bot_lang
          FROM comments c
@@ -1552,20 +1597,20 @@ export async function runCommentBotIntl(
         })
     );
 
-    // 3. 소설 장르 조회
+    // 3. ?�설 ?�르 조회
     const novelResult = await db.query(
         `SELECT genre, source_language FROM novels WHERE id = $1`, [novelId]
     );
     const genreData = novelResult.rows[0]?.genre;
     const genreWeights = getGenreWeights(genreData);
 
-    // 장르 기반 personalityWeights 덮어쓰기
+    // ?�르 기반 personalityWeights ??��?�기
     const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     if (primaryGenre && lang.genreWeights[primaryGenre]) {
         personalityWeights = lang.genreWeights[primaryGenre];
     }
 
-    // 4. Deep Context GPT 댓글 생성
+    // 4. Deep Context GPT ?��? ?�성
     let deepComments: string[] = [];
     let midDensityPool: string[] = [];
     let sceneTags: string[] = [];
@@ -1586,13 +1631,13 @@ export async function runCommentBotIntl(
                 midDensityPool.push(...result.midComments);
                 if (calls === 0) sceneTags = result.detectedTags;
                 calls++;
-                console.log(`   → [intl] Batch ${calls}: +${result.comments.length} (total ${deepComments.length}/${totalCount})`);
+                console.log(`   ??[intl] Batch ${calls}: +${result.comments.length} (total ${deepComments.length}/${totalCount})`);
 
-                // 연속 2회 빈 배치 → 이벤트 추출 실패 상태 → 루프 중단
+                // ?�속 2??�?배치 ???�벤??추출 ?�패 ?�태 ??루프 중단
                 if (result.comments.length === 0 && result.midComments.length === 0) {
                     consecutiveEmpty++;
                     if (consecutiveEmpty >= 2) {
-                        console.warn(`⚠️ [intl] 연속 ${consecutiveEmpty}회 빈 배치 → 루프 중단, 템플릿 fallback`);
+                        console.warn(`?�️ [intl] ?�속 ${consecutiveEmpty}??�?배치 ??루프 중단, ?�플�?fallback`);
                         break;
                     }
                 } else {
@@ -1602,7 +1647,7 @@ export async function runCommentBotIntl(
         }
     }
 
-    // 5. 봇 생성 & 댓글 작성
+    // 5. �??�성 & ?��? ?�성
     const usedTemplates = new Set<string>();
     const existingNicknameResult = await db.query(
         `SELECT DISTINCT u.name FROM comments c JOIN users u ON c.user_id = u.id WHERE c.episode_id = $1`,
@@ -1613,10 +1658,10 @@ export async function runCommentBotIntl(
     );
 
     let totalCommentsPosted = 0;
-    // 1봇 = 1댓글: 봇 수 = 댓글 수
+    // 1�?= 1?��?: �???= ?��? ??
     const botCount = totalCount;
 
-    // 🔥 타임스탬프 생성: 외부 주입 우선 → backfill → 미래 스케줄링
+    // ?�� ?�?�스?�프 ?�성: ?��? 주입 ?�선 ??backfill ??미래 ?��?줄링
     const scheduledTimes = externalTimestamps && externalTimestamps.length >= totalCount
         ? externalTimestamps.slice(0, totalCount).sort((a, b) => a.getTime() - b.getTime())
         : backfill && publishedAt
@@ -1627,21 +1672,21 @@ export async function runCommentBotIntl(
         let userId: string;
         let nickname: string;
 
-        // #4 상주 독자: 처음 N개 슬롯은 recurring pool에서 (이미 생성된 계정 재사용)
+        // #4 ?�주 ?�자: 처음 N�??�롯?� recurring pool?�서 (?��? ?�성??계정 ?�사??
         if (i < recurringReaders.length) {
             const reader = recurringReaders[i];
-            // 같은 에피소드에 이미 댓글 단 상주 독자는 스킵
+            // 같�? ?�피?�드???��? ?��? ???�주 ?�자???�킵
             if (usedNicknames.has(reader.nickname)) {
                 continue;
             }
             userId = reader.userId;
             nickname = reader.nickname;
             usedNicknames.add(nickname);
-            console.log(`🔁 [intl] Recurring ${reader.tier} ${i + 1}/${recurringReaders.length}: "${nickname}"`);
+            console.log(`?�� [intl] Recurring ${reader.tier} ${i + 1}/${recurringReaders.length}: "${nickname}"`);
         } else {
-            // 새 일회성 봇 생성
+            // ???�회??�??�성
             nickname = pickNickname(lang.nicknamePool, usedNicknames);
-            console.log(`🎭 [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}"`);
+            console.log(`?�� [intl] Bot ${i + 1}/${botCount}: nickname="${nickname}"`);
 
             const username = generateRealisticUsername(nickname);
             const pwHash = randomPasswordHash();
@@ -1657,7 +1702,7 @@ export async function runCommentBotIntl(
         }
         const tone = pickPersonalityTone(personalityWeights);
 
-        // 콘텐츠 비율: 딥컨텍스트 50% / 중간밀도 25% / 템플릿 25%
+        // 콘텐�?비율: ?�컨?�스??50% / 중간밀??25% / ?�플�?25%
         let content: string;
         const roll = Math.random();
         const allTemplates = Object.values(lang.templates).flat();
@@ -1669,7 +1714,7 @@ export async function runCommentBotIntl(
             // 25% mid density
             content = midDensityPool.pop()!;
         } else if (allTemplates.length > 0) {
-            // 25% template (또는 fallback)
+            // 25% template (?�는 fallback)
             content = allTemplates[Math.floor(Math.random() * allTemplates.length)];
         } else if (deepComments.length > 0) {
             content = deepComments.pop()!;
@@ -1680,21 +1725,21 @@ export async function runCommentBotIntl(
         }
 
         content = lang.humanize(content);
-        // GPT footer 클리닝: © 저작권 표시, URL, narra.kr 등 제거
-        content = content
-            .split('\n')
-            .filter(line => !/©|narra\.kr|AI training|unauthorized use/i.test(line))
-            .join('\n')
-            .trim();
-        if (!content) continue; // 클리닝 후 빈 문자열이면 skip
+        // DB insert 직전 최종 sanitization (3번째 방어??
+        const sanitized = sanitizeCommentContent(content);
+        if (!sanitized) {
+            console.warn(`?�� [intl] Sanitized out: "${content.slice(0, 60)}"`);
+            continue;
+        }
+        content = sanitized;
 
-        // 스케줄링된 공개 시간 사용
+        // ?��?줄링??공개 ?�간 ?�용
         const scheduledAt = scheduledTimes[i] || new Date();
         let createdAt: Date = scheduledAt;
 
-        // 답글 10% (pool에 3개 이상 있을 때만)
+        // ?��? 10% (pool??3�??�상 ?�을 ?�만)
         let parentId: string | null = null;
-        // 동일 언어 댓글만 reply 대상으로 필터 (bot_lang 없는 유저 댓글도 허용)
+        // ?�일 ?�어 ?��?�?reply ?�?�으�??�터 (bot_lang ?�는 ?��? ?��????�용)
         const sameLangPool = commentPool.filter(c => c.bot_lang === lang.code || c.bot_lang === null);
         if (Math.random() < 0.10 && sameLangPool.length >= 3) {
             const parentCommentId = weightedRandom(
@@ -1702,12 +1747,12 @@ export async function runCommentBotIntl(
             );
             parentId = parentCommentId;
 
-            // reply 풀은 sameLangPool 기반으로
+            // reply ?�?� sameLangPool 기반?�로
             const parentComment = sameLangPool.find(c => c.id === parentCommentId);
             if (parentComment && parentComment.created_at) {
                 const delayMs = replyDelay();
                 createdAt = new Date(parentComment.created_at.getTime() + delayMs);
-                // 미래를 넘지 않도록 (fallback: 1~72시간 랜덤)
+                // 미래�??��? ?�도�?(fallback: 1~72?�간 ?�덤)
                 if (createdAt.getTime() > Date.now()) {
                     const fallbackMs = (3600000 + Math.random() * 71 * 3600000);
                     createdAt = new Date(parentComment.created_at.getTime() + fallbackMs);
@@ -1724,14 +1769,16 @@ export async function runCommentBotIntl(
                     const replyClean = replyRaw.trim()
                         .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
                         .replace(/^["']|["']$/g, '').trim();
-                    if (replyClean.length > 0 && replyClean.length <= 50) {
-                        content = replyClean;
+                    // 대댓글도 sanitize 통과 후 할당 (watermark/JSON fragment 차단)
+                    const replyFinal = sanitizeCommentContent(replyClean);
+                    if (replyFinal && replyFinal.length > 0 && replyFinal.length <= 50) {
+                        content = replyFinal;
                     }
                 }
             }
         }
 
-        // backfill: 즉시 표시 (과거 댓글), schedule: 숨김 + 예약
+        // backfill: 즉시 ?�시 (과거 ?��?), schedule: ?��? + ?�약
         const insertResult = backfill
             ? await db.query(
                 `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, bot_lang)
@@ -1748,7 +1795,7 @@ export async function runCommentBotIntl(
 
         totalCommentsPosted++;
 
-        // #3 likes 롱테일 분포
+        // #3 likes 롱테??분포
         const likes = randomLikes();
         if (likes > 0) {
             await db.query(`UPDATE comments SET likes = $1 WHERE id = $2`,
@@ -1758,7 +1805,7 @@ export async function runCommentBotIntl(
         await new Promise(resolve => setTimeout(resolve, 30));
     }
 
-    console.log(`✅ [intl] Posted ${totalCommentsPosted} comments from ${botCount} bots (lang=${lang.code})`);
+    console.log(`??[intl] Posted ${totalCommentsPosted} comments from ${botCount} bots (lang=${lang.code})`);
 
     return {
         inserted: totalCommentsPosted,
@@ -1771,8 +1818,8 @@ export async function runCommentBotIntl(
 }
 
 // ============================================================
-// 배치 실행 — 소설의 모든 에피소드를 순회하며 동적 댓글 수 적용
-// 조회수 + 화수 + 나이 기반으로 각 에피소드별 댓글 수 자동 결정
+// 배치 ?�행 ???�설??모든 ?�피?�드�??�회?�며 ?�적 ?��? ???�용
+// 조회??+ ?�수 + ?�이 기반?�로 �??�피?�드�??��? ???�동 결정
 // ============================================================
 export interface BatchResult {
     novelId: string;
@@ -1782,10 +1829,10 @@ export interface BatchResult {
 }
 
 // ============================================================
-// #4 상주 독자 시스템 (Zipf 분포 기반)
-// 연구 근거:
+// #4 ?�주 ?�자 ?�스??(Zipf 분포 기반)
+// ?�구 근거:
 //   - 90-9-1 Rule (Nielsen, 2006): 90% lurker, 9% occasional, 1% superuser
-//   - Zipf's Law (α≈1): 소수 유저가 대다수 콘텐츠 생성
+//   - Zipf's Law (α??): ?�수 ?��?가 ?�?�수 콘텐�??�성
 //   - Serial fiction retention ~50% drop per episode (BlogSpot study)
 //   - Webtoon subscriber-to-reader ratio ~10% (Reddit community data)
 // ============================================================
@@ -1793,7 +1840,7 @@ interface RecurringReader {
     userId: string;
     nickname: string;
     tier: 'superfan' | 'regular' | 'casual';
-    // 등장 확률 (Zipf 가중치): superfan=0.8~1.0, regular=0.3~0.7, casual=0.05~0.15
+    // ?�장 ?�률 (Zipf 가중치): superfan=0.8~1.0, regular=0.3~0.7, casual=0.05~0.15
     appearanceRate: number;
 }
 
@@ -1806,20 +1853,20 @@ async function createRecurringReaderPool(
     const pool: RecurringReader[] = [];
     const usedNicknames = new Set<string>();
 
-    // 풀 크기: 에피소드 수의 25~40% (최소 3, 최대 20)
+    // ?� ?�기: ?�피?�드 ?�의 25~40% (최소 3, 최�? 20)
     const poolSize = Math.max(3, Math.min(20, Math.ceil(totalEpisodes * 0.3)));
 
-    // Zipf 기반 3-Tier 분포 (90-9-1 규칙 적용)
-    const superfanCount = Math.max(1, Math.round(poolSize * 0.05));     // ~5%: 습퍼팬
+    // Zipf 기반 3-Tier 분포 (90-9-1 규칙 ?�용)
+    const superfanCount = Math.max(1, Math.round(poolSize * 0.05));     // ~5%: ?�퍼??
     const regularCount = Math.max(1, Math.round(poolSize * 0.15));      // ~15%: 중급
-    const casualCount = poolSize - superfanCount - regularCount;         // ~80%: 일반
+    const casualCount = poolSize - superfanCount - regularCount;         // ~80%: ?�반
 
     for (let i = 0; i < poolSize; i++) {
         const nickname = pickNickname(lang.nicknamePool, usedNicknames);
         const username = generateRealisticUsername(nickname);
         const pwHash = randomPasswordHash();
 
-        // 계정 생성일: 소설 첥 에피소드 전 (상주 독자니까 초기부터 있어야 함)
+        // 계정 ?�성?? ?�설 �??�피?�드 ??(?�주 ?�자?�까 초기부???�어????
         const userCreatedAt = backfill
             ? new Date(firstPublishedAt.getTime() - (7 + Math.random() * 180) * 86400000)
             : new Date();
@@ -1852,7 +1899,7 @@ async function createRecurringReaderPool(
         });
     }
 
-    console.log(`👥 [recurring] Created pool: ${superfanCount} superfans, ${regularCount} regulars, ${casualCount} casual (total=${poolSize})`);
+    console.log(`?�� [recurring] Created pool: ${superfanCount} superfans, ${regularCount} regulars, ${casualCount} casual (total=${poolSize})`);
     return pool;
 }
 
@@ -1861,9 +1908,9 @@ export async function runCommentBotBatch(
     lang: LanguagePack,
     backfill: boolean = false,
 ): Promise<BatchResult> {
-    console.log(`🚀 [batch] Starting ${backfill ? 'BACKFILL' : 'SCHEDULE'} for ${novelId} (lang=${lang.code})...`);
+    console.log(`?? [batch] Starting ${backfill ? 'BACKFILL' : 'SCHEDULE'} for ${novelId} (lang=${lang.code})...`);
 
-    // 모든 에피소드 조회 (views, ep번호, 게시일)
+    // 모든 ?�피?�드 조회 (views, ep번호, 게시??
     const epResult = await db.query(
         `SELECT id, ep, views, created_at FROM episodes
          WHERE novel_id = $1 ORDER BY ep ASC`,
@@ -1874,7 +1921,7 @@ export async function runCommentBotBatch(
         throw new Error(`No episodes found for ${novelId}`);
     }
 
-    // #4 상주 독자 풀 생성 (Zipf 분포 기반)
+    // #4 ?�주 ?�자 ?� ?�성 (Zipf 분포 기반)
     const firstPublishedAt = new Date(epResult.rows[0].created_at);
     const recurringPool = await createRecurringReaderPool(
         lang, epResult.rows.length, firstPublishedAt, backfill,
@@ -1891,18 +1938,18 @@ export async function runCommentBotBatch(
         const publishedAt = new Date(row.created_at);
         const daysSince = Math.floor((now.getTime() - publishedAt.getTime()) / (1000 * 60 * 60 * 24));
 
-        // 동적 댓글 수 계산
+        // ?�적 ?��? ??계산
         const targetCount = calculateTargetCount(views, epNumber, daysSince);
 
-        console.log(`📊 [batch] ep${epNumber}: views=${views}, age=${daysSince}d, target=${targetCount}`);
+        console.log(`?�� [batch] ep${epNumber}: views=${views}, age=${daysSince}d, target=${targetCount}`);
 
         if (targetCount === 0) {
             episodes.push({ episodeId, ep: epNumber, views, daysSince, targetCount: 0, inserted: 0 });
             continue;
         }
 
-        // 에피소드별 상주 독자 배정: 각 독자의 appearanceRate로 등장 여부 결정
-        // 후반 에피소드일수록 상주 독자 비율 높음 (retention 효과)
+        // ?�피?�드�??�주 ?�자 배정: �??�자??appearanceRate�??�장 ?��? 결정
+        // ?�반 ?�피?�드?�수�??�주 ?�자 비율 ?�음 (retention ?�과)
         const epProgress = Math.min(epNumber / epResult.rows.length, 1.0);
         const recurringBoost = 0.7 + epProgress * 0.3; // ep1=0.7x, epLast=1.0x
         const episodeRecurring = recurringPool.filter(r => {
@@ -1929,12 +1976,12 @@ export async function runCommentBotBatch(
             });
             totalInserted += result.inserted;
         } catch (err) {
-            console.error(`❌ [batch] ep${epNumber} failed:`, err);
+            console.error(`??[batch] ep${epNumber} failed:`, err);
             episodes.push({ episodeId, ep: epNumber, views, daysSince, targetCount, inserted: 0 });
         }
     }
 
-    console.log(`✅ [batch] Finished: ${totalInserted} total comments across ${epResult.rows.length} episodes`);
+    console.log(`??[batch] Finished: ${totalInserted} total comments across ${epResult.rows.length} episodes`);
 
     return {
         novelId,
