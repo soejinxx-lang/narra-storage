@@ -756,22 +756,22 @@ function sampleCommentCount(
 
 // ── 댓글 기대값 모델 (Synthetic Engagement System v3) ──
 // C_max = ENGAGEMENT_RATE × views_eff × D(ep), cap = 300 × D(ep)
-const ENGAGEMENT_RATE            = 0.05;   // 5%: 소규모 플랫폼 현실적 상단
-const CUM_BOT_RATIO              = 0.6;    // bot 비율 (총량 낮추고 비율 조절)
-const MAX_COMMENT_CAP_BASE       = 300;    // ep1 기준 상한 (D(ep) 적용으로 ep별 감소)
-const MAX_BACKFILL_PER_EPISODE   = 40;     // GPT burst / timeout 방지
-const CUM_LAMBDA                 = 0.4;
-const CUM_T0                     = 0.3;
-const VIEW_DRIFT_MAX_MULTIPLIER  = 1.3;    // 사이클당 views 최대 30% 증가만 반영
-const BACKFILL_ENTRY_THRESHOLD   = 0.8;    // actual < target×0.8 → backfill 모드
-const BACKFILL_EXIT_THRESHOLD    = 0.9;    // actual ≥ target×0.9 → ongoing 모드
-const ONGOING_CYCLE_FACTOR       = 0.15;
+const ENGAGEMENT_RATE = 0.05;   // 5%: 소규모 플랫폼 현실적 상단
+const CUM_BOT_RATIO = 0.6;    // bot 비율 (총량 낮추고 비율 조절)
+const MAX_COMMENT_CAP_BASE = 300;    // ep1 기준 상한 (D(ep) 적용으로 ep별 감소)
+const MAX_BACKFILL_PER_EPISODE = 40;     // GPT burst / timeout 방지
+const CUM_LAMBDA = 0.4;
+const CUM_T0 = 0.3;
+const VIEW_DRIFT_MAX_MULTIPLIER = 1.3;    // 사이클당 views 최대 30% 증가만 반영
+const BACKFILL_ENTRY_THRESHOLD = 0.8;    // actual < target×0.8 → backfill 모드
+const BACKFILL_EXIT_THRESHOLD = 0.9;    // actual ≥ target×0.9 → ongoing 모드
+const ONGOING_CYCLE_FACTOR = 0.15;
 
 // views_eff: view bot + comment bot 강화 루프 방지 (급격한 views 반영 억제)
 const viewsCache = new Map<string, number>(); // episodeId → 이전 cycle views
 function getViewsEff(episodeId: string, views: number): number {
   const prev = viewsCache.get(episodeId) ?? views;
-  const eff  = Math.min(views, prev * VIEW_DRIFT_MAX_MULTIPLIER);
+  const eff = Math.min(views, prev * VIEW_DRIFT_MAX_MULTIPLIER);
   viewsCache.set(episodeId, eff);
   return eff;
 }
@@ -788,13 +788,13 @@ function calcCumulativeTarget(
   const views_eff = getViewsEff(episodeId, views);
 
   // ep-aware cap: 후반 에피소드일수록 상한도 낮아짐
-  const cap   = MAX_COMMENT_CAP_BASE * D;
+  const cap = MAX_COMMENT_CAP_BASE * D;
   const C_max = Math.min(ENGAGEMENT_RATE * views_eff * D, cap);
 
-  const saturation  = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
+  const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSince + CUM_T0));
   const totalTarget = C_max * saturation;
 
-  const minBot    = daysSince < 0.1 ? 1 : 0;
+  const minBot = daysSince < 0.1 ? 1 : 0;
   const botTarget = Math.max(minBot, Math.floor(totalTarget * CUM_BOT_RATIO));
 
   return { totalTarget, botTarget };
@@ -829,11 +829,11 @@ function commentDensityBoost(recentComments: number, totalViews: number): number
 
 // ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포 + 한국어 부스트) ──
 const LANG_BASE_WEIGHTS: Record<string, number> = {
-  'ko': 0.40,   // 한국어 (주요 타겟 시장)
-  'en': 0.25,   // 영어권 (Royal Road, Tapas 등)
-  'ja': 0.17,   // 일본어권 (소설家になろう 등)
-  'zh': 0.10,   // 중국어권 (Qidian 등)
-  'es': 0.08,   // 스페인어권 (성장세 높은 시장)
+  'ko': 0.75,   // 한국어 (주요 타겟 시장, 70~80% 목표)
+  'en': 0.12,   // 영어권
+  'ja': 0.07,   // 일본어권
+  'zh': 0.04,   // 중국어권
+  'es': 0.02,   // 스페인어권
 };
 
 // 가중치에 ±30% 랜덤 지터 적용 → 에피소드마다 다른 비율
@@ -841,7 +841,7 @@ function jitteredWeights(): Record<string, number> {
   const jittered: Record<string, number> = {};
   let total = 0;
   for (const [lang, base] of Object.entries(LANG_BASE_WEIGHTS)) {
-    const jitter = 0.7 + Math.random() * 0.6; // 0.7 ~ 1.3
+    const jitter = 0.85 + Math.random() * 0.30; // ±15% (ko가 70~80% 범위 유지)
     jittered[lang] = base * jitter;
     total += jittered[lang];
   }
@@ -918,13 +918,13 @@ async function autoGenerateComments(): Promise<void> {
       const lastFail = recentFailures.get(episode_id);
       if (lastFail && now - lastFail < FAILURE_SKIP_MS) continue;
 
-      const publishedAt  = new Date(created_at);
-      const viewCount    = parseInt(row.views)      || 0;
-      const botCount     = parseInt(row.bot_count)  || 0;
-      const userCount    = parseInt(row.user_count) || 0;
-      const epNumber     = parseInt(ep)             || 1;
-      const daysSince    = Math.floor((now - publishedAt.getTime()) / 86400000);
-      const Q            = generateNovelQ(novel_id);
+      const publishedAt = new Date(created_at);
+      const viewCount = parseInt(row.views) || 0;
+      const botCount = parseInt(row.bot_count) || 0;
+      const userCount = parseInt(row.user_count) || 0;
+      const epNumber = parseInt(ep) || 1;
+      const daysSince = Math.floor((now - publishedAt.getTime()) / 86400000);
+      const Q = generateNovelQ(novel_id);
 
       const { botTarget } = calcCumulativeTarget(viewCount, epNumber, daysSince, episode_id);
       const gap = Math.max(0, botTarget - botCount);
@@ -937,7 +937,7 @@ async function autoGenerateComments(): Promise<void> {
       // 완충 구간 [80%~90%]: 이미 backfill이면 계속, ongoing이면 그대로
       const fillRatio = botTarget > 0 ? botCount / botTarget : 1;
       const isBackfill = fillRatio < BACKFILL_ENTRY_THRESHOLD;
-      const isOngoing  = fillRatio >= BACKFILL_EXIT_THRESHOLD;
+      const isOngoing = fillRatio >= BACKFILL_EXIT_THRESHOLD;
 
       let toAdd: number;
       if (isBackfill) {
@@ -1034,7 +1034,7 @@ async function autoGenerateComments(): Promise<void> {
             episode_id, true, publishedAt, [], timestamps,
           );
           episodeAdded += botResult.inserted;
-          totalAdded   += botResult.inserted;
+          totalAdded += botResult.inserted;
         } catch (langErr) {
           console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
           episodeFailed = true;
