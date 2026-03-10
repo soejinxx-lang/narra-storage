@@ -15,12 +15,24 @@ import db from '../../../db.js';
 async function callAzureGPT(prompt: string, temperature = 0.9, maxTokens = 600): Promise<string> {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.AZURE_OPENAI_API_KEY;
-    const deploy = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4o';
-    if (!endpoint || !apiKey) throw new Error('[ko-engine] Azure OpenAI not configured');
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-10-01-preview';
+    const deployment = 'gpt-4omini';
 
-    const res = await fetch(
-        `${endpoint}/openai/deployments/${deploy}/chat/completions?api-version=2024-08-01-preview`,
-        {
+    if (!endpoint || !apiKey) {
+        console.warn('[ko-engine] ⚠️ Azure OpenAI not configured, skipping');
+        return '';
+    }
+
+    try {
+        let url: string;
+        if (endpoint.includes('/deployments/')) {
+            url = endpoint;
+        } else {
+            const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, '').replace(/\/$/, '');
+            url = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+        }
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
             body: JSON.stringify({
@@ -28,10 +40,20 @@ async function callAzureGPT(prompt: string, temperature = 0.9, maxTokens = 600):
                 temperature,
                 max_tokens: maxTokens,
             }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error(`[ko-engine] Azure GPT error: ${response.status} → ${errorBody.substring(0, 200)}`);
+            return '';
         }
-    );
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-    return data.choices?.[0]?.message?.content?.trim() || '';
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content?.trim() || '';
+    } catch (err) {
+        console.error('[ko-engine] Azure GPT call failed:', err);
+        return '';
+    }
 }
 
 // ============================================================
