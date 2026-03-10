@@ -89,8 +89,8 @@ function getGenreWeights(genreData: string | string[] | null): Record<string, nu
 // ============================================================
 function isEmptyExclamation(s: string): boolean {
     // 내용어 없이 감탄사 + 반응어로만 구성된 패턴
-    const emptyPattern = /^(와|아|어|오|헐|대박|미쳤|진짜|실화|레전드|ㅅㅂ|ㄷㄷ|ㅋㅋ|ㅠㅠ|후|와씨|개|존나|진짜로|이게뭐야|뭐야)[s!.ㅋㅠㄷ]*$/u;
-    const genericPattern = /^(와|아|어|오|헐)[s]*(진짜|대박|미쳤|좋아|대단|최고|레전드|ㄷㄷ|ㅋㅋ|ㅠㅠ|실화)?[s!.]*$/u;
+    const emptyPattern = /^(와|아|어|오|헐|대박|미쳤|진짜|실화|레전드|ㅅㅂ|ㄷㄷ|ㅋㅋ|ㅠㅠ|후|와씨|개|존나|진짜로|이게뭐야|뭐야)[\s!.ㅋㅠㄷ]*$/u;
+    const genericPattern = /^(와|아|어|오|헐)[\s]*(진짜|대박|미쳤|좋아|대단|최고|레전드|ㄷㄷ|ㅋㅋ|ㅠㅠ|실화)?[\s!.]*$/u;
     return emptyPattern.test(s.trim()) || genericPattern.test(s.trim());
 }
 
