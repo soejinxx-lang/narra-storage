@@ -1047,6 +1047,9 @@ async function autoGenerateComments(): Promise<void> {
           }
         } catch (langErr) {
           console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
+          if (lang === 'ko') {
+            console.error(`[CommentBot] 🔴 Korean bot full error:`, (langErr as Error)?.stack || langErr);
+          }
           episodeFailed = true;
         }
       }));
