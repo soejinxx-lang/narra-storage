@@ -243,6 +243,10 @@ function sanitizeCommentContent(raw: string): string | null {
     let s = raw.trim();
     if (!s) return null;
 
+    // 0. 따옴표 제거: 일반 + curly quote ("\u201c\u201d\u2018\u2019)
+    s = s.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim();
+    if (!s) return null;
+
     // 1. 코드블록 제거
     s = s.replace(/```[\s\S]*?```/g, '').trim();
     if (!s) return null;
@@ -1778,7 +1782,8 @@ export async function runCommentBotIntl(
                 if (replyRaw) {
                     const replyClean = replyRaw.trim()
                         .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
-                        .replace(/^["']|["']$/g, '').trim();
+                        .replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim();
+
                     // 대댓글도 sanitize 통과 후 할당 (watermark/JSON fragment 차단)
                     const replyFinal = sanitizeCommentContent(replyClean);
                     if (replyFinal && replyFinal.length > 0 && replyFinal.length <= 50) {

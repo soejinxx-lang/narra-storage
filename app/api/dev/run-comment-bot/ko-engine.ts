@@ -137,10 +137,10 @@ ${trimmed}`;
     try {
         const parsed = JSON.parse(cleaned);
         const comments = (parsed.comments || [])
-            .map((c: string) => c.replace(/^[\"']|[\"']$/g, '').trim())
+            .map((c: string) => c.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
             .filter((c: string) => c.length >= 2 && c.length < 100);
         const midComments = (parsed.mid || [])
-            .map((c: string) => c.replace(/^[\"']|[\"']$/g, '').trim())
+            .map((c: string) => c.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
             .filter((c: string) => c.length >= 7 && c.length <= 18);
         const detectedTags = (parsed.tags || []).filter((t: string) =>
             ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
@@ -148,7 +148,7 @@ ${trimmed}`;
         return { comments, midComments, detectedTags };
     } catch {
         const fallback = raw.split('\n')
-            .map((l: string) => l.replace(/^\d+[\.)]\s*/, '').replace(/^[\"']|[\"']$/g, '').trim())
+            .map((l: string) => l.replace(/^\d+[\.)]\s*/, '').replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
             .filter((l: string) => l.length >= 2 && l.length < 100);
         return { comments: fallback, midComments: [], detectedTags: [] };
     }
@@ -215,10 +215,82 @@ function pickNickname(usedNicknames: Set<string>): string {
 }
 
 // ============================================================
+// 시맨틱 중복 제거 (Judge 전 단계)
+// 핵심 단어 기반 유사도 — LLM 호출 없이 처리
+// ============================================================
+function deduplicateComments(comments: string[]): string[] {
+    const normalize = (s: string) =>
+        s.replace(/[ㅋㅠㅜ!?.,\s]/g, '').slice(0, 15).toLowerCase();
+    const seen = new Set<string>();
+    return comments.filter(c => {
+        const key = normalize(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+// ============================================================
+// LLM-as-Judge — 하위 30% 제거 (생성 모델 ≠ judge 모델)
+// - JSON.parse 대신 /\d+/g 로 숫자 추출 (안정적)
+// - temperature 0.1 (일관성 확보)
+// - 실패 시 전량 통과 (서비스 안전)
+// ============================================================
+async function judgeComments(comments: string[]): Promise<string[]> {
+    if (comments.length < 4) return comments; // 너무 적으면 skip
+
+    // 제거 대상 수: 하위 30% (최소 1개)
+    const removeCount = Math.max(1, Math.floor(comments.length * 0.3));
+
+    const prompt = `너는 한국 웹소설 커뮤니티 댓글 품질 심사관이야.
+아래 댓글 목록 중 가장 어색하거나 공식적인 댓글 ${removeCount}개의 번호를 골라줘.
+
+제거 대상 (이런 것만 골라):
+- "[캐릭터명]의 [추상명사] ㄷㄷ" 같은 공식 템플릿
+- 지나치게 깔끔하게 정리된 캐릭터/스토리 분석
+- 문학 감상문 스타일
+
+살려야 할 것 (이런 건 건드리지 마):
+- 즉흥적이고 불완전한 반응 ("아 거기서 칼 빼네")
+- 초성체, 줄임말, 구어체
+- 장면에 대한 즉각적 감정 반응
+
+[댓글 목록]
+${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+제거할 번호만 나열해. 예: 2, 5, 7`;
+
+    try {
+        const raw = await callAzureGPT(prompt, 0.1, 100);
+        // /\d+/g 로 숫자만 추출 (JSON.parse보다 안정적)
+        const removeNums = new Set(
+            (raw.match(/\d+/g) || [])
+                .map(Number)
+                .filter(n => n >= 1 && n <= comments.length)
+                .slice(0, removeCount + 2) // 과잉 제거 방지
+        );
+        const result = comments.filter((_, i) => !removeNums.has(i + 1));
+        // 과잉 제거 안전장치: 50% 미만 남으면 원본 반환
+        if (result.length < comments.length * 0.5) {
+            console.warn(`[ko-engine] Judge over-filtered (${result.length}/${comments.length}), passing all`);
+            return comments;
+        }
+        console.log(`[ko-engine] Judge: ${comments.length} → ${result.length} (removed ${removeNums.size})`);
+        return result;
+    } catch (err) {
+        console.warn('[ko-engine] Judge failed, passing all through:', err);
+        return comments;
+    }
+}
+
+// ============================================================
 // 콘텐츠 sanitization
 // ============================================================
 function sanitizeCommentContent(raw: string): string | null {
     let s = raw.trim();
+    if (!s) return null;
+    // 따옴표 제거: 일반 + curly quote (“”‘’)
+    s = s.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim();
     if (!s) return null;
     s = s.replace(/```[\s\S]*?```/g, '').trim();
     if (!s) return null;
@@ -311,6 +383,15 @@ export async function runKoreanCommentBot(
             } else {
                 consecutiveEmpty = 0;
             }
+        }
+
+        // ① 시맨틱 중복 제거 (LLM 호출 없이)
+        deepComments = deduplicateComments(deepComments);
+        midDensityPool = deduplicateComments(midDensityPool);
+
+        // ② LLM-as-Judge — 배치 1회, 하위 30% 제거
+        if (deepComments.length >= 4) {
+            deepComments = await judgeComments(deepComments);
         }
     }
 
