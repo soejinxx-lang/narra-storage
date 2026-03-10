@@ -85,7 +85,76 @@ function getGenreWeights(genreData: string | string[] | null): Record<string, nu
 }
 
 // ============================================================
-// 딥컨텍스트 생성 (comment-bot-final 버전 — generateDeepContextCommentsWithGenre)
+// 빈 감탄사 필터 — "와 미쳤다", "대박이다" 등 내용 없는 댓글 제거
+// ============================================================
+function isEmptyExclamation(s: string): boolean {
+    // 내용어 없이 감탄사 + 반응어로만 구성된 패턴
+    const emptyPattern = /^(와|아|어|오|헐|대박|미쳤|진짜|실화|레전드|ㅅㅂ|ㄷㄷ|ㅋㅋ|ㅠㅠ|후|와씨|개|존나|진짜로|이게뭐야|뭐야)[s!.ㅋㅠㄷ]*$/u;
+    const genericPattern = /^(와|아|어|오|헐)[s]*(진짜|대박|미쳤|좋아|대단|최고|레전드|ㄷㄷ|ㅋㅋ|ㅠㅠ|실화)?[s!.]*$/u;
+    return emptyPattern.test(s.trim()) || genericPattern.test(s.trim());
+}
+
+// ============================================================
+// 개별 댓글 단건 생성 (방식 C)
+// 더 긴 scene context + temperature 변주 + 내용 없는 댓글 필터
+// ============================================================
+async function generateSingleComment(
+    episodeContent: string,
+    primaryGenre: string,
+    temperature: number,
+    seedHint: string,
+): Promise<string> {
+    // 비용 무관: 최대 6000자 context 제공 (앞부분 + 뒷부분)
+    const front = episodeContent.slice(0, 2000);
+    const back = episodeContent.length > 2000 ? episodeContent.slice(-4000) : '';
+    const context = back ? `${front}\n...(중략)...\n${back}` : front;
+
+    const genreHint = primaryGenre === 'romance'
+        ? '로맨스/감정 장면에 집중해서 반응해.'
+        : primaryGenre === 'action'
+        ? '전투/각성/반전 장면에 집중해서 반응해.'
+        : '';
+
+    const prompt = `너는 한국 웹소설 커뮤니티에서 방금 이 에피소드를 읽은 독자야.
+${seedHint}
+
+[규칙]
+- 방금 읽으면서 가장 강하게 꽂힌 장면 1개에 반응해
+- 그 장면의 구체적인 단서(행동/대사/상황) 최소 1개 포함
+- 반응은 즉흥적이고 자연스럽게
+- ㅋ, ㅠ, ㄷ, 초성체 자유롭게
+- ~다 어미 금지 (미쳤음/ㅁㅊ OK)
+- 이모지 금지
+- 작품 전반 평가 금지 ("작가님 천재" 류 금지)
+- 내용 없는 감탄사("와 미쳤다", "대박이다") 금지
+${genreHint}
+
+댓글 딱 1개만, 텍스트로 바로 출력:
+
+[에피소드]
+${context}`;
+
+    const raw = await callAzureGPT(prompt, temperature, 80);
+    return raw.replace(/^["“‘']+|["”’']+$/g, '').trim();
+}
+
+// 장면 시드 힌트 — 콜마다 다른 관점 유도 (distribution collapse 방지)
+const SCENE_SEEDS = [
+    '특히 감정적으로 격해지는 순간에 집중해.',
+    '독자 입장에서 예상 못한 반전이 있다면 거기 반응해.',
+    '주인공이 뭔가 결정적인 행동을 하는 장면에 집중해.',
+    '분위기가 급격히 바뀌는 순간에 주목해.',
+    '캐릭터 간 갈등이나 긴장감 있는 장면에 집중해.',
+    '가장 웃기거나 공감되는 순간에 반응해.',
+    '가장 긴장되거나 불안했던 장면에 집중해.',
+    '독자로서 가장 속 시원했던 순간에 반응해.',
+    '가장 안타깝거나 슬팠던 부분에 반응해.',
+    '클리프행어나 다음 화가 기다려지는 부분에 반응해.',
+];
+
+// ============================================================
+// 딥컨텍스트 생성 — 개별 생성 방식 (방식 C)
+// concurrency 5, temperature 변주, 빈 감탄사 필터
 // ============================================================
 async function generateDeepContextComments(
     episodeContent: string,
@@ -93,65 +162,45 @@ async function generateDeepContextComments(
     count = 15,
     sourceLanguage = 'ko',
 ): Promise<{ comments: string[]; midComments: string[]; detectedTags: string[] }> {
-    const trimmed = episodeContent.length > 2000 ? episodeContent.slice(-2000) : episodeContent;
     const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const temperatures = [0.7, 0.8, 0.9, 1.0, 1.1];
+    const results: string[] = [];
+    const CONCURRENCY = 5;
 
-    const prompt = `너는 한국 웹소설 독자야. 방금 이 에피소드를 읽었어.
-
-[필수 절차]
-1. 가장 꽂힌 장면 1개를 내부적으로 고른다 (출력 안 함)
-2. 그 장면에서 생긴 감정 1개만 쓴다
-3. 댓글에 장면 단서(행동/대사/수치/상황) 최소 1개를 포함한다
-
-[출력 형식 — 반드시 JSON]
-{
-  "tags": ["이 에피소드의 장면 태그. battle/romance/betrayal/cliffhanger/comedy/powerup/death/reunion 중 해당하는 것만"],
-  "comments": ["댓글 ${count}개"],
-  "mid": ["7~18자 짧은 댓글 5개"]
-}
-
-[댓글 규칙]
-- 5자 이하 초단문 3개, 한 줄 단문 4개, 두 줄 이상 1개
-- ㅋㅋ, ㅠㅠ, ㄷㄷ, 초성체 자유
-- ~다 어미 금지 (미쳤음/ㅁㅊ/미쳐 OK)
-- 작품 전체 평가 금지
-- 이모지 쓰지마
-${primaryGenre === 'romance' ? '- 로맨스 장면 집중, 케미/심쿵 반응 허용' : ''}
-${primaryGenre === 'action' ? '- 전투/각성 장면 집중, 체급/간지/사이다 허용' : ''}
-
-[참고 예시]
-거기서 칼 빼네
-저 30퍼 터지네ㅋㅋ
-웃다가 우는거 뭐임
-아니 그걸 왜 지금 쒔
-눈물에서 끝내냐
-
-[에피소드 본문]
-${trimmed}`;
-
-    const raw = await callAzureGPT(prompt, 0.9, 800);
-    if (!raw) return { comments: [], midComments: [], detectedTags: [] };
-
-    const cleaned = raw.replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-
-    try {
-        const parsed = JSON.parse(cleaned);
-        const comments = (parsed.comments || [])
-            .map((c: string) => c.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
-            .filter((c: string) => c.length >= 2 && c.length < 100);
-        const midComments = (parsed.mid || [])
-            .map((c: string) => c.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
-            .filter((c: string) => c.length >= 7 && c.length <= 18);
-        const detectedTags = (parsed.tags || []).filter((t: string) =>
-            ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
-        );
-        return { comments, midComments, detectedTags };
-    } catch {
-        const fallback = raw.split('\n')
-            .map((l: string) => l.replace(/^\d+[\.)]\s*/, '').replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim())
-            .filter((l: string) => l.length >= 2 && l.length < 100);
-        return { comments: fallback, midComments: [], detectedTags: [] };
+    // concurrency pool — rate limit 방지
+    for (let i = 0; i < count; i += CONCURRENCY) {
+        const batch = Array.from({ length: Math.min(CONCURRENCY, count - i) }, (_, j) => {
+            const idx = i + j;
+            const seed = SCENE_SEEDS[idx % SCENE_SEEDS.length];
+            const temp = temperatures[idx % temperatures.length];
+            return generateSingleComment(episodeContent, primaryGenre, temp, seed);
+        });
+        const batchResults = await Promise.allSettled(batch);
+        for (const r of batchResults) {
+            if (r.status === 'fulfilled' && r.value) results.push(r.value);
+        }
     }
+
+    // 빈 감탄사 + 길이 필터
+    const filtered = results
+        .filter(c => c.length >= 2 && c.length < 120)
+        .filter(c => !isEmptyExclamation(c));
+
+    // mid: 7~18자 짧은 댓글
+    const midComments = filtered.filter(c => c.length >= 7 && c.length <= 18);
+
+    // tags: 장르 태그 추론 (별도 GPT 호출 없이 genreWeights에서)
+    const tagMap: Record<string, string> = {
+        action: 'battle', romance: 'romance', horror: 'betrayal',
+        fantasy: 'powerup', 'slice-of-life': 'comedy',
+    };
+    const detectedTags = Object.keys(genreWeights)
+        .filter(k => genreWeights[k] > 0.3)
+        .map(k => tagMap[k])
+        .filter(Boolean);
+
+    console.log(`   → [ko] 단건생성: ${results.length}개 생성, ${filtered.length}개 통과`);
+    return { comments: filtered, midComments, detectedTags };
 }
 
 // ============================================================

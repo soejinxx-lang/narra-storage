@@ -466,6 +466,54 @@ function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode
 // ============================================================
 // Azure GPT / OpenAI Review ?�출 (?�국??route.ts ?�일)
 // ============================================================
+// ============================================================
+// 시맨틱 중복 제거 (Judge 전 단계, LLM 호출 없이)
+// ============================================================
+function deduplicateComments(comments) {
+    const normalize = (s) =>
+        s.replace(/[\s!?.,"\']/g, '').slice(0, 15).toLowerCase();
+    const seen = new Set();
+    return comments.filter(c => {
+        const key = normalize(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+// ============================================================
+// LLM-as-Judge — 하위 30% 제거
+// - /\d+/g 로 숫자 추출 (JSON.parse보다 안정적)
+// - temperature 0.1 (일관성)
+// - 50% 안전장치: 과잉 필터 시 전량 통과
+// ============================================================
+async function judgeComments(comments, langLabel) {
+    if (langLabel === undefined) langLabel = 'Korean';
+    if (comments.length < 4) return comments;
+    const removeCount = Math.max(1, Math.floor(comments.length * 0.3));
+    const prompt = `You are a ${langLabel} webnovel reader community comment quality reviewer.\nFrom the list below, pick the ${removeCount} most formulaic or unnatural comments to REMOVE.\n\nRemove these types:\n- "[Character]'s [abstract trait] wow/lol" template patterns\n- Overly polished character/story analysis\n- Literary review style sentences\n\nKeep these types:\n- Spontaneous, incomplete reactions\n- Slang, casual abbreviations\n- Immediate emotional responses to specific scenes\n\n[Comment List]\n${comments.map((c, i) => `${i + 1}. ${c}`).join('\\n')}\n\nReply with only the numbers to remove. Example: 2, 5, 7`;
+    try {
+        const raw = await callAzureGPT(prompt, 0.1, 100);
+        const removeNums = new Set(
+            (raw.match(/\d+/g) || [])
+                .map(Number)
+                .filter(n => n >= 1 && n <= comments.length)
+                .slice(0, removeCount + 2)
+        );
+        const result = comments.filter((_, i) => !removeNums.has(i + 1));
+        if (result.length < comments.length * 0.5) {
+            console.warn(`[intl-engine] Judge over-filtered (${result.length}/${comments.length}), passing all`);
+            return comments;
+        }
+        console.log(`[intl-engine] Judge: ${comments.length} → ${result.length} (removed ${removeNums.size})`);
+        return result;
+    } catch (err) {
+        console.warn('[intl-engine] Judge failed, passing all through:', err);
+        return comments;
+    }
+}
+
+
 async function callAzureGPT(
     prompt: string,
     temperature: number = 0.8,
@@ -1308,6 +1356,13 @@ async function generateDeepContextComments(
         console.log(`?�� [intl] Semantic dedup: ${safeComments.length} ??${dedupedSafe.length}`);
     }
 
+    // ② LLM-as-Judge (배치 1회, 하위 30% 제거)
+    // dedupedSafe를 비동기 judge로 정제 — 공식 패턴 댓글 제거
+    let judgedSafe = dedupedSafe;
+    if (dedupedSafe.length >= 4) {
+        judgedSafe = await judgeComments(dedupedSafe, lang.name || 'Webnovel Reader');
+    }
+
     // --- Post-processing filters (probabilistic, not deterministic) ---
 
     // Fix B: Slang frequency limiter ??decay probability, not hard cutoff
@@ -1318,7 +1373,7 @@ async function generateDeepContextComments(
     const smashPattern = /[a-z]{8,}/;
     let smashCount = 0;
     const slangCounts = new Map<string, number>();
-    const afterSlang = dedupedSafe.filter(comment => {
+    const afterSlang = judgedSafe.filter(comment => {
         const lower = comment.toLowerCase();
         // Keyboard smash: max 1 per batch
         if (smashPattern.test(lower) && /(?:asdf|jkl|qwer|zxcv|asdj|fjsk)/i.test(lower)) {
