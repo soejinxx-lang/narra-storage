@@ -469,10 +469,10 @@ function distributeBackfillTimestamps(count: number, publishedAt: Date, langCode
 // ============================================================
 // 시맨틱 중복 제거 (Judge 전 단계, LLM 호출 없이)
 // ============================================================
-function deduplicateComments(comments) {
-    const normalize = (s) =>
+function deduplicateComments(comments: string[]): string[] {
+    const normalize = (s: string): string =>
         s.replace(/[\s!?.,"\']/g, '').slice(0, 15).toLowerCase();
-    const seen = new Set();
+    const seen = new Set<string>();
     return comments.filter(c => {
         const key = normalize(c);
         if (seen.has(key)) return false;
@@ -487,8 +487,7 @@ function deduplicateComments(comments) {
 // - temperature 0.1 (일관성)
 // - 50% 안전장치: 과잉 필터 시 전량 통과
 // ============================================================
-async function judgeComments(comments, langLabel) {
-    if (langLabel === undefined) langLabel = 'Korean';
+async function judgeComments(comments: string[], langLabel = 'Korean'): Promise<string[]> {
     if (comments.length < 4) return comments;
     const removeCount = Math.max(1, Math.floor(comments.length * 0.3));
     const prompt = `You are a ${langLabel} webnovel reader community comment quality reviewer.\nFrom the list below, pick the ${removeCount} most formulaic or unnatural comments to REMOVE.\n\nRemove these types:\n- "[Character]'s [abstract trait] wow/lol" template patterns\n- Overly polished character/story analysis\n- Literary review style sentences\n\nKeep these types:\n- Spontaneous, incomplete reactions\n- Slang, casual abbreviations\n- Immediate emotional responses to specific scenes\n\n[Comment List]\n${comments.map((c, i) => `${i + 1}. ${c}`).join('\\n')}\n\nReply with only the numbers to remove. Example: 2, 5, 7`;
