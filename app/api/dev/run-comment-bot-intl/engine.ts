@@ -1359,7 +1359,7 @@ async function generateDeepContextComments(
     // dedupedSafe를 비동기 judge로 정제 — 공식 패턴 댓글 제거
     let judgedSafe = dedupedSafe;
     if (dedupedSafe.length >= 4) {
-        judgedSafe = await judgeComments(dedupedSafe, lang.name || 'Webnovel Reader');
+        judgedSafe = await judgeComments(dedupedSafe, lang.code || 'Webnovel Reader');
     }
 
     // --- Post-processing filters (probabilistic, not deterministic) ---
