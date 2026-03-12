@@ -336,7 +336,7 @@ ${trimmedContent}`,
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => e).join('\n')}\n\nNow respond:`
             : '';
 
         return `You just read a chapter on your phone. Type what comes to mind first. Don't think about it.
@@ -349,8 +349,9 @@ No summaries. No explanations. No reflections. Don't describe what happened.
 Comment like you're half-distracted. Some thoughts don't finish.
 No emojis. Use pronouns after first mention.
 
-Generate ${args.targetCommentCount} comments.${exampleBlock}
-JSON { "comments": [...] }`;
+Write several comments readers might post.
+Each comment should look like a real reader posting independently.${exampleBlock}
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall2Prompt: (args) => {
@@ -360,7 +361,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => e).join('\n')}\n\nNow respond:`
             : '';
 
         return `You just read a chapter on your phone. You liked it. Type fast.
@@ -372,8 +373,9 @@ ${profileList}
 Show excitement but don't explain why. No analysis. No "it adds depth" or "the way he".
 Mostly lowercase. No emojis.
 
-Generate ${args.targetCommentCount} comments.${exampleBlock}
-JSON { "comments": [...] }`;
+Write several comments readers might post.
+Each comment should look like a real reader posting independently.${exampleBlock}
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall3Prompt: (args) => {
@@ -383,7 +385,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => e).join('\n')}\n\nNow respond:`
             : '';
 
         return `You read a chapter but you weren't really paying attention. Type something anyway.
@@ -395,8 +397,9 @@ ${profileList}
 You're confused, bored, or got the wrong idea. Don't correct yourself.
 No emojis.
 
-Generate ${args.targetCommentCount} comments.${exampleBlock}
-JSON { "comments": [...] }`;
+Write several comments readers might post.
+Each comment should look like a real reader posting independently.${exampleBlock}
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall4Prompt: (args) => {
@@ -406,7 +409,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => e).join('\n')}\n\nNow respond:`
             : '';
 
         return `You just finished a chapter. Drop a quick hot take, not a review.
@@ -418,13 +421,14 @@ ${profileList}
 One thought max. No "adds depth" "nice touch" "the way he" "sets the mood".
 No literary analysis. No emojis.
 
-Generate ${args.targetCommentCount} comments.${exampleBlock}
-JSON { "comments": [...] }`;
+Write several comments readers might post.
+Each comment should look like a real reader posting independently.${exampleBlock}
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall5Prompt: (args) => {
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\nNow respond:`
+            ? `\nHere are examples of real reader comments (write in a style similar to these):\n${args.examples.map(e => e).join('\n')}\n\nNow respond:`
             : '';
 
         return `You're scrolling comments on a web novel chapter. Type like you're in a community, not writing a review.
@@ -439,8 +443,9 @@ Rules:
 - Some comments are just vibes: "bruh" "nah" "wait what"
 No emojis.
 
-Generate ${args.targetCommentCount} comments.${exampleBlock}
-JSON { "comments": [...] }`;
+Write several comments readers might post.
+Each comment should look like a real reader posting independently.${exampleBlock}
+One comment per line. No JSON. No numbering.`;
     },
 
     buildReplyPrompt: (parentComment) => `You are a Royal Road reader. You just saw this comment:

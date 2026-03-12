@@ -1263,11 +1263,11 @@ async function generateDeepContextComments(
     const call5Examples = sampleExamples(lang.templates, ['short_reactor', 'theorist'], 3);
 
     // Build prompts via LanguagePack (examples 주입)
-    const call1 = lang.buildCall1Prompt({ ...promptArgs, readerViews: immersedViews, targetCommentCount: Math.min(immersedViews.length * 2, 8), examples: call1Examples });
-    const call2 = lang.buildCall2Prompt({ ...promptArgs, readerViews: overreactorViews, targetCommentCount: Math.min(overreactorViews.length * 2, 6), examples: call2Examples });
-    const call3 = lang.buildCall3Prompt({ ...promptArgs, readerViews: chaosViews, targetCommentCount: Math.min(chaosViews.length * 2, 4), examples: call3Examples });
-    const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length * 2, 4), examples: call4Examples });
-    const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 15, examples: call5Examples });
+    const call1 = lang.buildCall1Prompt({ ...promptArgs, readerViews: immersedViews, targetCommentCount: Math.min(immersedViews.length, 5), examples: call1Examples });
+    const call2 = lang.buildCall2Prompt({ ...promptArgs, readerViews: overreactorViews, targetCommentCount: Math.min(overreactorViews.length, 5), examples: call2Examples });
+    const call3 = lang.buildCall3Prompt({ ...promptArgs, readerViews: chaosViews, targetCommentCount: Math.min(chaosViews.length, 4), examples: call3Examples });
+    const call4 = lang.buildCall4Prompt({ ...promptArgs, readerViews: casualViews, targetCommentCount: Math.min(casualViews.length, 4), examples: call4Examples });
+    const call5 = lang.buildCall5Prompt({ ...promptArgs, readerViews: [], targetCommentCount: 5, examples: call5Examples });
 
     // 5??병렬 ?�출 (call�?temperature 차등)
     // call3(chaos) = 1.0 (1.1?� Azure?�서 JSON 깨짐 ?�험), ?�머지??0.7~0.8
@@ -1288,38 +1288,67 @@ async function generateDeepContextComments(
 
     const parseComments = (raw: string | null): string[] => {
         if (!raw) return [];
-        // Aggressive code fence cleanup
+        // 코드 펜스 제거
         let cleaned = raw
-            .replace(/^```json\s*\n?/i, '')
-            .replace(/\n?```\s*$/i, '')
-            .replace(/```json/g, '')
-            .replace(/```/g, '')
-            .replace(/^json\s*/i, '')
-            .trim();
-        try {
-            const parsed = JSON.parse(cleaned);
-            if (parsed.tags) {
-                detectedTags = (parsed.tags || []).filter((t: string) =>
-                    ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
-                );
+            .replace(/^```json\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+            .replace(/```/g, '').trim();
+
+        // ① JSON 패턴 감지 → 기존 로직으로 파싱
+        if (/"comments"\s*:/.test(cleaned)) {
+            try {
+                const parsed = JSON.parse(cleaned);
+                if (parsed.tags) {
+                    detectedTags = (parsed.tags || []).filter((t: string) =>
+                        ['battle', 'romance', 'betrayal', 'cliffhanger', 'comedy', 'powerup', 'death', 'reunion'].includes(t)
+                    );
+                }
+                return (parsed.comments || [])
+                    .map((c: string) => lang.stripLabel(c))
+                    .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength)
+                    .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'))
+                    .map((c: string) => sanitizeCommentContent(c))
+                    .filter((c: string | null): c is string => c !== null);
+            } catch {
+                // unquoted keys 등 JSON.parse 실패 → 따옴표 보정 후 재시도
+                try {
+                    const fixed = cleaned.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
+                    const parsed = JSON.parse(fixed);
+                    return (parsed.comments || [])
+                        .map((c: string) => lang.stripLabel(c))
+                        .map((c: string) => sanitizeCommentContent(c))
+                        .filter((c: string | null): c is string => c !== null)
+                        .filter((c: string) => c.length >= lang.minCommentLength);
+                } catch { /* fallthrough to text parse */ }
             }
-            return (parsed.comments || [])
-                .map((c: string) => lang.stripLabel(c))
-                .filter((c: string) => c.length >= lang.minCommentLength && c.length < lang.maxCommentLength)
-                .filter((c: string) => !c.includes('```') && !c.includes('"comments"') && !c.includes('{'))
-                // JSON 파싱 성공 경로에도 watermark/fragment 차단
-                .map((c: string) => sanitizeCommentContent(c))
-                .filter((c: string | null): c is string => c !== null);
-        } catch {
-            // JSON 파싱 실패 시 raw fallback: JSON fragment 포함 줄만 즉시 버림
-            return raw.split('\n')
-                .map((l: string) => lang.stripLabel(l.replace(/^\d+[.)\\ -]\s*/, '')))
-                .filter((l: string) => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength)
-                .filter((l: string) => !l.includes('```') && !l.includes('"comments"') && !l.includes('{'))
-                // ?�심: fallback 경로?�서??JSON fragment, watermark ?�전 차단
-                // 핑심: fallback 경로에서도 JSON fragment, watermark 완전 차단
-                .filter((l): l is string => l !== null);
         }
+
+        // ② 줄바꿈 파싱 + 줄별 sentence split
+        const numRe = /^[\d①②③④⑤⑥⑦⑧⑨⑩]+[.)\-:\s]\s*|^[\-•*]\s*/;
+        let result: string[] = [];
+        for (const rawLine of cleaned.split('\n')) {
+            const stripped = rawLine.replace(numRe, '').trim();
+            if (!stripped) continue;
+            // 긴 줄(>60자)은 sentence split
+            if (stripped.length > 60) {
+                const sentences = stripped.split(/(?<=[.!?。！？])|(?<=ㅋㅋ)|(?<=ㅎㅎ)/).map(s => s.trim()).filter(Boolean);
+                result.push(...sentences);
+            } else {
+                result.push(stripped);
+            }
+        }
+
+        // ③ 결과 3개 미만 → CJK sentence fallback
+        if (result.length < 3 && cleaned.length > 30) {
+            result = cleaned.split(/[。！？\n]+|(?<=ㅋㅋ)|(?<=ㅎㅎ)/)
+                .map(l => l.replace(numRe, '').trim())
+                .filter(Boolean);
+        }
+
+        return result
+            .map(l => lang.stripLabel(l))
+            .map(l => sanitizeCommentContent(l))
+            .filter((l): l is string => l !== null)
+            .filter(l => l.length >= lang.minCommentLength && l.length < lang.maxCommentLength);
     };
 
     // rawResults[0~4] = [call1, call2, call3, call4, call5] 고정 (call ?�으�?�?문자??
@@ -1333,6 +1362,17 @@ async function generateDeepContextComments(
         .filter(c => c.length >= lang.midDensityRange[0] && c.length <= lang.midDensityRange[1]);
 
     console.log(`?�� [intl] Raw: safe=${safeComments.length}, chaos=${chaosComments.length}, mid=${midComments.length}`);
+
+    // count recovery: 댓글 수 목표의 50% 미만이면 call1 재호출 (temp +0.1)
+    const targetTotal = 15;
+    if (safeComments.length + chaosComments.length < targetTotal * 0.5 && call1) {
+        console.warn('[intl] Count recovery: regenerating (temp +0.1)...');
+        const retryTemp = Math.min(0.7 + 0.1, 1.0);
+        const retryRaw = await callAzureGPT(call1, retryTemp, 600);
+        safeComments.push(...parseComments(retryRaw));
+        console.log('[intl] After recovery:', safeComments.length + chaosComments.length, 'total');
+    }
+
 
     // Keyword-based semantic dedup: prevent same event keyword from dominating
     const eventKeywords = events

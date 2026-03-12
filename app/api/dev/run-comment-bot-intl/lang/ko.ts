@@ -424,7 +424,7 @@ ${profileList}
 이모지 금지. 첫 언급 이후 대명사 써.
 
 ${args.targetCommentCount}개 댓글 생성.
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall2Prompt: (args) => {
@@ -443,7 +443,7 @@ ${profileList}
 카카오페이지 댓글처럼 짧게. 초성체 OK.
 
 ${args.targetCommentCount}개 댓글 생성.
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall3Prompt: (args) => {
@@ -462,7 +462,7 @@ ${profileList}
 이모지 금지.
 
 ${args.targetCommentCount}개 댓글 생성.
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall4Prompt: (args) => {
@@ -481,7 +481,7 @@ ${profileList}
 문학 분석 금지. 이모지 금지.
 
 ${args.targetCommentCount}개 댓글 생성.
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall5Prompt: (args) => `카카오페이지/네이버시리즈 댓글란에 있어. 감상문 아니고 댓글 써.
@@ -496,7 +496,7 @@ ${args.sceneContext || 'N/A'}
 이모지 금지.
 
 ${args.targetCommentCount}개 댓글 생성.
-JSON { "comments": [...] }`,
+One comment per line. No JSON. No numbering.`,
 
     buildReplyPrompt: (parentComment) => `카카오페이지 독자야. 이 댓글 봤어:
 

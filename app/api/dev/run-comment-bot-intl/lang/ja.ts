@@ -335,7 +335,7 @@ ${trimmedContent}`,
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n書いて:`
+            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => e).join('\n')}\n\n書いて:`
             : '';
 
         return `あなたは日本のウェブ小説読者です。なろう小説をスマホで読んでます。
@@ -354,7 +354,7 @@ ${profileList}
 🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。${exampleBlock}
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall2Prompt: (args) => {
@@ -364,7 +364,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n書いて:`
+            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => e).join('\n')}\n\n書いて:`
             : '';
 
         return `あなたは日本のウェブ小説読者です。なろう小説をスマホで読んでます。
@@ -383,7 +383,7 @@ ${profileList}
 🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。${exampleBlock}
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall3Prompt: (args) => {
@@ -393,7 +393,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n書いて:`
+            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => e).join('\n')}\n\n書いて:`
             : '';
 
         return `あなたは5chやふたばに普段いる日本人です。なろう小説を読んでる。
@@ -411,7 +411,7 @@ ${profileList}
 🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。${exampleBlock}
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall4Prompt: (args) => {
@@ -421,7 +421,7 @@ JSON { "comments": [...] }`;
         ).join('\n\n');
 
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n書いて:`
+            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => e).join('\n')}\n\n書いて:`
             : '';
 
         return `あなたは日本のウェブ小説読者です。なろう小説をスマホで夜中に読んでます。
@@ -439,12 +439,12 @@ ${profileList}
 🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。${exampleBlock}
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildCall5Prompt: (args) => {
         const exampleBlock = args.examples && args.examples.length > 0
-            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => `- "${e}"`).join('\n')}\n\n書いて:`
+            ? `\n実際の読者コメントの例（こういう雰囲気で書いて）:\n${args.examples.map(e => e).join('\n')}\n\n書いて:`
             : '';
 
         return `あなたは日本のウェブ小説読者です。なろう/カクヨムのコメント欄によくいます。
@@ -464,7 +464,7 @@ ${args.sceneContext || 'N/A'}
 🔥 必ず日本語で書け。英語禁止。
 
 ${args.targetCommentCount}個のコメント生成。${exampleBlock}
-JSON { "comments": [...] }`;
+One comment per line. No JSON. No numbering.`;
     },
 
     buildReplyPrompt: (parentComment) => `あなたは日本のウェブ小説読者です。このコメントを見ました:
