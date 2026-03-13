@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import db from "../../../../db";
+import db from "../../../db";
 
 /**
  * LLM Provider 상태 조회 API

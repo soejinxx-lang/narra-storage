@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import db from "../../../../db";
+import db from "../../../db";
 
 /**
  * 모델 비교 API — 같은 에피소드에 GPT/Grok 각각 댓글 생성 (DB 미삽입)
