@@ -20,6 +20,18 @@
 
 import crypto from 'crypto';
 import db from "../../../db";
+
+// ============================================================
+// LLM 호출 로깅 (어드민 모니터링용)
+// ============================================================
+async function logLLMCall(provider: string, engine: string, success: boolean, latencyMs: number, fallbackUsed = false, errorMsg = '') {
+    try {
+        await db.query(
+            `INSERT INTO llm_call_log (provider, engine, success, latency_ms, fallback_used, error_msg) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [provider, engine, success, latencyMs, fallbackUsed, errorMsg]
+        );
+    } catch { /* 로깅 실패해도 댓글 생성은 중단 안 함 */ }
+}
 import type {
     LanguagePack,
     PersonalityTone,
@@ -560,6 +572,50 @@ async function callAzureGPT(
         return '';
     }
 }
+
+// ============================================================
+// Grok API 호출 (댓글 생성용 — Azure GPT fallback)
+// ============================================================
+async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): Promise<string> {
+    const _grokStart = Date.now();
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return callAzureGPT(prompt, temperature, maxTokens);
+
+    try {
+        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: 'grok-4-latest',
+                messages: [{ role: 'user', content: prompt }],
+                temperature,
+                max_tokens: maxTokens,
+                stream: false,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error(`[grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
+            logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
+            return callAzureGPT(prompt, temperature, maxTokens);
+        }
+
+        const data = await response.json();
+        const result = data.choices?.[0]?.message?.content?.trim() || '';
+        logLLMCall('grok', 'intl', true, Date.now() - _grokStart);
+        return result;
+    } catch (err) {
+        console.error('[grok] API call failed, falling back to Azure:', err);
+        logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, String(err));
+        return callAzureGPT(prompt, temperature, maxTokens);
+    }
+}
+
+
 
 // ============================================================
 // Few-shot ?�시 ?�플�?(lang.templates ??buildCallXPrompt 주입??
@@ -1273,11 +1329,11 @@ async function generateDeepContextComments(
     // call3(chaos) = 1.0 (1.1?� Azure?�서 JSON 깨짐 ?�험), ?�머지??0.7~0.8
     console.log('?�� [intl] Stage 4: Persona-based GPT calls (few-shot enabled)...');
     const [raw1, raw2, raw3, raw4, raw5] = await Promise.all([
-        call1 ? callAzureGPT(call1, 0.7, 600) : Promise.resolve(''),
-        call2 ? callAzureGPT(call2, 0.8, 600) : Promise.resolve(''),
-        call3 ? callAzureGPT(call3, 1.0, 600) : Promise.resolve(''),  // chaos: high entropy
-        call4 ? callAzureGPT(call4, 0.8, 600) : Promise.resolve(''),
-        callAzureGPT(call5, 0.7, 800),  // mid-density 15�??????�넉?�게
+        call1 ? callGrokAPI(call1, 0.7, 600) : Promise.resolve(''),
+        call2 ? callGrokAPI(call2, 0.8, 600) : Promise.resolve(''),
+        call3 ? callGrokAPI(call3, 1.0, 600) : Promise.resolve(''),  // chaos: high entropy
+        call4 ? callGrokAPI(call4, 0.8, 600) : Promise.resolve(''),
+        callGrokAPI(call5, 0.7, 800),  // mid-density 15�??????�넉?�게
     ]);
     const rawResults = [raw1, raw2, raw3, raw4, raw5];
 
