@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     try {
         // 에피소드 콘텐츠 가져오기
         const epResult = await db.query(
-            `SELECT content, episode_number FROM episodes WHERE novel_id = $1 AND episode_number = $2 LIMIT 1`,
+            `SELECT content, ep FROM episodes WHERE novel_id = $1 AND ep = $2 LIMIT 1`,
             [novelId, ep]
         );
         if (epResult.rows.length === 0) {
@@ -28,8 +28,9 @@ export async function GET(req: Request) {
         const episodeContent: string = epResult.rows[0].content;
 
         // 소설 장르
-        const novelResult = await db.query(`SELECT genres FROM novels WHERE id = $1`, [novelId]);
-        const primaryGenre = novelResult.rows[0]?.genres?.[0] || "";
+        const novelResult = await db.query(`SELECT genre FROM novels WHERE id = $1`, [novelId]);
+        const genreRaw = novelResult.rows[0]?.genre;
+        const primaryGenre = Array.isArray(genreRaw) ? genreRaw[0] : (genreRaw || "");
 
         // 프롬프트 생성 (ko-engine과 동일)
         const SCENE_SEEDS = [
