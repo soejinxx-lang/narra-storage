@@ -1,35 +1,19 @@
 /**
- * 봇 댓글 현황 통계 (관측 파이프라인 v2)
+ * 봇 댓글 현황 통계 v3 — 워커 동기화
  * GET /api/dev/comment-stats
  *
- * Observed / Derived / Model output / 진단지표 레이어 분리
+ * DB에 저장된 views_eff, bot_target을 읽어서 워커와 항상 동일한 값을 표시.
+ * 워커가 아직 실행 전(NULL)이면 shared model로 fallback 계산.
  */
 
 import { NextResponse, NextRequest } from "next/server";
 import db from "../../../db";
 import { requireAdmin } from "../../../../lib/admin";
-
-// ── formula 파라미터 (worker/index.ts calcCumulativeTarget와 동기화) ──
-const ENGAGEMENT_RATE    = 0.05;
-const CUM_BOT_RATIO      = 0.6;
-const MAX_COMMENT_CAP    = 300;   // ep-aware: cap × D(ep)
-const CUM_LAMBDA         = 0.4;
-const CUM_T0             = 0.3;
-
-
-function generateNovelQ(novelId: string): number {
-    let h = 0;
-    for (let i = 0; i < novelId.length; i++) h = ((h << 5) - h + novelId.charCodeAt(i)) | 0;
-    const hash = Math.abs(h);
-    const u1 = ((hash % 10000) + 1) / 10001;
-    const u2 = (((hash * 7919) % 10000) + 1) / 10001;
-    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return Math.max(0.2, Math.min(3.0, Math.exp(-0.15 + 0.45 * z)));
-}
+import { MODEL_PARAMS, calcBotTarget, calcCMax, calcD, calcSaturation } from "../../../../lib/comment-bot-model";
 
 function overflowTier(ratio: number): string {
-    if (ratio > 2.0) return "spike";   // social spike — 모델 오류 아님
-    if (ratio > 1.2) return "under";   // 모델 과소추정
+    if (ratio > 2.0) return "spike";
+    if (ratio > 1.2) return "under";
     return "ok";
 }
 
@@ -38,15 +22,18 @@ export async function GET(req: NextRequest) {
     if (unauthorized) return unauthorized;
 
     try {
+        // views_eff, bot_target — 워커가 매 사이클 업데이트
         const result = await db.query(`
             SELECT
-                e.id          AS episode_id,
+                e.id            AS episode_id,
                 e.novel_id,
                 e.ep,
                 e.views,
-                e.created_at  AS published_at,
-                n.title       AS novel_title,
-                COALESCE(bc.bot_cnt, 0)        AS bot_count,
+                e.views_eff,
+                e.bot_target    AS db_bot_target,
+                e.created_at    AS published_at,
+                n.title         AS novel_title,
+                COALESCE(bc.bot_cnt, 0) AS bot_count,
                 lc.last_comment_at
             FROM episodes e
             JOIN novels n ON e.novel_id = n.id
@@ -72,18 +59,13 @@ export async function GET(req: NextRequest) {
         let totalActual = 0;
 
         type EpStat = {
-            // Observed
-            ep: number; views: number;
+            ep: number; views: number; views_eff: number;
             publishedAt: string; lastCommentAt: string | null;
-            // Derived
             daysSinceUpload: number; daysSinceLastComment: number | null;
-            // Model output
-            D: number; epBoost: number;
-            C_max: number; saturation: number; botTarget: number;
-            // Runtime
+            D: number; C_max: number; saturation: number; botTarget: number;
             actual: number; gap: number;
-            // Diagnostic
             overflow: number; overflowTier: string; commentRate: number;
+            targetSource: 'db' | 'fallback'; // 워커 동기화 여부 표시
         };
 
         const byNovel: Record<string, {
@@ -93,28 +75,33 @@ export async function GET(req: NextRequest) {
         }> = {};
 
         for (const row of result.rows) {
-            const views           = parseInt(row.views) || 0;
-            const ep              = parseInt(row.ep) || 1;
-            const publishedAt     = new Date(row.published_at);
-            const lastCommentAt   = row.last_comment_at ? new Date(row.last_comment_at) : null;
+            const views = parseInt(row.views) || 0;
+            const ep = parseInt(row.ep) || 1;
+            const publishedAt = new Date(row.published_at);
+            const lastCommentAt = row.last_comment_at ? new Date(row.last_comment_at) : null;
             const daysSinceUpload = Math.floor((now - publishedAt.getTime()) / 86400000);
             const daysSinceLastComment = lastCommentAt
                 ? Math.floor((now - lastCommentAt.getTime()) / 86400000)
                 : null;
             const actual = parseInt(row.bot_count) || 0;
 
-            // Model output (worker/index.ts calcCumulativeTarget와 동기화)
-            const D          = 1 / (1 + 0.08 * Math.max(0, ep - 1));
-            const epBoost    = 1.0;
-            const cap        = MAX_COMMENT_CAP * D;
-            const C_max      = Math.min(ENGAGEMENT_RATE * Math.max(views, 1) * D, cap);
-            const saturation = 1 - Math.exp(-CUM_LAMBDA * (daysSinceUpload + CUM_T0));
-            const minBot     = daysSinceUpload < 0.1 ? 1 : 0;
-            const botTarget  = Math.max(minBot, Math.floor(C_max * saturation * CUM_BOT_RATIO));
+            // views_eff: DB에 있으면 워커와 동일한 댐핑값, 없으면 현재 views 사용
+            const views_eff = row.views_eff !== null ? parseFloat(row.views_eff) : views;
+            const targetSource: 'db' | 'fallback' = row.db_bot_target !== null ? 'db' : 'fallback';
 
-            const gap          = Math.max(0, botTarget - actual);
-            const overflow     = C_max > 0 ? parseFloat((actual / C_max).toFixed(2)) : 0;
-            const commentRate  = views > 0 ? parseFloat((actual / views).toFixed(4)) : 0;
+            // bot_target: DB 우선, fallback은 shared model 계산
+            const botTarget = row.db_bot_target !== null
+                ? parseInt(row.db_bot_target)
+                : calcBotTarget(views_eff, ep, daysSinceUpload);
+
+            // 대시보드 display용 보조값
+            const D = calcD(ep);
+            const C_max = calcCMax(views_eff, ep);
+            const saturation = calcSaturation(daysSinceUpload);
+
+            const gap = Math.max(0, botTarget - actual);
+            const overflow = C_max > 0 ? parseFloat((actual / C_max).toFixed(2)) : 0;
+            const commentRate = views > 0 ? parseFloat((actual / views).toFixed(4)) : 0;
 
             totalTarget += botTarget;
             totalActual += actual;
@@ -128,31 +115,31 @@ export async function GET(req: NextRequest) {
                 };
             }
             byNovel[row.novel_id].episodes.push({
-                // Observed
-                ep, views,
+                ep, views, views_eff,
                 publishedAt: publishedAt.toISOString(),
                 lastCommentAt: lastCommentAt?.toISOString() ?? null,
-                // Derived
                 daysSinceUpload, daysSinceLastComment,
-                // Model output
                 D: parseFloat(D.toFixed(2)),
-                epBoost,
                 C_max: parseFloat(C_max.toFixed(2)),
                 saturation: parseFloat(saturation.toFixed(3)),
                 botTarget,
-                // Runtime
                 actual, gap,
-                // Diagnostic
                 overflow, overflowTier: overflowTier(overflow), commentRate,
+                targetSource,
             });
             byNovel[row.novel_id].target += botTarget;
             byNovel[row.novel_id].actual += actual;
-            byNovel[row.novel_id].gap    += gap;
+            byNovel[row.novel_id].gap += gap;
         }
 
         return NextResponse.json({
-            // formula 파라미터 노출 (어드민에서 현재 공식 즉시 확인 가능)
-            formulaParams: { engagementRate: ENGAGEMENT_RATE, botRatio: CUM_BOT_RATIO, cap: MAX_COMMENT_CAP, lambda: CUM_LAMBDA, t0: CUM_T0 },
+            formulaParams: {
+                engagementRate: MODEL_PARAMS.ENGAGEMENT_RATE,
+                botRatio: MODEL_PARAMS.CUM_BOT_RATIO,
+                cap: MODEL_PARAMS.MAX_COMMENT_CAP_BASE,
+                lambda: MODEL_PARAMS.CUM_LAMBDA,
+                t0: MODEL_PARAMS.CUM_T0,
+            },
             summary: {
                 totalTarget,
                 totalActual,
@@ -163,7 +150,6 @@ export async function GET(req: NextRequest) {
         });
     } catch (err) {
         console.error("[comment-stats] Error:", err);
-        // 디버깅: 실제 테이블 컬럼 목록 반환
         try {
             const colRes = await db.query(`
                 SELECT table_name, column_name
@@ -171,10 +157,7 @@ export async function GET(req: NextRequest) {
                 WHERE table_name IN ('users','episodes','comments','novels')
                 ORDER BY table_name, ordinal_position
             `);
-            return NextResponse.json({
-                error: String(err),
-                debug_columns: colRes.rows,
-            }, { status: 500 });
+            return NextResponse.json({ error: String(err), debug_columns: colRes.rows }, { status: 500 });
         } catch {
             return NextResponse.json({ error: String(err) }, { status: 500 });
         }

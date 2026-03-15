@@ -304,11 +304,35 @@ const GENRE_WEIGHTS: Record<string, { tone: PersonalityTone; weight: number }[]>
 
 let PERSONALITY_WEIGHTS: { tone: PersonalityTone; weight: number }[] = [
     { tone: 'short_reactor', weight: 55 },
-    { tone: 'emotional', weight: 20 },
-    { tone: 'theorist', weight: 10 },
-    { tone: 'cheerleader', weight: 10 },
-    { tone: 'critic', weight: 5 },
+    { tone: 'emotional', weight: 15 },  // 20 → 15
+    { tone: 'theorist', weight: 12 },  // 10 → 12
+    { tone: 'cheerleader', weight: 8 },  // 10 → 8
+    { tone: 'critic', weight: 10 },  // 5  → 10
 ];
+
+// 에피소드 장면 톤별 emotional 가중치 boost
+const EMOTION_BOOST_MAP: Record<string, number> = {
+    '죽음': 1.8,
+    '슬픔': 1.8,
+    '배신': 1.8,
+    '소름': 1.5,
+    '설덲': 1.5,
+    '감동': 1.5,
+    '반전': 1.6,
+    '긴장': 1.4,
+    '웃김': 1.3,
+};
+
+function getEmotionalWeights(dominantEmotion: string): { tone: PersonalityTone; weight: number }[] {
+    const boost = EMOTION_BOOST_MAP[dominantEmotion] ?? 1.0;
+    if (boost === 1.0) return PERSONALITY_WEIGHTS;
+    const boosted = PERSONALITY_WEIGHTS.map(w =>
+        w.tone === 'emotional' ? { ...w, weight: Math.round(w.weight * boost) } : w
+    );
+    const total = boosted.reduce((s, w) => s + w.weight, 0);
+    // normalize to 100
+    return boosted.map(w => ({ ...w, weight: Math.round(w.weight / total * 100) }));
+}
 
 // 댓글 개수 가중치 (봇당)
 const COMMENT_COUNT_WEIGHTS = [
@@ -421,15 +445,21 @@ function humanize(comment: string): string {
         result = result.replace(/\.$/, '');
     }
 
-    // 10% ㅋㅋ 추가 (뒤에)
+    // 10% ㅋㅋ 추가 (뒤에 suffix)
     if (Math.random() < 0.10 && !result.includes('ㅋ')) {
         const count = Math.floor(Math.random() * 4) + 2;
         result += 'ㅋ'.repeat(count);
     }
 
-    // 10% ㅠㅠ 추가
-    if (Math.random() < 0.10 && !result.includes('ㅠ')) {
-        result += 'ㅠㅠ';
+    // 15% ㅋ 중간 삽입 (char-index 기반, 한국어 공백 없는 경우 대응)
+    if (Math.random() < 0.15 && !result.includes('ㅋ') && result.length > 4) {
+        const insertAt = 2 + Math.floor(Math.random() * (result.length - 3));
+        result = result.slice(0, insertAt) + 'ㅋ' + result.slice(insertAt);
+    }
+
+    // 3% ㅠ 추가 (10% → 3%, ㅠㅠ → ㅠ)
+    if (Math.random() < 0.03 && !result.includes('ㅠ')) {
+        result += 'ㅠ';
     }
 
     // 3% 현실적 오타 패턴 (ㅋ↔ㅎ 전환, 자음 탈락)
@@ -454,7 +484,8 @@ function pickComment(
     tone: PersonalityTone,
     usedTemplates: Set<string>,
     characterNames: string[],
-    genreKey: string = ''
+    genreKey: string = '',
+    personaId: string = ''
 ): string {
     // 25% 확률로 장르별 템플릿 시도 (장르 있을 때만)
     if (genreKey && Math.random() < 0.25) {
@@ -492,8 +523,15 @@ function pickComment(
         }
     }
 
-    // Universal 템플릿
-    const pool = TEMPLATES[tone];
+    // Universal 템플릿 — 페르소나 기반 pool 분기
+    const isNovelpiaPersona = NOVELPIA_POOL_PERSONAS.has(personaId);
+    const rawPool = isNovelpiaPersona ? NOVELPIA_TEMPLATES[tone] : TEMPLATES[tone];
+    // allowedTones가 있는 페르소나는 그 중 하나로 tone override
+    const persona = PERSONA_POOL.find(p => p.id === personaId);
+    const effectiveTone: PersonalityTone = (persona?.allowedTones && persona.allowedTones.length > 0)
+        ? persona.allowedTones[Math.floor(Math.random() * persona.allowedTones.length)]
+        : tone;
+    const pool = isNovelpiaPersona ? NOVELPIA_TEMPLATES[effectiveTone] : TEMPLATES[tone];
     const available = pool.filter(t => !usedTemplates.has(t));
 
     let selected: string;
@@ -504,6 +542,11 @@ function pickComment(
         selected = available[Math.floor(Math.random() * available.length)];
     }
     usedTemplates.add(selected);
+
+    // NOVELPIA 풀이면 {ref} placeholder 치환
+    if (isNovelpiaPersona) {
+        selected = fillReference(selected, genreKey);
+    }
 
     // 규칙 7-9: 동적 변형
     selected = applyDynamicVariations(selected);
@@ -733,6 +776,7 @@ interface PersonaDef {
     style: string;          // 행동 패턴 (완성 문장 아님)
     endings: string[];      // 어미/조각 (조합용)
     cognitiveFocus: string; // 사고 초점 — 이 독자가 집착하는 대상
+    allowedTones?: PersonalityTone[]; // F 계열 전용: 사용 가능한 tone 제한
 }
 
 const PERSONA_POOL: PersonaDef[] = [
@@ -955,22 +999,122 @@ const PERSONA_POOL: PersonaDef[] = [
         endings: ['~을걸', '~인듯', '~이었음', '~의심'],
         cognitiveFocus: '잘못 이해한 정보를 기반으로 확신에 찬 해석을 한다'
     },
+
+    // === F. 커뮤니티형 (노벨피아/디시 스타일) ===
+    {
+        id: 'F1', name: '눈팅러', baseType: 'lurker', callGroup: 'casual',
+        allowedTones: ['short_reactor'],
+        tone: '단정형. ~각, ~임, ~함으로 끊음. 감정 설명 없음. 출석 도장형',
+        style: '읽고 있다는 최소한의 표시만. 내용 분석 없음',
+        endings: ['~각', '~임', '~함', '~중'],
+        cognitiveFocus: '지금 읽고 있다는 사실만 남긴다. 내용 분석 없음',
+    },
+    {
+        id: 'F2', name: '드립충', baseType: 'skimmer', callGroup: 'chaos',
+        allowedTones: ['short_reactor', 'critic'],
+        tone: '장르 클리셰나 전개를 드립으로 승화. ㅋ 많음. 비꼼이지만 적대적이지 않음',
+        style: '전개나 설정을 가볍게 비틀어 드립으로 만듦. 유쾌함',
+        endings: ['~ㅋ', '~ㅋㅋ', '~ㄹㅇ', '~각'],
+        cognitiveFocus: '이 장면이 클리셰인가, 어디서 많이 본 전개인가에 집착',
+    },
+    {
+        id: 'F3', name: '메타충', baseType: 'analyst', callGroup: 'analyst' as unknown as 'immersed',
+        allowedTones: ['theorist', 'critic'],
+        tone: '작품 외부 시각. 연재 속도, 작가 의도, 장르 문법에 대한 관찰. 냉정체',
+        style: '독자가 아닌 관찰자. 작가나 연재 자체를 언급',
+        endings: ['~임', '~인듯', '~할 듯', '~겠지'],
+        cognitiveFocus: '지금 전개가 작가 플랜에서 어디쯤인지, 연재 흐름이 어떠한지',
+    },
+    {
+        id: 'F4', name: '설정드립러', baseType: 'misreader', callGroup: 'chaos',
+        allowedTones: ['critic'],
+        tone: '설정 구멍을 찾되 드립으로 승화. 비꼼인데 웃김. ㅋ로 완화',
+        style: '설정 충돌이나 전개 억지를 지적하지만 화나지 않고 웃김',
+        endings: ['~ㅋ', '~ㄹㅇ', '~임ㅋ', '~인데ㅋ'],
+        cognitiveFocus: '물리적으로 말이 되는가, 이전 설정과 충돌하는가',
+    },
 ];
+
+// ============================================================
+// 노벨피아/디시 스타일 템플릿 풀 (F 계열 페르소나 전용)
+// ============================================================
+const NOVELPIA_POOL_PERSONAS = new Set(['F1', 'F2', 'F3', 'F4']);
+
+const REFERENCE_POOL: Record<string, string[]> = {
+    fantasy: ['드래곤라자', '룬의아이들', '나이트런', '퀀텀마법사'],
+    'game-fantasy': ['템빨', '전생슬라임', '오버로드', '터틀넥은 싫어'],
+    regression: ['전지적독자시점', '재벌집막내아들', '템빨', '나 혼자만 레벨업'],
+    romance: ['황녀님의꼭두각시', '빙의했더니 망한 집안', '어느날 공주가 되어버렸다'],
+    murim: ['화산귀환', '무당파', '광마회귀', '절대검감'],
+    action: ['전지적독자시점', '나 혼자만 레벨업', '갓 오브 하이스쿨'],
+    default: ['전지적독자시점', '드래곤라자', '나 혼자만 레벨업'],
+};
+
+function fillReference(text: string, genreKey: string): string {
+    if (!text.includes('{ref}')) return text;
+    const pool = REFERENCE_POOL[genreKey] || REFERENCE_POOL.default;
+    return text.replace('{ref}', pool[Math.floor(Math.random() * pool.length)]);
+}
+
+const NOVELPIA_TEMPLATES: Record<PersonalityTone, string[]> = {
+    short_reactor: [
+        // 눈팅/출석형
+        'ㄹㅈㄷ', '이거 정주행각', '뻔한데 재밌음', '아직 초반이라 모름',
+        '걍 ㅋㅋ', '그냥 읽는중', '이거 괜찮네', '계속 읽어야 할 듯',
+        // 가벼운 드립
+        '주인공 어디감ㅋ', '분량 왜 이럼', '갑자기?ㅋ', '작가 오늘 기분 좋았나',
+        '이 타이밍에ㅋㅋ', '아 이렇게 가는구나', '이건 좀 과한데ㅋ',
+        // 레퍼런스형
+        '이거 {ref} 생각나네', '어디서 본 설정인데', '{ref} 느낌인데', '이거 그거 아님?',
+        '이 클리셰 또', '어디서 많이 봤는데',
+    ],
+    emotional: [
+        '하 진짜', '아ㅋㅋ이건', '와 이 장면은',
+        '갑자기 왜 이럼', '이건 좀 치네', '왜 이렇게 됨',
+        '이거 실화냐ㅋ', '아 억울한데', '개빡치네',
+        '이게 뭐임ㅋㅋ', '아ㅋㅋ 진짜',
+    ],
+    theorist: [
+        '이거 회수는 하려나', '설정 기억하고 있을까ㅋ',
+        '떡밥인지 실수인지 모름', '나중에 써먹으려고 묻었겠지',
+        '작가 플랜 있는 거 맞지', '이 설정 디테일은 인정',
+        '어디선가 본 전개인데 잘 씀', '이 복선은 좀 뻔함',
+    ],
+    critic: [
+        '이 전개 어디서 많이 봄', '클리셰인데 잘 쓰긴 했음',
+        '이건 좀 급한 전개 아임', '빌드업 좀 짧았는데',
+        '주인공 갑자기 왜 강해짐ㅋ', '설정만 빌림ㅋ',
+        '작가 이번화 좀 아쉬움', '이 클리셰 또나왔네',
+    ],
+    cheerleader: [
+        '정주행 시작', '완결나면 몰아봄', '이거 계속 읽을 각',
+        '작가 필력은 인정', '완결 언제임', '연재 포기하지 마라',
+        '이번화 굿', '계속 이렇게만 써줘',
+    ],
+};
+
+// F 계열 페르소나 sampling weight (다른 페르소나는 기본 1.0)
+const PERSONA_WEIGHTS: Record<string, number> = {
+    'F1': 2.5,
+    'F2': 1.5,
+    'F3': 1.2,
+    'F4': 1.2,
+};
 
 // 장르별 페르소나 풀 (이 중에서 랜덤 6~8명 선택)
 const GENRE_PERSONA_MAP: Record<string, string[]> = {
-    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
-    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
-    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
-    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5'],
-    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5'],
-    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5'],
-    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5'],
-    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5'],
-    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5'],
-    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5'],
+    'fantasy': ['A1', 'A2', 'A4', 'A5', 'A7', 'B1', 'B2', 'B6', 'C1', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5', 'F1', 'F2', 'F3'],
+    'game-fantasy': ['A1', 'A4', 'A5', 'B1', 'B2', 'B6', 'C1', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5', 'F1', 'F2', 'F4'],
+    'murim': ['A1', 'A4', 'A5', 'B1', 'B2', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5', 'F1', 'F2', 'F4'],
+    'romance': ['A1', 'A3', 'A7', 'B1', 'B6', 'C1', 'C4', 'C5', 'D1', 'D2', 'D4', 'E2', 'E3', 'E5', 'F1', 'F3'],
+    'scifi': ['A2', 'B1', 'B2', 'B4', 'B6', 'C1', 'C5', 'D1', 'D4', 'E2', 'E5', 'F1', 'F3', 'F4'],
+    'mystery': ['A1', 'B1', 'B3', 'B6', 'C5', 'D1', 'D4', 'E2', 'E5', 'F1', 'F3'],
+    'horror': ['A1', 'A2', 'A6', 'C1', 'C5', 'D1', 'D5', 'E2', 'E5', 'F1', 'F2'],
+    'historical': ['A2', 'A5', 'A8', 'B1', 'B5', 'B6', 'C5', 'D1', 'D4', 'E4', 'E5', 'F1', 'F3'],
+    'slice-of-life': ['A1', 'A5', 'A7', 'C4', 'C5', 'D1', 'D4', 'E2', 'E5', 'F1', 'F3'],
+    'action': ['A4', 'B1', 'C1', 'C2', 'C5', 'D1', 'D3', 'E1', 'E2', 'E5', 'F1', 'F2', 'F4'],
+    'comedy': ['A1', 'C1', 'C3', 'C5', 'D1', 'D4', 'E1', 'E2', 'E5', 'F1', 'F2'],
+    'regression': ['A4', 'A5', 'B1', 'B7', 'C2', 'C5', 'D1', 'D2', 'D3', 'E1', 'E2', 'E5', 'F1', 'F2', 'F3', 'F4'],
 };
 
 // 장르별 페르소나 풀에서 8명 선택
@@ -1012,21 +1156,35 @@ function selectPersonasForGenre(genreWeights: Record<string, number>, count: num
 
     console.log(`📊 Slot distribution: ${Object.entries(slotMap).map(([k, v]) => `${k}=${v}`).join(', ')} (total=${count})`);
 
-    // 각 장르 풀에서 슬롯 수만큼 랜덤 선택
+    // 각 장르 풀에서 weighted random으로 선택 (F 계열 가중치 반영)
     const selected: PersonaDef[] = [];
     const usedIds = new Set<string>();
+
+    // weighted random pick 함수
+    const weightedPickFromPool = (pool: string[]): string | null => {
+        const available = pool.filter(id => !usedIds.has(id));
+        if (available.length === 0) return null;
+        const weights = available.map(id => PERSONA_WEIGHTS[id] ?? 1.0);
+        const total = weights.reduce((a, b) => a + b, 0);
+        let rand = Math.random() * total;
+        for (let i = 0; i < available.length; i++) {
+            rand -= weights[i];
+            if (rand <= 0) return available[i];
+        }
+        return available[available.length - 1];
+    };
 
     for (const [cat, slots] of Object.entries(slotMap)) {
         if (slots === 0) continue;
         const pool = GENRE_PERSONA_MAP[cat] || defaultPool;
-        const available = pool.filter(id => !usedIds.has(id));
-        const shuffled = [...available].sort(() => Math.random() - 0.5);
 
-        for (let i = 0; i < Math.min(slots, shuffled.length); i++) {
-            const p = personaMap.get(shuffled[i]);
+        for (let i = 0; i < slots; i++) {
+            const pickedId = weightedPickFromPool(pool);
+            if (!pickedId) break;
+            const p = personaMap.get(pickedId);
             if (p) {
                 selected.push(p);
-                usedIds.add(shuffled[i]);
+                usedIds.add(pickedId);
             }
         }
     }

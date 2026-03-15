@@ -14,6 +14,7 @@ import { runCommentBotIntl } from '../app/api/dev/run-comment-bot-intl/engine.js
 import { runKoreanCommentBot } from '../app/api/dev/run-comment-bot/ko-engine.js';
 import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
 import { refundTranslationQuota } from '../lib/requireAuth.js';
+import { MODEL_PARAMS, calcBotTarget, generateNovelQ as _generateNovelQ } from '../lib/comment-bot-model.js';
 
 // 언어팩 동적 로더 (NodeNext moduleResolution 호환)
 async function loadLangPack(lang: string): Promise<LanguagePack> {
@@ -755,18 +756,17 @@ function sampleCommentCount(
   return poissonSample(λ);
 }
 
-// ── 댓글 기대값 모델 (Synthetic Engagement System v3) ──
-// C_max = ENGAGEMENT_RATE × views_eff × D(ep), cap = 300 × D(ep)
-const ENGAGEMENT_RATE = 0.05;   // 5%: 소규모 플랫폼 현실적 상단
-const CUM_BOT_RATIO = 0.6;    // bot 비율 (총량 낮추고 비율 조절)
-const MAX_COMMENT_CAP_BASE = 300;    // ep1 기준 상한 (D(ep) 적용으로 ep별 감소)
-const MAX_BACKFILL_PER_EPISODE = 40;     // GPT burst / timeout 방지
-const CUM_LAMBDA = 0.4;
-const CUM_T0 = 0.3;
-const VIEW_DRIFT_MAX_MULTIPLIER = 1.3;    // 사이클당 views 최대 30% 증가만 반영
-const BACKFILL_ENTRY_THRESHOLD = 0.8;    // actual < target×0.8 → backfill 모드
-const BACKFILL_EXIT_THRESHOLD = 0.9;    // actual ≥ target×0.9 → ongoing 모드
-const ONGOING_CYCLE_FACTOR = 0.15;
+// ── 댓글 기대값 모델 파라미터 — lib/comment-bot-model.ts에서 import
+const ENGAGEMENT_RATE = MODEL_PARAMS.ENGAGEMENT_RATE;
+const CUM_BOT_RATIO = MODEL_PARAMS.CUM_BOT_RATIO;
+const MAX_COMMENT_CAP_BASE = MODEL_PARAMS.MAX_COMMENT_CAP_BASE;
+const CUM_LAMBDA = MODEL_PARAMS.CUM_LAMBDA;
+const CUM_T0 = MODEL_PARAMS.CUM_T0;
+const VIEW_DRIFT_MAX_MULTIPLIER = MODEL_PARAMS.VIEW_DRIFT_MAX_MULTIPLIER;
+const BACKFILL_ENTRY_THRESHOLD = MODEL_PARAMS.BACKFILL_ENTRY_THRESHOLD;
+const BACKFILL_EXIT_THRESHOLD = MODEL_PARAMS.BACKFILL_EXIT_THRESHOLD;
+const ONGOING_CYCLE_FACTOR = MODEL_PARAMS.ONGOING_CYCLE_FACTOR;
+const MAX_BACKFILL_PER_EPISODE = MODEL_PARAMS.MAX_BACKFILL_PER_EPISODE;
 
 // views_eff: view bot + comment bot 강화 루프 방지 (급격한 views 반영 억제)
 const viewsCache = new Map<string, number>(); // episodeId → 이전 cycle views
@@ -927,7 +927,16 @@ async function autoGenerateComments(): Promise<void> {
       const daysSince = Math.floor((now - publishedAt.getTime()) / 86400000);
       const Q = generateNovelQ(novel_id);
 
-      const { botTarget } = calcCumulativeTarget(viewCount, epNumber, daysSince, episode_id);
+      // 공유 모델(comment-bot-model.ts) 사용 — views_eff를 DB에도 저장해 대시보드와 동기화
+      const views_eff = getViewsEff(episode_id, viewCount);
+      const botTarget = calcBotTarget(views_eff, epNumber, daysSince);
+
+      // non-blocking DB 쾬시 쓰기 (대시보드 동기화용)
+      db.query(
+        'UPDATE episodes SET views_eff=$1, bot_target=$2 WHERE id=$3',
+        [views_eff, botTarget, episode_id]
+      ).catch(() => { });
+
       const gap = Math.max(0, botTarget - botCount);
 
       if (gap <= 0) continue;
