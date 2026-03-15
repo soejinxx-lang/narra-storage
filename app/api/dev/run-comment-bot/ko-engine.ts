@@ -576,16 +576,16 @@ export async function runKoreanCommentBot(
         // .shift() — judgeComments best-first 정렬 순서 유지, deepRatio는 루프 밖 1회 계산
         const roll = Math.random();
         let rawContent: string;
-        if (roll < deepRatio && deepComments.length > 0)               rawContent = deepComments.shift()!;
+        if (roll < deepRatio && deepComments.length > 0) rawContent = deepComments.shift()!;
         else if (roll < deepRatio + 0.40 && midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
-        else if (deepComments.length > 0)                              rawContent = deepComments.shift()!;
-        else if (midDensityPool.length > 0)                            rawContent = midDensityPool.shift()!;
+        else if (deepComments.length > 0) rawContent = deepComments.shift()!;
+        else if (midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
         else break;
 
         // sanitize: JSON/라벨/워터마크 오염 출력 차단
         const sanitized = sanitizeCommentContent(rawContent);
         if (!sanitized) continue;
-        const content = humanize(sanitized);
+        let content = humanize(sanitized);
         const scheduledAt = scheduledTimes[i] || new Date();
 
         // 답글 5%
