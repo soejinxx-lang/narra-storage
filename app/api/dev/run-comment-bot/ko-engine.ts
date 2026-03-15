@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ko-engine.ts — 한국어 전용 댓글 생성 엔진 (Worker 호출용)
  *
  * comment-bot-final(2026-02-17) 버전 로직.
@@ -167,8 +167,8 @@ async function generateSingleComment(
     const genreHint = primaryGenre === 'romance'
         ? '로맨스/감정 장면에 집중해서 반응해.'
         : primaryGenre === 'action'
-        ? '전투/각성/반전 장면에 집중해서 반응해.'
-        : '';
+            ? '전투/각성/반전 장면에 집중해서 반응해.'
+            : '';
 
     const prompt = `너는 한국 웹소설 커뮤니티에서 방금 이 에피소드를 읽은 독자야.
 ${seedHint}
@@ -186,26 +186,43 @@ ${genreHint}
 
 댓글 딱 1개만, 텍스트로 바로 출력:
 
-[에피소드]
 ${context}`;
 
     const raw = await callGrokAPI(prompt, temperature, 80);
-    return raw.replace(/^["“‘']+|["”’']+$/g, '').trim();
+    return raw.replace(/^["""'']+|["""'']+$/g, '').trim();
 }
 
-// 장면 시드 힌트 — 콜마다 다른 관점 유도 (distribution collapse 방지)
-const SCENE_SEEDS = [
-    '특히 감정적으로 격해지는 순간에 집중해.',
-    '독자 입장에서 예상 못한 반전이 있다면 거기 반응해.',
-    '주인공이 뭔가 결정적인 행동을 하는 장면에 집중해.',
-    '분위기가 급격히 바뀌는 순간에 주목해.',
-    '캐릭터 간 갈등이나 긴장감 있는 장면에 집중해.',
-    '가장 웃기거나 공감되는 순간에 반응해.',
-    '가장 긴장되거나 불안했던 장면에 집중해.',
-    '독자로서 가장 속 시원했던 순간에 반응해.',
-    '가장 안타깝거나 슬팠던 부분에 반응해.',
-    '클리프행어나 다음 화가 기다려지는 부분에 반응해.',
+// comment style class — 댓글 의도 다변화 (scene reaction 단일 수렴 방지)
+const COMMENT_STYLES: { weight: number; hint: string }[] = [
+    { weight: 40, hint: '방금 읽은 장면에 즉각적으로 감정 반응해.' },
+    { weight: 20, hint: '이 장면에서 생긴 궁금증이나 의문을 짧게 표현해.' },
+    { weight: 20, hint: '이 전개가 다음에 어떻게 될지 짧게 예측해.' },
+    { weight: 10, hint: '캐릭터 행동이나 설정의 의미를 짧게 해석해.' },
+    { weight: 10, hint: '이 장면의 클리셰나 뻔한 전개를 드립으로 반응해.' },
 ];
+
+function pickCommentStyle(): string {
+    const total = COMMENT_STYLES.reduce((s, c) => s + c.weight, 0);
+    let r = Math.random() * total;
+    for (const cs of COMMENT_STYLES) { r -= cs.weight; if (r <= 0) return cs.hint; }
+    return COMMENT_STYLES[0].hint;
+}
+
+// 에피소드를 paragraph 경계로 N개 청크 분할
+// 문자 기반 슬라이스는 장면을 깨버리므로 단락 단위로 그룹핑
+function extractSceneCandidates(content: string, n = 6): string[] {
+    const paragraphs = content.split(/\n{2,}/).filter(p => p.trim().length > 20);
+    if (paragraphs.length <= n) {
+        const size = Math.floor(content.length / n);
+        return Array.from({ length: n }, (_, i) =>
+            content.slice(i * size, (i + 1) * size + 200)
+        );
+    }
+    const groupSize = Math.ceil(paragraphs.length / n);
+    return Array.from({ length: n }, (_, i) =>
+        paragraphs.slice(i * groupSize, (i + 1) * groupSize).join('\n\n')
+    ).filter(c => c.trim().length > 0);
+}
 
 // ============================================================
 // 딥컨텍스트 생성 — 개별 생성 방식 (방식 C)
@@ -222,13 +239,17 @@ async function generateDeepContextComments(
     const results: string[] = [];
     const CONCURRENCY = 5;
 
+    // 에피소드를 paragraph 청크로 분할 → 호출마다 다른 청크 배정 (salience 수렴 방지)
+    const chunks = extractSceneCandidates(episodeContent, 6);
+
     // concurrency pool — rate limit 방지
     for (let i = 0; i < count; i += CONCURRENCY) {
         const batch = Array.from({ length: Math.min(CONCURRENCY, count - i) }, (_, j) => {
             const idx = i + j;
-            const seed = SCENE_SEEDS[idx % SCENE_SEEDS.length];
+            const chunk = chunks[idx % chunks.length];  // 청크 순환
+            const styleHint = pickCommentStyle();         // 스타일 랜덤 배정
             const temp = temperatures[idx % temperatures.length];
-            return generateSingleComment(episodeContent, primaryGenre, temp, seed);
+            return generateSingleComment(chunk, primaryGenre, temp, styleHint);
         });
         const batchResults = await Promise.allSettled(batch);
         for (const r of batchResults) {
@@ -258,27 +279,28 @@ async function generateDeepContextComments(
     return { comments: filtered, midComments, detectedTags };
 }
 
+
 // ============================================================
 // 대댓글 생성
 // ============================================================
 async function generateContextualReply(parentComment: string): Promise<string> {
-    const prompt = `너는 한국 웹소설 독자야. 방금 다른 사람이 쓴 댓글을 봤어.
+    const prompt = `너는 한국 웹소설 독자야.방금 다른 사람이 쓴 댓글을 봤어.
 
 
-${parentComment}
+        ${parentComment}
 
 이 댓글에 짧게 반응해줘.
 
 [규칙]
-- 5~15자 이내 초단문
-- ㅇㅈ, ㄹㅇ, ㅋㅋ, ㅠㅠ 자유
-- 원댓글 맥락에 맞춰서
-- ~다 어미 금지
-- JSON 말고 댓글 텍스트만 출력`;
+        - 5~15자 이내 초단문
+            - ㅇㅈ, ㄹㅇ, ㅋㅋ, ㅠㅠ 자유
+                - 원댓글 맥락에 맞춰서
+                    - ~다 어미 금지
+                        - JSON 말고 댓글 텍스트만 출력`;
 
     const raw = await callAzureGPT(prompt, 0.9, 100);
     let reply = raw
-        .replace(/^```.*\n?/i, '').replace(/\n?```.*$/i, '')
+        .replace(/^```.*\n ? /i, '').replace(/\n ? ```.*$/i, '')
         .replace(/^[\"']|[\"']$/g, '')
         .replace(/^원댓글:.*?→\s*반응:\s*/g, '')
         .replace(/^반응:\s*/g, '')
@@ -319,19 +341,32 @@ function pickNickname(usedNicknames: Set<string>): string {
 }
 
 // ============================================================
-// 시맨틱 중복 제거 (Judge 전 단계)
-// 핵심 단어 기반 유사도 — LLM 호출 없이 처리
+// trigram 유사도 기반 중복 제거 — 한국어 어절 단위 문제 해결
+// 짧은 댓글: threshold 높임(0.75), 긴 댓글: 낮춤(0.60)
 // ============================================================
+function extractTrigrams(s: string): Set<string> {
+    const clean = s.replace(/[ㅋㅠㅜ!?.,\s]/g, '');
+    const tris = new Set<string>();
+    for (let i = 0; i < clean.length - 2; i++) tris.add(clean.slice(i, i + 3));
+    return tris;
+}
+
+function trigramSim(a: string, b: string): number {
+    const ta = extractTrigrams(a), tb = extractTrigrams(b);
+    if (ta.size === 0 || tb.size === 0) return 0;
+    const intersection = [...ta].filter(t => tb.has(t)).length;
+    return intersection / Math.max(ta.size, tb.size);
+}
+
 function deduplicateComments(comments: string[]): string[] {
-    const normalize = (s: string) =>
-        s.replace(/[ㅋㅠㅜ!?.,\s]/g, '').slice(0, 15).toLowerCase();
-    const seen = new Set<string>();
-    return comments.filter(c => {
-        const key = normalize(c);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    // 짧은 댓글 false positive 방지: 15자 미만이면 threshold 높임
+    const threshold = (s: string) => s.length < 15 ? 0.75 : 0.60;
+    const passed: string[] = [];
+    for (const c of comments) {
+        const isDup = passed.some(p => trigramSim(c, p) >= threshold(c));
+        if (!isDup) passed.push(c);
+    }
+    return passed;
 }
 
 // ============================================================
@@ -349,20 +384,20 @@ async function judgeComments(comments: string[]): Promise<string[]> {
     const prompt = `너는 한국 웹소설 커뮤니티 댓글 품질 심사관이야.
 아래 댓글 목록 중 가장 어색하거나 공식적인 댓글 ${removeCount}개의 번호를 골라줘.
 
-제거 대상 (이런 것만 골라):
-- "[캐릭터명]의 [추상명사] ㄷㄷ" 같은 공식 템플릿
-- 지나치게 깔끔하게 정리된 캐릭터/스토리 분석
-- 문학 감상문 스타일
+제거 대상(이런 것만 골라):
+    - "[캐릭터명]의 [추상명사] ㄷㄷ" 같은 공식 템플릿
+        - 지나치게 깔끔하게 정리된 캐릭터 / 스토리 분석
+            - 문학 감상문 스타일
 
-살려야 할 것 (이런 건 건드리지 마):
-- 즉흥적이고 불완전한 반응 ("아 거기서 칼 빼네")
-- 초성체, 줄임말, 구어체
-- 장면에 대한 즉각적 감정 반응
+살려야 할 것(이런 건 건드리지 마):
+    - 즉흥적이고 불완전한 반응("아 거기서 칼 빼네")
+        - 초성체, 줄임말, 구어체
+        - 장면에 대한 즉각적 감정 반응
 
-[댓글 목록]
+        [댓글 목록]
 ${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-제거할 번호만 나열해. 예: 2, 5, 7`;
+제거할 번호만 나열해.예: 2, 5, 7`;
 
     try {
         const raw = await callAzureGPT(prompt, 0.1, 100);
@@ -376,10 +411,10 @@ ${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
         const result = comments.filter((_, i) => !removeNums.has(i + 1));
         // 과잉 제거 안전장치: 50% 미만 남으면 원본 반환
         if (result.length < comments.length * 0.5) {
-            console.warn(`[ko-engine] Judge over-filtered (${result.length}/${comments.length}), passing all`);
+            console.warn(`[ko - engine] Judge over - filtered(${result.length} / ${comments.length}), passing all`);
             return comments;
         }
-        console.log(`[ko-engine] Judge: ${comments.length} → ${result.length} (removed ${removeNums.size})`);
+        console.log(`[ko - engine] Judge: ${comments.length} → ${result.length} (removed ${removeNums.size})`);
         return result;
     } catch (err) {
         console.warn('[ko-engine] Judge failed, passing all through:', err);
@@ -396,7 +431,7 @@ function sanitizeCommentContent(raw: string): string | null {
     // 따옴표 제거: 일반 + curly quote (“”‘’)
     s = s.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim();
     if (!s) return null;
-    s = s.replace(/```[\s\S]*?```/g, '').trim();
+    s = s.replace(/```[\s\S]*? ```/g, '').trim();
     if (!s) return null;
     // 라벨 접두어 제거: "대댓글:", "원댓글:", "A:" 등
     const labelRe = /^[^\s]{1,8}[：:] */;
@@ -443,7 +478,7 @@ export async function runKoreanCommentBot(
     externalTimestamps?: Date[],
 ): Promise<KoreanBotResult> {
     const totalCount = count;
-    console.log(`🤖[ko] Korean bot: novel=${novelId} ep=${episodeId} count=${totalCount}`);
+    console.log(`🤖[ko] Korean bot: novel = ${novelId} ep = ${episodeId} count = ${totalCount} `);
 
     // 기존 댓글 풀
     const existingResult = await db.query(
@@ -480,7 +515,7 @@ export async function runKoreanCommentBot(
             midDensityPool.push(...result.midComments);
             if (calls === 0) sceneTags = result.detectedTags;
             calls++;
-            console.log(`   → [ko] 배치${calls}: +${result.comments.length}개 (총${deepComments.length}/${totalCount})`);
+            console.log(`   →[ko] 배치${calls}: +${result.comments.length} 개(총${deepComments.length} / ${totalCount})`);
             if (result.comments.length === 0 && result.midComments.length === 0) {
                 consecutiveEmpty++;
                 if (consecutiveEmpty >= 2) break;
@@ -524,28 +559,33 @@ export async function runKoreanCommentBot(
         }).sort((a, b) => a.getTime() - b.getTime());
 
     let totalCommentsPosted = 0;
+    // deepRatio: 에피소드당 1회 고정 (루프마다 재계산하면 의도한 비율 보장 안 됨)
+    const deepRatio = 0.30 + (Math.random() * 0.20 - 0.10); // 20~40%
 
     for (let i = 0; i < totalCount && totalCommentsPosted < totalCount; i++) {
         const nickname = pickNickname(usedNicknames);
-        const username = `bot_ko_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const username = `bot_ko_${Date.now()}_${Math.random().toString(36).slice(2, 6)} `;
 
         const userResult = await db.query(
             `INSERT INTO users(username, password_hash, name, is_hidden, role, created_at)
-             VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
+    VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
             [username, '$2b$10$placeholder_ko_bot', nickname, publishedAt]
         );
         const userId = userResult.rows[0].id;
 
-        // 딥컨텍스트 70% / 중간밀도 20% / fallback
+        // .shift() — judgeComments best-first 정렬 순서 유지, deepRatio는 루프 밖 1회 계산
         const roll = Math.random();
-        let content: string;
-        if (roll < 0.70 && deepComments.length > 0) content = deepComments.pop()!;
-        else if (roll < 0.90 && midDensityPool.length > 0) content = midDensityPool.pop()!;
-        else if (deepComments.length > 0) content = deepComments.pop()!;
-        else if (midDensityPool.length > 0) content = midDensityPool.pop()!;
+        let rawContent: string;
+        if (roll < deepRatio && deepComments.length > 0)               rawContent = deepComments.shift()!;
+        else if (roll < deepRatio + 0.40 && midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
+        else if (deepComments.length > 0)                              rawContent = deepComments.shift()!;
+        else if (midDensityPool.length > 0)                            rawContent = midDensityPool.shift()!;
         else break;
 
-        content = humanize(content);
+        // sanitize: JSON/라벨/워터마크 오염 출력 차단
+        const sanitized = sanitizeCommentContent(rawContent);
+        if (!sanitized) continue;
+        const content = humanize(sanitized);
         const scheduledAt = scheduledTimes[i] || new Date();
 
         // 답글 5%
@@ -563,15 +603,15 @@ export async function runKoreanCommentBot(
         }
 
         const insertResult = await db.query(
-            `INSERT INTO comments (episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at, bot_lang)
-             VALUES ($1, $2, $3, $4, $5, TRUE, $6, 'ko') RETURNING id`,
+            `INSERT INTO comments(episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at, bot_lang)
+    VALUES($1, $2, $3, $4, $5, TRUE, $6, 'ko') RETURNING id`,
             [episodeId, userId, content, parentId, scheduledAt, scheduledAt]
         );
         commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
         totalCommentsPosted++;
     }
 
-    console.log(`✅ [ko] ${totalCommentsPosted} Korean comments posted`);
+    console.log(`✅[ko] ${totalCommentsPosted} Korean comments posted`);
     return {
         inserted: totalCommentsPosted,
         deepContextUsed: deepComments.length === 0 && totalCommentsPosted > 0,
