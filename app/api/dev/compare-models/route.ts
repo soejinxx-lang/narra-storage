@@ -77,10 +77,16 @@ ${context}`;
             const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
             const apiKey = process.env.AZURE_OPENAI_API_KEY;
             const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-10-01-preview";
+            const deployment = "gpt-4omini";
             if (!endpoint || !apiKey) return { text: "[Azure 미설정]", latency: 0 };
 
-            const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, "").replace(/\/$/, "");
-            const urlStr = `${baseUrl}/openai/deployments/gpt-4omini/chat/completions?api-version=${apiVersion}`;
+            let urlStr: string;
+            if (endpoint.includes("/deployments/")) {
+                urlStr = endpoint;
+            } else {
+                const baseUrl = endpoint.replace(/\/openai\/v1\/?$/, "").replace(/\/$/, "");
+                urlStr = `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+            }
             const res = await fetch(urlStr, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "api-key": apiKey },
