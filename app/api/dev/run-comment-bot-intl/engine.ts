@@ -504,7 +504,7 @@ async function judgeComments(comments: string[], langLabel = 'Korean'): Promise<
     const removeCount = Math.max(1, Math.floor(comments.length * 0.3));
     const prompt = `You are a ${langLabel} webnovel reader community comment quality reviewer.\nFrom the list below, pick the ${removeCount} most formulaic or unnatural comments to REMOVE.\n\nRemove these types:\n- "[Character]'s [abstract trait] wow/lol" template patterns\n- Overly polished character/story analysis\n- Literary review style sentences\n\nKeep these types:\n- Spontaneous, incomplete reactions\n- Slang, casual abbreviations\n- Immediate emotional responses to specific scenes\n\n[Comment List]\n${comments.map((c, i) => `${i + 1}. ${c}`).join('\\n')}\n\nReply with only the numbers to remove. Example: 2, 5, 7`;
     try {
-        const raw = await callAzureGPT(prompt, 0.1, 100);
+        const raw = await callGrokAPI(prompt, 0.1, 100);
         const removeNums = new Set(
             (raw.match(/\d+/g) || [])
                 .map(Number)
@@ -848,7 +848,7 @@ async function extractEvents(content: string, lang: LanguagePack): Promise<Event
     const trimmed = content.length > 3000 ? content.slice(-3000) : content;
     const prompt = lang.extractEventsPrompt(trimmed);
     // JSON 구조 ?�답?�라 ?�큰 충분??줘야 ?�싱 ?�공 (default 400?�면 ?�려????�� ?�패)
-    const raw = await callAzureGPT(prompt, 0.3, 1200);
+    const raw = await callGrokAPI(prompt, 0.3, 1200);
     if (!raw) return { events: [], dominantEmotion: '' };
 
     // 1�? 코드블록 ?�거 ??JSON.parse
@@ -1180,7 +1180,7 @@ ${commentList}
 Output only JSON:
 { "selected": [indices] }`;
 
-    const curatorRaw = await callOpenAIReview(curatorPrompt);
+    const curatorRaw = await callGrokAPI(curatorPrompt, 0.3, 800);
     let finalComments: string[] = [];
 
     if (curatorRaw) {
@@ -1424,7 +1424,7 @@ async function generateDeepContextComments(
     if (safeComments.length + chaosComments.length < targetTotal * 0.5 && call1) {
         console.warn('[intl] Count recovery: regenerating (temp +0.1)...');
         const retryTemp = Math.min(0.7 + 0.1, 1.0);
-        const retryRaw = await callAzureGPT(call1, retryTemp, 600);
+        const retryRaw = await callGrokAPI(call1, retryTemp, 600);
         safeComments.push(...parseComments(retryRaw));
         console.log('[intl] After recovery:', safeComments.length + chaosComments.length, 'total');
     }

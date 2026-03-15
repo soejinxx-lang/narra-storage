@@ -643,7 +643,46 @@ async function callAzureGPT(prompt: string): Promise<string> {
 }
 
 // ============================================================
-// 집단 독자 행동 시뮬레이터 v1
+// Grok API 호출 (댓글 생성/판단용 — Azure GPT fallback)
+// ============================================================
+async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 400): Promise<string> {
+    const _start = Date.now();
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return callAzureGPT(prompt);
+
+    try {
+        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: 'grok-3-latest',
+                messages: [{ role: 'user', content: prompt }],
+                temperature,
+                max_tokens: maxTokens,
+                stream: false,
+            }),
+        });
+
+        if (!response.ok) {
+            const errBody = await response.text();
+            console.error(`[grok-ko] API error: ${response.status} → ${errBody.substring(0, 200)}`);
+            return callAzureGPT(prompt);
+        }
+
+        const data = await response.json();
+        const result = data.choices?.[0]?.message?.content?.trim() || '';
+        console.log(`[grok-ko] OK ${Date.now() - _start}ms`);
+        return result;
+    } catch (err) {
+        console.error('[grok-ko] call failed, falling back to Azure:', err);
+        return callAzureGPT(prompt);
+    }
+}
+
+
 // Stage 1: Event Extraction → Stage 2: Reader Profiles →
 // Stage 3: Info Restriction → Stage 4: Comment Gen →
 // Stage 5: GPT-5 Curator → Stage 6: Noise
@@ -1045,7 +1084,7 @@ async function extractEvents(episodeContent: string): Promise<EventExtraction> {
 [에피소드]
 ${trimmed}`;
 
-    const raw = await callAzureGPT(prompt);
+    const raw = await callGrokAPI(prompt, 0.3, 1200);
     if (!raw) return { events: [], dominantEmotion: '' };
 
     try {
@@ -1557,7 +1596,11 @@ ${episodeExcerpt.substring(0, 300)}
     // ===== 5회 병렬 호출 (빈 그룹은 skip) =====
     console.log('🧠 Stage 4: Persona-based cognitive calls...');
     const prompts = [call1Prompt, call2Prompt, call3Prompt, call4Prompt, call5Prompt].filter(Boolean) as string[];
-    const rawResults = await Promise.all(prompts.map(p => callAzureGPT(p)));
+    const rawResults = await Promise.all(prompts.map((p, i) => {
+        // call3(chaos)는 entropy 높게, 나머지는 0.8
+        const temp = i === 2 ? 1.0 : 0.8;
+        return callGrokAPI(p, temp, 600);
+    }));
 
     // ===== 결과 합치기 (chaos 보호 분리) =====
     const safeComments: string[] = [];
@@ -1740,7 +1783,7 @@ ${commentList}
 [출력 — JSON]
 { "selected": [번호 ${targetCount}개] }`;
 
-    const curatorRaw = await callOpenAIReview(curatorPrompt);
+    const curatorRaw = await callGrokAPI(curatorPrompt, 0.3, 400);
     let finalComments: string[] = [];
 
     if (curatorRaw) {
