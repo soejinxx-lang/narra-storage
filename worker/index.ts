@@ -828,21 +828,21 @@ function commentDensityBoost(recentComments: number, totalViews: number): number
  * Worker 메인 루프
  */
 
-// ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포 + 한국어 부스트) ──
+// ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포) ──
 const LANG_BASE_WEIGHTS: Record<string, number> = {
-  'ko': 0.65,   // 한국어 (60~70% 목표)
-  'en': 0.17,   // 영어권
-  'ja': 0.10,   // 일본어권
-  'zh': 0.05,   // 중국어권
-  'es': 0.03,   // 스페인어권
+  'ko': 0.50,   // 한국어 (50±8% 목표 → 실제 42~58%)
+  'en': 0.25,   // 영어권
+  'ja': 0.14,   // 일본어권
+  'zh': 0.07,   // 중국어권
+  'es': 0.04,   // 스페인어권
 };
 
-// 가중치에 ±30% 랜덤 지터 적용 → 에피소드마다 다른 비율
+// 가중치에 ±8% 랜덤 지터 → 에피소드마다 자연스러운 비율 변동
 function jitteredWeights(): Record<string, number> {
   const jittered: Record<string, number> = {};
   let total = 0;
   for (const [lang, base] of Object.entries(LANG_BASE_WEIGHTS)) {
-    const jitter = 0.92 + Math.random() * 0.16; // ±8% (ko가 60~70% 범위 유지)
+    const jitter = 0.92 + Math.random() * 0.16; // ±8%
     jittered[lang] = base * jitter;
     total += jittered[lang];
   }
