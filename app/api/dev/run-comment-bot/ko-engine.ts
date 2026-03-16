@@ -439,8 +439,8 @@ ${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 function sanitizeCommentContent(raw: string): string | null {
     let s = raw.trim();
     if (!s) return null;
-    // 따옴표 제거: 일반 + curly quote (“”‘’)
-    s = s.replace(/^["\u201c\u2018']+|["\u201d\u2019']+$/g, '').trim();
+    // 따옴표 전체 제거: 일반 + curly quote (“”‘’) — 어디에도 " 가 남지 않게
+    s = s.replace(/["“”‘’']/g, '').trim();
     if (!s) return null;
     s = s.replace(/```[\s\S]*? ```/g, '').trim();
     if (!s) return null;
