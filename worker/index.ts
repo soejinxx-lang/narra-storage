@@ -15,6 +15,7 @@ import { runKoreanCommentBot } from '../app/api/dev/run-comment-bot/ko-engine.js
 import type { LanguagePack } from '../app/api/dev/run-comment-bot-intl/types.js';
 import { refundTranslationQuota } from '../lib/requireAuth.js';
 import { MODEL_PARAMS, calcBotTarget, generateNovelQ as _generateNovelQ } from '../lib/comment-bot-model.js';
+import { checkAndSendDigest } from '../lib/sms-digest.js';
 
 // 언어팩 동적 로더 (NodeNext moduleResolution 호환)
 async function loadLangPack(lang: string): Promise<LanguagePack> {
@@ -910,6 +911,7 @@ async function autoGenerateComments(): Promise<void> {
       episode_id: string; novel_id: string; ep: number;
       publishedAt: Date; viewCount: number; botCount: number;
       userCount: number; toAdd: number;
+      botTarget: number; // #2: 로그 재사용을 위해 저장 (calcBotTarget과 동기화)
     }> = [];
 
     for (const row of result.rows) {
@@ -962,7 +964,7 @@ async function autoGenerateComments(): Promise<void> {
       }
 
       if (toAdd <= 0) continue;
-      candidates.push({ episode_id, novel_id, ep: epNumber, publishedAt, viewCount, botCount, userCount, toAdd });
+      candidates.push({ episode_id, novel_id, ep: epNumber, publishedAt, viewCount, botCount, userCount, toAdd, botTarget });
     }
 
     // gap 큰 것부터
@@ -971,7 +973,7 @@ async function autoGenerateComments(): Promise<void> {
 
     let totalAdded = 0;
 
-    for (const { episode_id, novel_id, ep, publishedAt, toAdd } of toProcess) {
+    for (const { episode_id, novel_id, ep, publishedAt, toAdd, viewCount, botCount, botTarget } of toProcess) {
       const weights = jitteredWeights();
       const langAllocations: { lang: string; count: number }[] = [];
       let allocated = 0;
@@ -983,14 +985,11 @@ async function autoGenerateComments(): Promise<void> {
         if (count > 0) { langAllocations.push({ lang, count }); allocated += count; }
       }
 
-      const { botTarget } = calcCumulativeTarget(
-        toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0,
-        ep, Math.floor((now - publishedAt.getTime()) / 86400000),
-        episode_id
-      );
+      // #2: calcCumulativeTarget 이중 호출 제거 — candidates에 저장된 botTarget 재사용
+      // (calcBotTarget으로 계산해 DB에 저장한 값과 동일하므로 로그도 정확)
       console.log(
-        `[CommentBot] ep${ep}: views=${toProcess.find(x => x.episode_id === episode_id)?.viewCount ?? 0} `
-        + `botTarget=${botTarget} actual=${toProcess.find(x => x.episode_id === episode_id)?.botCount ?? 0} `
+        `[CommentBot] ep${ep}: views=${viewCount} `
+        + `botTarget=${botTarget} actual=${botCount} `
         + `adding=${toAdd} [${langAllocations.map(a => `${a.lang}:${a.count}`).join(' ')}]`
       );
 
@@ -1173,7 +1172,14 @@ async function main() {
         lastReveal = Date.now();
       }
 
-      // ── 5. 번역 작업 폴링 ──
+      // ── 5. SMS 다이제스트 (KST 0/6/12/18시 첫 5분) ──
+      try {
+        await checkAndSendDigest();
+      } catch (smsErr) {
+        console.error('[SMS] ⚠️ Error:', smsErr);
+      }
+
+      // ── 6. 번역 작업 폴링 ──
       const jobs = await fetchAndClaimNextJobs(MAX_CONCURRENCY);
 
       if (jobs.length === 0) {

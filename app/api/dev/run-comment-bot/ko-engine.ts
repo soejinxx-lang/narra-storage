@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ko-engine.ts — 한국어 전용 댓글 생성 엔진 (Worker 호출용)
  *
  * comment-bot-final(2026-02-17) 버전 로직.
@@ -159,9 +159,11 @@ async function generateSingleComment(
     temperature: number,
     seedHint: string,
 ): Promise<string> {
+    // #10: 마크다운 마크업 제거 전처리 (* ** [img:...] 등 LLM에 노출되면 이상한 댓글 생성 방지)
+    const cleanContent = episodeContent.replace(/\*{1,3}|_{1,3}|\[img:[^\]]*\]|\[[^\]]*\]/g, '').trim();
     // 비용 무관: 최대 6000자 context 제공 (앞부분 + 뒷부분)
-    const front = episodeContent.slice(0, 2000);
-    const back = episodeContent.length > 2000 ? episodeContent.slice(-4000) : '';
+    const front = cleanContent.slice(0, 2000);
+    const back = cleanContent.length > 2000 ? cleanContent.slice(-4000) : '';
     const context = back ? `${front}\n...(중략)...\n${back}` : front;
 
     const genreHint = primaryGenre === 'romance'
@@ -213,7 +215,8 @@ function pickCommentStyle(): string {
 function extractSceneCandidates(content: string, n = 6): string[] {
     const paragraphs = content.split(/\n{2,}/).filter(p => p.trim().length > 20);
     if (paragraphs.length <= n) {
-        const size = Math.floor(content.length / n);
+        // #8: size가 0이 되는 경계값 방지 (최소 50)
+        const size = Math.max(50, Math.floor(content.length / n));
         return Array.from({ length: n }, (_, i) =>
             content.slice(i * size, (i + 1) * size + 200)
         );
@@ -262,8 +265,11 @@ async function generateDeepContextComments(
         .filter(c => c.length >= 2 && c.length < 120)
         .filter(c => !isEmptyExclamation(c));
 
-    // mid: 7~18자 짧은 댓글
+    // #3: mid와 long을 완전히 분리 — filtered에서 mid를 제거해야 두 배열에 중복 삽입 안 됨
+    // mid: 7~18자 짧은 댓글 (삽입 루프에서 midDensityPool로 사용)
     const midComments = filtered.filter(c => c.length >= 7 && c.length <= 18);
+    // long: 19자 초과 댓글만 deepComments로 사용 (mid와 겹치지 않음)
+    const longComments = filtered.filter(c => c.length > 18);
 
     // tags: 장르 태그 추론 (별도 GPT 호출 없이 genreWeights에서)
     const tagMap: Record<string, string> = {
@@ -275,8 +281,8 @@ async function generateDeepContextComments(
         .map(k => tagMap[k])
         .filter(Boolean);
 
-    console.log(`   → [ko] 단건생성: ${results.length}개 생성, ${filtered.length}개 통과`);
-    return { comments: filtered, midComments, detectedTags };
+    console.log(`   → [ko] 단건생성: ${results.length}개 생성, ${filtered.length}개 통과 (long:${longComments.length} mid:${midComments.length})`);
+    return { comments: longComments, midComments, detectedTags };
 }
 
 
@@ -298,7 +304,8 @@ async function generateContextualReply(parentComment: string): Promise<string> {
                     - ~다 어미 금지
                         - JSON 말고 댓글 텍스트만 출력`;
 
-    const raw = await callAzureGPT(prompt, 0.9, 100);
+    // #6: 대댓글도 Grok → Azure fallback 체인으로 통일
+    const raw = await callGrokAPI(prompt, 0.9, 100);
     let reply = raw
         .replace(/^```.*\n ? /i, '').replace(/\n ? ```.*$/i, '')
         .replace(/^[\"']|[\"']$/g, '')
@@ -385,19 +392,21 @@ async function judgeComments(comments: string[]): Promise<string[]> {
 아래 댓글 목록 중 가장 어색하거나 공식적인 댓글 ${removeCount}개의 번호를 골라줘.
 
 제거 대상(이런 것만 골라):
-    - "[캐릭터명]의 [추상명사] ㄷㄷ" 같은 공식 템플릿
-        - 지나치게 깔끔하게 정리된 캐릭터 / 스토리 분석
-            - 문학 감상문 스타일
+- "[캐릭터명]의 [추상명사] ㄷㄷ" 같은 공식 템플릿
+- 지나치게 깔끔하게 정리된 캐릭터/스토리 분석
+- 문학 감상문 스타일
+- 목록 내 다른 댓글과 동일한 장면·키워드를 반복 언급하는 댓글 (유사 댓글이 이미 있으면 2번째 이후는 제거)
 
 살려야 할 것(이런 건 건드리지 마):
-    - 즉흥적이고 불완전한 반응("아 거기서 칼 빼네")
-        - 초성체, 줄임말, 구어체
-        - 장면에 대한 즉각적 감정 반응
+- 즉흥적이고 불완전한 반응("아 거기서 칼 빼네")
+- 초성체, 줄임말, 구어체
+- 장면에 대한 즉각적 감정 반응
+- 서로 다른 장면이나 감정을 다루는 댓글
 
-        [댓글 목록]
+[댓글 목록]
 ${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-제거할 번호만 나열해.예: 2, 5, 7`;
+제거할 번호만 나열해. 예: 2, 5, 7`;
 
     try {
         const raw = await callAzureGPT(prompt, 0.1, 100);
