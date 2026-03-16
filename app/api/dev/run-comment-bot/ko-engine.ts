@@ -176,8 +176,8 @@ async function generateSingleComment(
 ${seedHint}
 
 [규칙]
-- 방금 읽으면서 가장 강하게 꽂힌 장면 1개에 반응해
-- 그 장면의 구체적인 단서(행동/대사/상황) 최소 1개 포함
+- 읽고 든 감상/의문/예측 중 하나만 짧게
+- 장면을 설명하지 말고 독자 반응만
 - 반응은 즉흥적이고 자연스럽게
 - ㅋ, ㅠ, ㄷ, 초성체 자유롭게
 - ~다 어미 금지 (미쳤음/ㅁㅊ OK)
@@ -196,11 +196,13 @@ ${context}`;
 
 // comment style class — 댓글 의도 다변화 (scene reaction 단일 수렴 방지)
 const COMMENT_STYLES: { weight: number; hint: string }[] = [
-    { weight: 40, hint: '방금 읽은 장면에 즉각적으로 감정 반응해.' },
+    { weight: 30, hint: '방금 읽은 장면에 즉각적으로 감정 반응해.' },
     { weight: 20, hint: '이 장면에서 생긴 궁금증이나 의문을 짧게 표현해.' },
     { weight: 20, hint: '이 전개가 다음에 어떻게 될지 짧게 예측해.' },
     { weight: 10, hint: '캐릭터 행동이나 설정의 의미를 짧게 해석해.' },
     { weight: 10, hint: '이 장면의 클리셰나 뻔한 전개를 드립으로 반응해.' },
+    // DC 타입: 짧고 날 것의 반응 (기존 여초식 유지, 추가)
+    { weight: 20, hint: '짧고 날 것의 반응. 예: "이거 회귀물이었냐" "설마 떡밥이었나" "다음화에서 터지겠네" "이번화 폼 미쳤네"' },
 ];
 
 function pickCommentStyle(): string {
