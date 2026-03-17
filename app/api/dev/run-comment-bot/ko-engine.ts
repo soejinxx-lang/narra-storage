@@ -574,17 +574,7 @@ export async function runKoreanCommentBot(
     const deepRatio = 0.30 + (Math.random() * 0.20 - 0.10); // 20~40%
 
     for (let i = 0; i < totalCount && totalCommentsPosted < totalCount; i++) {
-        const nickname = pickNickname(usedNicknames);
-        const username = `bot_ko_${Date.now()}_${Math.random().toString(36).slice(2, 6)} `;
-
-        const userResult = await db.query(
-            `INSERT INTO users(username, password_hash, name, is_hidden, role, created_at)
-    VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
-            [username, '$2b$10$placeholder_ko_bot', nickname, publishedAt]
-        );
-        const userId = userResult.rows[0].id;
-
-        // .shift() — judgeComments best-first 정렬 순서 유지, deepRatio는 루프 밖 1회 계산
+        // content 먼저 결정 — sanitize 실패해도 nickname/user 낭비 없음
         const roll = Math.random();
         let rawContent: string;
         if (roll < deepRatio && deepComments.length > 0) rawContent = deepComments.shift()!;
@@ -593,10 +583,21 @@ export async function runKoreanCommentBot(
         else if (midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
         else break;
 
-        // sanitize: JSON/라벨/워터마크 오염 출력 차단
+        // sanitize 먼저 — 실패 시 nickname·user INSERT 없이 skip (닉네임 중복 방지)
         const sanitized = sanitizeCommentContent(rawContent);
         if (!sanitized) continue;
         let content = humanize(sanitized);
+
+        // content 검증 통과 후 nickname/user 생성
+        const nickname = pickNickname(usedNicknames);
+        const username = `bot_ko_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+        const userResult = await db.query(
+            `INSERT INTO users(username, password_hash, name, is_hidden, role, created_at)
+    VALUES($1, $2, $3, FALSE, 'bot', $4) RETURNING id`,
+            [username, '$2b$10$placeholder_ko_bot', nickname, publishedAt]
+        );
+        const userId = userResult.rows[0].id;
         const scheduledAt = scheduledTimes[i] || new Date();
 
         // 답글 5%
