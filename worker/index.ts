@@ -1031,13 +1031,12 @@ async function autoGenerateComments(): Promise<void> {
         slotOffset += count;
       }
 
-      // Promise.allSettled로 언어 병렬 실행
+      // 언어 순차 실행 — Grok rate limit burst 방지
       let episodeAdded = 0;
       let episodeFailed = false;
 
-      await Promise.allSettled(langTsMap.map(async ({ lang, count, timestamps }) => {
+      for (const { lang, count, timestamps } of langTsMap) {
         try {
-          // 한국어는 예전 전용 한국어 봇 로직 사용
           if (lang === 'ko') {
             const botResult = await runKoreanCommentBot(
               novel_id, count, episode_id, true, publishedAt, timestamps,
@@ -1053,6 +1052,8 @@ async function autoGenerateComments(): Promise<void> {
             episodeAdded += botResult.inserted;
             totalAdded += botResult.inserted;
           }
+          // 언어 간 1초 간격 (rate limit 여유)
+          await new Promise(r => setTimeout(r, 1000));
         } catch (langErr) {
           console.error(`[CommentBot]   ⚠️ ${lang} failed:`, langErr);
           if (lang === 'ko') {
@@ -1060,7 +1061,7 @@ async function autoGenerateComments(): Promise<void> {
           }
           episodeFailed = true;
         }
-      }));
+      }
 
       // ② 실패 기록
       if (episodeFailed && episodeAdded === 0) {

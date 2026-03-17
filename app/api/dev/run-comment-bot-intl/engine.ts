@@ -589,7 +589,7 @@ async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): P
                 'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: 'grok-4-latest',
+                model: 'grok-3-mini-latest',
                 messages: [{ role: 'user', content: prompt }],
                 temperature,
                 max_tokens: maxTokens,
@@ -600,6 +600,27 @@ async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): P
         if (!response.ok) {
             const errorBody = await response.text();
             console.error(`[grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
+            // 429 rate limit → retry with backoff (최대 3회)
+            if (response.status === 429) {
+                for (let retry = 0; retry < 3; retry++) {
+                    const wait = (retry + 1) * 2000;
+                    console.log(`[grok] 429 → retry ${retry + 1}/3 after ${wait}ms`);
+                    await new Promise(r => setTimeout(r, wait));
+                    try {
+                        const retryRes = await fetch('https://api.x.ai/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                            body: JSON.stringify({ model: 'grok-3-mini-latest', messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens, stream: false }),
+                        });
+                        if (retryRes.ok) {
+                            const retryData = await retryRes.json();
+                            logLLMCall('grok', 'intl', true, Date.now() - _grokStart);
+                            return retryData.choices?.[0]?.message?.content?.trim() || '';
+                        }
+                        if (retryRes.status !== 429) break;
+                    } catch {}
+                }
+            }
             logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
             return callAzureGPT(prompt, temperature, maxTokens);
         }
@@ -1787,7 +1808,7 @@ export async function runCommentBotIntl(
         if (episodeContent && episodeContent.length > 50) {
             let calls = 0;
             let consecutiveEmpty = 0;
-            while (deepComments.length < totalCount && calls < 6) {
+            while (deepComments.length < totalCount && calls < 3) {
                 const result = await generateDeepContextComments(
                     episodeContent, genreWeights, lang, 15, contentLanguage
                 );
