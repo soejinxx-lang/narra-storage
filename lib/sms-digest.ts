@@ -133,11 +133,17 @@ export async function checkAndSendDigest(): Promise<void> {
     const hourKST = nowKST.getUTCHours();
     const minKST = nowKST.getUTCMinutes();
 
+    // 디버깅: 매 10분마다 한 번 로그 (로그 폭주 방지)
+    if (minKST % 10 === 0) {
+        console.log(`[SMS-DEBUG] KST=${hourKST}:${String(minKST).padStart(2,'0')} targets=[${DIGEST_HOURS_KST}] lastSent=${lastDigestHour}`);
+    }
+
     // 지정 시각의 첫 5분 안에만 실행, 같은 시각 중복 발送 방지
     if (!DIGEST_HOURS_KST.includes(hourKST)) return;
     if (minKST >= 5) return;
     if (lastDigestHour === hourKST) return;
 
+    console.log(`[SMS] 🔔 Digest 발송 시작 (KST ${hourKST}:${String(minKST).padStart(2,'0')})`);
     lastDigestHour = hourKST;
 
     try {
