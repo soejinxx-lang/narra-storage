@@ -35,7 +35,7 @@ async function sendCoolSMS(text: string): Promise<void> {
         message: { to, from, text, type: 'SMS' },
     });
 
-    const res = await fetch('https://api.coolsms.co.kr/messages/v4/send', {
+    const res = await fetch('https://api.solapi.com/messages/v4/send', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -127,14 +127,17 @@ async function gatherStats(): Promise<string> {
 // ─── KST 기준 발送 시각 체크 ──────────────────────────────────────
 const DIGEST_HOURS_KST = [0, 6, 12, 18];
 let lastDigestHour = -1; // 같은 시각에 중복 발送 방지
+let lastDebugKey = '';   // 디버깅 로그 throttle
 
 export async function checkAndSendDigest(): Promise<void> {
     const nowKST = new Date(Date.now() + 9 * 3600 * 1000);
     const hourKST = nowKST.getUTCHours();
     const minKST = nowKST.getUTCMinutes();
 
-    // 디버깅: 매 10분마다 한 번 로그 (로그 폭주 방지)
-    if (minKST % 10 === 0) {
+    // 디버깅: 10분에 한 번만 로그 (throttle)
+    const debugKey = `${hourKST}:${Math.floor(minKST / 10)}`;
+    if (debugKey !== lastDebugKey) {
+        lastDebugKey = debugKey;
         console.log(`[SMS-DEBUG] KST=${hourKST}:${String(minKST).padStart(2,'0')} targets=[${DIGEST_HOURS_KST}] lastSent=${lastDigestHour}`);
     }
 
