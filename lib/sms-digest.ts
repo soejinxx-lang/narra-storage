@@ -24,7 +24,7 @@ async function sendCoolSMS(text: string): Promise<void> {
 
     // HMAC-SHA256 서명 (CoolSMS v4)
     const date = new Date().toISOString();
-    const salt = Math.random().toString(36).slice(2);
+    const salt = crypto.randomBytes(16).toString('hex'); // Solapi 최소 12 bytes 필요
     const sigInput = `${date}${salt}`;
 
     const signature = crypto.createHmac('sha256', apiSecret).update(sigInput).digest('hex');
