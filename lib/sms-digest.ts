@@ -31,8 +31,11 @@ async function sendCoolSMS(text: string): Promise<void> {
 
     const authHeader = `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
 
+    // 한글 SMS 90 bytes(~45자) 초과 시 LMS(장문)로 전환
+    const msgType = text.length > 45 ? 'LMS' : 'SMS';
+
     const body = JSON.stringify({
-        message: { to, from, text, type: 'SMS' },
+        message: { to, from, text, type: msgType },
     });
 
     const res = await fetch('https://api.solapi.com/messages/v4/send', {
