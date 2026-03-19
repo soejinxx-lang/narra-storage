@@ -18,7 +18,7 @@ async function sendCoolSMS(text: string): Promise<void> {
     const to = process.env.SMS_TO;   // 수신번호
 
     if (!apiKey || !apiSecret || !from || !to) {
-        console.warn('[SMS] ⚠️ COOLSMS env vars missing, skipping');
+        console.warn(`[SMS] ⚠️ env vars missing: KEY=${!!apiKey} SECRET=${!!apiSecret} FROM=${!!from} TO=${!!to}`);
         return;
     }
 
