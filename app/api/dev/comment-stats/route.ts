@@ -59,13 +59,13 @@ export async function GET(req: NextRequest) {
         let totalActual = 0;
 
         type EpStat = {
-            ep: number; views: number; views_eff: number;
+            episodeId: string; ep: number; views: number; views_eff: number;
             publishedAt: string; lastCommentAt: string | null;
             daysSinceUpload: number; daysSinceLastComment: number | null;
             D: number; C_max: number; saturation: number; botTarget: number;
             actual: number; gap: number;
             overflow: number; overflowTier: string; commentRate: number;
-            targetSource: 'db' | 'fallback'; // 워커 동기화 여부 표시
+            targetSource: 'db' | 'fallback';
         };
 
         const byNovel: Record<string, {
@@ -115,6 +115,7 @@ export async function GET(req: NextRequest) {
                 };
             }
             byNovel[row.novel_id].episodes.push({
+                episodeId: row.episode_id,
                 ep, views, views_eff,
                 publishedAt: publishedAt.toISOString(),
                 lastCommentAt: lastCommentAt?.toISOString() ?? null,
