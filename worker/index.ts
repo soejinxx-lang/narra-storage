@@ -1059,7 +1059,13 @@ async function autoGenerateComments(): Promise<void> {
           if (lang === 'ko') {
             console.error(`[CommentBot] 🔴 Korean bot full error:`, (langErr as Error)?.stack || langErr);
           }
-          episodeFailed = true;
+          // 인프라 에러(DB 끊김 등)는 패널티 없이 다음 사이클에 재시도
+          // 비즈니스 에러(콘텐츠 문제 등)만 recentFailures 기록
+          const isInfraError = ['Connection terminated', 'ECONNREFUSED', 'timeout', 'ETIMEDOUT', 'ENOTFOUND']
+            .some(msg => (langErr as Error)?.message?.includes(msg));
+          if (!isInfraError) {
+            episodeFailed = true;
+          }
         }
       }
 

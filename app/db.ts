@@ -15,6 +15,10 @@ function getPool(): Pool {
       ssl: process.env.DATABASE_URL.includes("railway")
         ? { rejectUnauthorized: false }
         : false,
+      keepAlive: true,             // TCP keepalive → Railway 끊김 즉시 감지
+      idleTimeoutMillis: 30_000,   // 30초 idle → Railway(5분)보다 먼저 정리
+      connectionTimeoutMillis: 10_000, // 연결 시도 10초 타임아웃
+      max: 5,                      // Worker용 (기본 10 → 5)
     });
   }
 

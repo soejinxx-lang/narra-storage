@@ -150,12 +150,12 @@ export async function checkAndSendDigest(): Promise<void> {
     if (lastDigestHour === hourKST) return;
 
     console.log(`[SMS] 🔔 Digest 발송 시작 (KST ${hourKST}:${String(minKST).padStart(2,'0')})`);
-    lastDigestHour = hourKST;
 
     try {
         const text = await gatherStats();
         console.log('[SMS] 📊 Digest:\n' + text);
         await sendCoolSMS(text);
+        lastDigestHour = hourKST; // 성공 후에만 기록 (실패 시 5분 내 재시도 가능)
     } catch (err) {
         console.error('[SMS] ❌ digest error:', err);
     }

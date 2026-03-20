@@ -96,68 +96,95 @@ function getGenreWeights(genreData: string | string[] | null): Record<string, nu
     return weights;
 }
 
+// ============================================================
+// Grok 글로벌 토큰 버킷 (싱글턴 — 모든 경로가 이 큐 통과)
+// 분당 100회 상한 → 600ms 간격 보장
+// thundering herd 방지: retry도 동일 큐 통과
+// ============================================================
+const GROK_INTERVAL_MS = 600; // 분당 100회 = 600ms 간격
+let _lastGrokCallAt = 0;
+let _grokQueue: Promise<void> = Promise.resolve();
+
+function enqueueGrokCall<T>(fn: () => Promise<T>): Promise<T> {
+    const result = _grokQueue.then(async () => {
+        const elapsed = Date.now() - _lastGrokCallAt;
+        if (elapsed < GROK_INTERVAL_MS) {
+            await new Promise(r => setTimeout(r, GROK_INTERVAL_MS - elapsed));
+        }
+        _lastGrokCallAt = Date.now();
+        return fn();
+    });
+    // 큐는 항상 resolved 상태 유지 (에러가 큐 자체를 막지 않도록)
+    _grokQueue = result.then(() => {}, () => {});
+    return result;
+}
 
 // ============================================================
 // Grok API 호출 (댓글 생성용 — Azure GPT fallback)
 // ============================================================
 async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): Promise<string> {
-    const _grokStart = Date.now();
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return callAzureGPT(prompt, temperature, maxTokens);
 
-    try {
-        const response = await fetch('https://api.x.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-                model: 'grok-3-mini-latest',
-                messages: [{ role: 'user', content: prompt }],
-                temperature,
-                max_tokens: maxTokens,
-                stream: false,
-            }),
-        });
+    return enqueueGrokCall(async () => {
+        const _grokStart = Date.now();
+        try {
+            const response = await fetch('https://api.x.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: 'grok-3-mini-latest',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature,
+                    max_tokens: maxTokens,
+                    stream: false,
+                }),
+            });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error(`[grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
-            // 429 rate limit → retry with backoff (최대 3회)
-            if (response.status === 429) {
-                for (let retry = 0; retry < 3; retry++) {
-                    const wait = (retry + 1) * 2000;
-                    console.log(`[grok] 429 → retry ${retry + 1}/3 after ${wait}ms`);
-                    await new Promise(r => setTimeout(r, wait));
-                    try {
-                        const retryRes = await fetch('https://api.x.ai/v1/chat/completions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                            body: JSON.stringify({ model: 'grok-3-mini-latest', messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens, stream: false }),
-                        });
-                        if (retryRes.ok) {
-                            const retryData = await retryRes.json();
-                            logLLMCall('grok', 'ko', true, Date.now() - _grokStart);
-                            return retryData.choices?.[0]?.message?.content?.trim() || '';
-                        }
-                        if (retryRes.status !== 429) break;
-                    } catch {}
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error(`[grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
+                // 429 → exponential backoff + jitter (thundering herd 방지)
+                if (response.status === 429) {
+                    for (let retry = 0; retry < 3; retry++) {
+                        const base = Math.pow(2, retry + 2) * 1000; // 4s · 8s · 16s
+                        const jitter = Math.random() * 1000;        // 0~1s 랜덤
+                        const wait = base + jitter;
+                        console.log(`[grok] 429 → retry ${retry + 1}/3 after ${Math.round(wait)}ms`);
+                        await new Promise(r => setTimeout(r, wait));
+                        try {
+                            const retryRes = await fetch('https://api.x.ai/v1/chat/completions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                                body: JSON.stringify({ model: 'grok-3-mini-latest', messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens, stream: false }),
+                            });
+                            if (retryRes.ok) {
+                                const retryData = await retryRes.json();
+                                logLLMCall('grok', 'ko', true, Date.now() - _grokStart);
+                                return retryData.choices?.[0]?.message?.content?.trim() || '';
+                            }
+                            if (retryRes.status !== 429) break;
+                        } catch { /* 재시도 중 네트워크 오류 무시 */ }
+                    }
                 }
+                logLLMCall('grok', 'ko', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
+                return callAzureGPT(prompt, temperature, maxTokens);
             }
-            logLLMCall('grok', 'ko', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
+
+            const data = await response.json();
+            const result = data.choices?.[0]?.message?.content?.trim() || '';
+            logLLMCall('grok', 'ko', true, Date.now() - _grokStart);
+            return result;
+        } catch (err) {
+            const elapsed = Date.now() - _grokStart;
+            console.error('[grok] API call failed, falling back to Azure:', err);
+            logLLMCall('grok', 'ko', false, elapsed, true, String(err));
             return callAzureGPT(prompt, temperature, maxTokens);
         }
-
-        const data = await response.json();
-        const result = data.choices?.[0]?.message?.content?.trim() || '';
-        logLLMCall('grok', 'ko', true, Date.now() - _grokStart);
-        return result;
-    } catch (err) {
-        console.error('[grok] API call failed, falling back to Azure:', err);
-        logLLMCall('grok', 'ko', false, Date.now() - _grokStart, true, String(err));
-        return callAzureGPT(prompt, temperature, maxTokens);
-    }
+    });
 }
 
 // ============================================================
@@ -263,24 +290,17 @@ async function generateDeepContextComments(
     const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const temperatures = [0.7, 0.8, 0.9, 1.0, 1.1];
     const results: string[] = [];
-    const CONCURRENCY = 3;
 
     // 에피소드를 paragraph 청크로 분할 → 호출마다 다른 청크 배정 (salience 수렴 방지)
     const chunks = extractSceneCandidates(episodeContent, 6);
 
-    // concurrency pool — rate limit 방지
-    for (let i = 0; i < count; i += CONCURRENCY) {
-        const batch = Array.from({ length: Math.min(CONCURRENCY, count - i) }, (_, j) => {
-            const idx = i + j;
-            const chunk = chunks[idx % chunks.length];  // 청크 순환
-            const styleHint = pickCommentStyle();         // 스타일 랜덤 배정
-            const temp = temperatures[idx % temperatures.length];
-            return generateSingleComment(chunk, primaryGenre, temp, styleHint);
-        });
-        const batchResults = await Promise.allSettled(batch);
-        for (const r of batchResults) {
-            if (r.status === 'fulfilled' && r.value) results.push(r.value);
-        }
+    // 순차 처리 — enqueueGrokCall이 600ms 간격 직렬 보장 (burst/thundering herd 방지)
+    for (let i = 0; i < count; i++) {
+        const chunk = chunks[i % chunks.length];
+        const styleHint = pickCommentStyle();
+        const temp = temperatures[i % temperatures.length];
+        const result = await generateSingleComment(chunk, primaryGenre, temp, styleHint);
+        if (result) results.push(result);
     }
 
     // 빈 감탄사 + 길이 필터
