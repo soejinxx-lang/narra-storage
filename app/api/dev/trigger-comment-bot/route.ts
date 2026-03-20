@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
-import db from "../../../db.js";
-import { runKoreanCommentBot } from "../run-comment-bot/ko-engine.js";
+import db from "../../../db";
+import { runKoreanCommentBot } from "../run-comment-bot/ko-engine";
 
 /**
  * POST /api/dev/trigger-comment-bot
