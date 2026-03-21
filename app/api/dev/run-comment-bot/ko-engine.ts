@@ -502,7 +502,10 @@ function sanitizeCommentContent(raw: string): string | null {
     // 따옴표 전체 제거: 일반 + curly quote (“”‘’) — 어디에도 " 가 남지 않게
     s = s.replace(/["“”‘’']/g, '').trim();
     if (!s) return null;
-    s = s.replace(/```[\s\S]*? ```/g, '').trim();
+    // ,  -   ,  
+    s = s.replace(/,/g, '').trim();
+    if (!s) return null;
+    s = s.replace(/```[\s\S]*?```/g, '').trim();
     if (!s) return null;
     // 라벨 접두어 제거: "대댓글:", "원댓글:", "A:" 등
     const labelRe = /^[^\s]{1,8}[：:] */;

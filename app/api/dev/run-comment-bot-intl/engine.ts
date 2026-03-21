@@ -263,6 +263,10 @@ function sanitizeCommentContent(raw: string): string | null {
     s = s.replace(/```[\s\S]*?```/g, '').trim();
     if (!s) return null;
 
+    // 1.5. 쉼표 제거 — 댓글 속 , 는 부자연스럽게 보임
+    s = s.replace(/,/g, '').trim();
+    if (!s) return null;
+
     // 2. GPT 라벨 접두어 즉사 제거
     // "대댓글:", "원댓글:", "독자1:", "A:", "1번:" 등 1~8자 + 콜론 패턴
     const labelPrefixRe = /^[^\s]{1,8}[：:] */;

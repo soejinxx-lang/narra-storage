@@ -1,11 +1,40 @@
-/**
- * Translation Worker
- * 
+npm run build
+6s
+npm warn config production Use `--omit=dev` instead.
+> narra - storage@0.1.0 build
+  > next build
+▲ Next.js 16.1.1(Turbopack)
+⚠ The "middleware" file convention is deprecated.Please use "proxy" instead.Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+
+./ app / api / dev / run - comment - bot / ko - engine.ts: 10: 1
+Module not found: Can't resolve '../../../ db.js'
+8 |  */
+9 |
+> 10 | import db from '../../../db.js';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  11 |
+  12 | // ============================================================
+  13 | // LLM 호출 로깅 (어드민 모니터링용)
+  Import traces:
+  #1[App Route]:
+    ./app/api / dev / run - comment - bot / ko - engine.ts
+  ./ app / api / novels / [id] / entities / route.ts
+  #2[App Route]:
+    ./app/api / dev / run - comment - bot / ko - engine.ts
+  ./ app / api / dev / trigger - comment - bot / route.ts
+https://nextjs.org/docs/messages/module-not-found
+at<unknown>(./app/api / dev / run - comment - bot / ko - engine.ts: 10: 1)
+at<unknown>(https:/
+  * Translation Worker
+  * 
  * PENDING 상태의 번역 작업을 순차적으로 처리하는 상주 프로세스
- * - DB에서 PENDING 작업 폴링
- * - Pipeline API 호출
- * - 상태 업데이트 (RUNNING → DONE/FAILED)
- */
+* - DB에서 PENDING 작업 폴링
+* - Pipeline API 호출
+* - 상태 업데이트(RUNNING → DONE / FAILED)
+*/
 
 import db, { initDb } from '../app/db.js';
 import { splitIntoChunks } from './chunker.js';
@@ -831,11 +860,11 @@ function commentDensityBoost(recentComments: number, totalViews: number): number
 
 // ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포) ──
 const LANG_BASE_WEIGHTS: Record<string, number> = {
-  'ko': 0.50,   // 한국어 (50±8% 목표 → 실제 42~58%)
-  'en': 0.25,   // 영어권
-  'ja': 0.14,   // 일본어권
-  'zh': 0.07,   // 중국어권
-  'es': 0.04,   // 스페인어권
+  'ko': 0.40,   // 한국어 (40±8% 목표)
+  'en': 0.26,   // 영어권
+  'ja': 0.18,   // 일본어권
+  'zh': 0.09,   // 중국어권
+  'es': 0.07,   // 스페인어권
 };
 
 // 가중치에 ±8% 랜덤 지터 → 에피소드마다 자연스러운 비율 변동
