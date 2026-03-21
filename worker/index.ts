@@ -829,29 +829,41 @@ function commentDensityBoost(recentComments: number, totalViews: number): number
  * Worker 메인 루프
  */
 
-// ── 언어별 기본 가중치 (글로벌 웹소설 독자 분포) ──
-const LANG_BASE_WEIGHTS: Record<string, number> = {
-  'ko': 0.40,   // 한국어 (40±8% 목표)
-  'en': 0.26,   // 영어권
-  'ja': 0.18,   // 일본어권
-  'zh': 0.09,   // 중국어권
-  'es': 0.07,   // 스페인어권
+// ── 결과 기준 목표 비율 (최종 삽입된 댓글 기준으로 이 비율 달성 목표) ──
+const LANG_TARGET_RATIO: Record<string, number> = {
+  'ko': 0.40, 'en': 0.26, 'ja': 0.18, 'zh': 0.09, 'es': 0.07,
 };
 
-// 가중치에 ±8% 랜덤 지터 → 에피소드마다 자연스러운 비율 변동
-function jitteredWeights(): Record<string, number> {
-  const jittered: Record<string, number> = {};
-  let total = 0;
-  for (const [lang, base] of Object.entries(LANG_BASE_WEIGHTS)) {
-    const jitter = 0.92 + Math.random() * 0.16; // ±8%
-    jittered[lang] = base * jitter;
-    total += jittered[lang];
+// ── 언어별 예상 생존율 (생성 → sanitize → 삽입 기준 실측 추정) ──
+// ko-engine: 생존율 높음 / intl: 이모지·자기교정 등으로 더 많이 죽음
+// 추후 kill rate 로그 기반으로 동적화 예정
+const LANG_SURVIVAL_RATE: Record<string, number> = {
+  'ko': 0.85, 'en': 0.65, 'ja': 0.60, 'zh': 0.60, 'es': 0.65,
+};
+
+// ── 결과 기준 역산: 목표 결과 수를 맞추기 위해 생성 수를 부풀림 ──
+function calcLangAllocations(toAdd: number): { lang: string; count: number }[] {
+  // 1단계: 보정 전 가중치 계산 (ratio / survivalRate → 상대 비중)
+  const raw: Record<string, number> = {};
+  let rawTotal = 0;
+  for (const lang of Object.keys(LANG_TARGET_RATIO)) {
+    raw[lang] = LANG_TARGET_RATIO[lang] / (LANG_SURVIVAL_RATE[lang] ?? 0.70);
+    rawTotal += raw[lang];
   }
-  // 정규화 (합 = 1.0)
-  for (const lang of Object.keys(jittered)) {
-    jittered[lang] /= total;
+
+  // 2단계: 정규화 후 생성 수 배분 (ceil, 마지막 언어는 나머지로 맞춤)
+  const langs = Object.keys(raw);
+  const allocs: { lang: string; count: number }[] = [];
+  let allocated = 0;
+  for (let i = 0; i < langs.length; i++) {
+    const lang = langs[i];
+    const isLast = i === langs.length - 1;
+    const count = isLast
+      ? Math.max(0, toAdd - allocated)
+      : Math.round(toAdd * (raw[lang] / rawTotal));
+    if (count > 0) { allocs.push({ lang, count }); allocated += count; }
   }
-  return jittered;
+  return allocs;
 }
 
 // ── Race condition 방지: 이전 실행 중이면 skip ──
@@ -975,16 +987,7 @@ async function autoGenerateComments(): Promise<void> {
     let totalAdded = 0;
 
     for (const { episode_id, novel_id, ep, publishedAt, toAdd, viewCount, botCount, botTarget } of toProcess) {
-      const weights = jitteredWeights();
-      const langAllocations: { lang: string; count: number }[] = [];
-      let allocated = 0;
-      const langs = Object.keys(weights);
-      for (let i = 0; i < langs.length; i++) {
-        const lang = langs[i];
-        const isLast = i === langs.length - 1;
-        const count = isLast ? toAdd - allocated : Math.round(toAdd * weights[lang]);
-        if (count > 0) { langAllocations.push({ lang, count }); allocated += count; }
-      }
+      const langAllocations = calcLangAllocations(toAdd);
 
       // #2: calcCumulativeTarget 이중 호출 제거 — candidates에 저장된 botTarget 재사용
       // (calcBotTarget으로 계산해 DB에 저장한 값과 동일하므로 로그도 정확)
