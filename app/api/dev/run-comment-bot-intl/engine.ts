@@ -574,15 +574,42 @@ async function callAzureGPT(
 }
 
 // ============================================================
+// Grok 글로벌 토큰 버킷 (프로세스 단위 싱글턴)
+// 분당 100회 상한 → 600ms 간격 보장
+// ko-engine과 동일한 패턴
+// ============================================================
+const GROK_INTERVAL_MS = 600;
+let _lastGrokCallAt = 0;
+let _grokQueue: Promise<void> = Promise.resolve();
+
+function enqueueGrokCall<T>(fn: () => Promise<T>): Promise<T> {
+    const result = _grokQueue.then(async () => {
+        const elapsed = Date.now() - _lastGrokCallAt;
+        if (elapsed < GROK_INTERVAL_MS) {
+            await new Promise(r => setTimeout(r, GROK_INTERVAL_MS - elapsed));
+        }
+        _lastGrokCallAt = Date.now();
+        return fn();
+    });
+    // 큐는 항상 resolved 상태 유지 (에러가 큐 자체를 막지 않도록)
+    _grokQueue = result.then(() => {}, () => {});
+    return result;
+}
+
+// ============================================================
 // Grok API 호출 (댓글 생성용 — Azure GPT fallback)
+// 429 처리 전략:
+//   - 1차: 3s 대기 후 재시도 (burst limit 흡수)
+//   - 2차: 7s 대기 후 재시도 (quota 경계 흡수)
+//   - 그래도 실패 → Azure fallback (quota 초과 판단)
 // ============================================================
 async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): Promise<string> {
     const _grokStart = Date.now();
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return callAzureGPT(prompt, temperature, maxTokens);
 
-    try {
-        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    return enqueueGrokCall(async () => {
+        const makeRequest = () => fetch('https://api.x.ai/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -597,45 +624,40 @@ async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): P
             }),
         });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error(`[grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
-            // 429 rate limit → retry with backoff (최대 3회)
+        try {
+            let response = await makeRequest();
+
+            // 429 → 짧은 backoff 2회 (burst 흡수), 그래도 실패하면 Azure
             if (response.status === 429) {
-                for (let retry = 0; retry < 3; retry++) {
-                    const wait = (retry + 1) * 2000;
-                    console.log(`[grok] 429 → retry ${retry + 1}/3 after ${wait}ms`);
-                    await new Promise(r => setTimeout(r, wait));
+                const backoffs = [3000, 7000]; // 3s, 7s
+                for (let i = 0; i < backoffs.length; i++) {
+                    console.log(`[intl/grok] 429 → retry ${i + 1}/${backoffs.length} after ${backoffs[i]}ms`);
+                    await new Promise(r => setTimeout(r, backoffs[i]));
                     try {
-                        const retryRes = await fetch('https://api.x.ai/v1/chat/completions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                            body: JSON.stringify({ model: 'grok-3-mini-latest', messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens, stream: false }),
-                        });
-                        if (retryRes.ok) {
-                            const retryData = await retryRes.json();
-                            logLLMCall('grok', 'intl', true, Date.now() - _grokStart);
-                            return retryData.choices?.[0]?.message?.content?.trim() || '';
-                        }
-                        if (retryRes.status !== 429) break;
-                    } catch {}
+                        response = await makeRequest();
+                        if (response.status !== 429) break;
+                    } catch { /* 재시도 중 네트워크 오류 무시 */ }
                 }
             }
-            logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error(`[intl/grok] API error: ${response.status} → ${errorBody.substring(0, 200)}`);
+                logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, `HTTP ${response.status}`);
+                return callAzureGPT(prompt, temperature, maxTokens);
+            }
+
+            const data = await response.json();
+            const result = data.choices?.[0]?.message?.content?.trim() || '';
+            logLLMCall('grok', 'intl', true, Date.now() - _grokStart);
+            return result;
+        } catch (err) {
+            console.error('[intl/grok] API call failed, falling back to Azure:', err);
+            logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, String(err));
             return callAzureGPT(prompt, temperature, maxTokens);
         }
-
-        const data = await response.json();
-        const result = data.choices?.[0]?.message?.content?.trim() || '';
-        logLLMCall('grok', 'intl', true, Date.now() - _grokStart);
-        return result;
-    } catch (err) {
-        console.error('[grok] API call failed, falling back to Azure:', err);
-        logLLMCall('grok', 'intl', false, Date.now() - _grokStart, true, String(err));
-        return callAzureGPT(prompt, temperature, maxTokens);
-    }
+    });
 }
-
 
 
 // ============================================================
