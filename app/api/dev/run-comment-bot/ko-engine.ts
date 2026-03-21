@@ -528,6 +528,7 @@ export async function runKoreanCommentBot(
     _isBackfill: boolean,
     publishedAt: Date,
     externalTimestamps?: Date[],
+    botLang: string = 'ko',
 ): Promise<KoreanBotResult> {
     const totalCount = count;
     console.log(`🤖[ko] Korean bot: novel = ${novelId} ep = ${episodeId} count = ${totalCount} `);
@@ -657,8 +658,8 @@ export async function runKoreanCommentBot(
 
         const insertResult = await db.query(
             `INSERT INTO comments(episode_id, user_id, content, parent_id, created_at, is_hidden, scheduled_at, bot_lang)
-    VALUES($1, $2, $3, $4, $5, TRUE, $6, 'ko') RETURNING id`,
-            [episodeId, userId, content, parentId, scheduledAt, scheduledAt]
+    VALUES($1, $2, $3, $4, $5, TRUE, $6, $7) RETURNING id`,
+            [episodeId, userId, content, parentId, scheduledAt, scheduledAt, botLang]
         );
         commentPool.push({ id: insertResult.rows[0].id, content, reply_count: 0 });
         totalCommentsPosted++;

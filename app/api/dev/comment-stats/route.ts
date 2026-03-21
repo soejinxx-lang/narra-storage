@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
                 FROM comments c
                 JOIN users u ON c.user_id = u.id
                 WHERE u.role = 'bot'
+                  AND (c.bot_lang IS NULL OR c.bot_lang != 'ko_manual')
                 GROUP BY c.episode_id
             ) bc ON bc.episode_id = e.id
             LEFT JOIN (

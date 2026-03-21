@@ -2,21 +2,22 @@ import { NextResponse, NextRequest } from "next/server";
 import db from "../../../db";
 import { runKoreanCommentBot } from "../run-comment-bot/ko-engine";
 
+export const maxDuration = 300;
+
 /**
  * POST /api/dev/trigger-comment-bot
  * 어드민 수동 댓글봇 트리거
  *
  * body: { episodeId: string, count: number }
  *
- * - count만큼 runKoreanCommentBot 직접 호출
- * - 삽입된 댓글은 bot_lang = 'ko_manual'로 태그 → 자동봇 gap 계산 제외
- * - 분포 수렴 구조 보존
+ * - botLang='ko_manual'로 직접 INSERT → 별도 UPDATE 불필요
+ * - ko_manual은 worker gap 계산 / comment-stats bot_cnt 양쪽에서 제외
  */
 export async function POST(req: NextRequest) {
     try {
-        // 인증 — 기존 어드민 패턴과 동일 (ADMIN_API_KEY Bearer)
-        const auth = req.headers.get("authorization");
-        if (auth !== `Bearer ${process.env.ADMIN_API_KEY}`) {
+        // 인증 — CRON_SECRET
+        const secret = req.headers.get("x-cron-secret");
+        if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -43,25 +44,18 @@ export async function POST(req: NextRequest) {
         const { novel_id, created_at } = epResult.rows[0];
         const publishedAt = new Date(created_at);
 
-        // 댓글 생성 (ko-engine)
+        // 댓글 생성 — botLang='ko_manual' 직접 전달 (INSERT 시점에 태깅)
         const result = await runKoreanCommentBot(
             novel_id,
             count,
             episodeId,
             false,
             publishedAt,
+            undefined,       // externalTimestamps
+            'ko_manual',     // botLang — 자동봇 gap 계산 제외용 태그
         );
 
-        // 방금 생성된 댓글을 ko_manual로 태그 UPDATE
-        // created_at 기준 최근 N개 중 bot_lang='ko'인 것만 변경
-        await db.query(
-            `UPDATE comments
-             SET bot_lang = 'ko_manual'
-             WHERE episode_id = $1
-               AND bot_lang = 'ko'
-               AND created_at >= NOW() - INTERVAL '1 minute'`,
-            [episodeId]
-        );
+        console.log(`[trigger-comment-bot] inserted=${result.inserted} as ko_manual`);
 
         return NextResponse.json({
             ok: true,
