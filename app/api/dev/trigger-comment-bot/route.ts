@@ -1,25 +1,19 @@
 import { NextResponse, NextRequest } from "next/server";
 import db from "../../../db";
 import { runKoreanCommentBot } from "../run-comment-bot/ko-engine";
+import { requireAdmin } from "../../../../lib/admin";
 
 export const maxDuration = 300;
 
 /**
  * POST /api/dev/trigger-comment-bot
  * 어드민 수동 댓글봇 트리거
- *
- * body: { episodeId: string, count: number }
- *
- * - botLang='ko_manual'로 직접 INSERT → 별도 UPDATE 불필요
- * - ko_manual은 worker gap 계산 / comment-stats bot_cnt 양쪽에서 제외
+ * botLang='ko_manual' 직접 INSERT → worker gap 계산 / comment-stats 양쪽에서 제외
  */
 export async function POST(req: NextRequest) {
     try {
-        // 인증 — CRON_SECRET
-        const secret = req.headers.get("x-cron-secret");
-        if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+        const unauthorized = requireAdmin(req);
+        if (unauthorized) return unauthorized;
 
         const body = await req.json();
         const { episodeId, count } = body as { episodeId: string; count: number };
