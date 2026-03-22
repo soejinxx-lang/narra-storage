@@ -841,17 +841,24 @@ const LANG_SURVIVAL_RATE: Record<string, number> = {
   'ko': 0.85, 'en': 0.65, 'ja': 0.60, 'zh': 0.60, 'es': 0.65,
 };
 
-// ── 결과 기준 역산: 목표 결과 수를 맞추기 위해 생성 수를 부풀림 ──
+// ── 결과 기준 역산: 목표 결과 수를 맞추기 위해 생성 수를 보정 ──
+// 핵심: ko는 생존율이 높아 실제 결과가 많아지므로 생성 수를 줄이고,
+//       intl은 생존율이 낮으니 생성 수를 부풀려야 결과 비율이 맞음
+//
+// 공식: generated[lang] ∝ targetRatio[lang] / survivalRate[lang]
+// → 이렇게 하면 expected_result[lang] = generated[lang] × survival[lang]
+//   ∝ targetRatio[lang] 이 되어 결과 비율이 목표에 수렴
+//
+// 단, toAdd가 고정이므로 total로 정규화 후 분배
 function calcLangAllocations(toAdd: number): { lang: string; count: number }[] {
-  // 1단계: 보정 전 가중치 계산 (ratio / survivalRate → 상대 비중)
   const raw: Record<string, number> = {};
   let rawTotal = 0;
   for (const lang of Object.keys(LANG_TARGET_RATIO)) {
+    // 생존율 낮은 언어일수록 더 많이 생성
     raw[lang] = LANG_TARGET_RATIO[lang] / (LANG_SURVIVAL_RATE[lang] ?? 0.70);
     rawTotal += raw[lang];
   }
 
-  // 2단계: 정규화 후 생성 수 배분 (ceil, 마지막 언어는 나머지로 맞춤)
   const langs = Object.keys(raw);
   const allocs: { lang: string; count: number }[] = [];
   let allocated = 0;
@@ -863,8 +870,18 @@ function calcLangAllocations(toAdd: number): { lang: string; count: number }[] {
       : Math.round(toAdd * (raw[lang] / rawTotal));
     if (count > 0) { allocs.push({ lang, count }); allocated += count; }
   }
+
+  // 혹시 할당 합계가 toAdd 미만이면 ko에 나머지 추가 (안전장치)
+  const total = allocs.reduce((s, a) => s + a.count, 0);
+  if (total < toAdd) {
+    const koAlloc = allocs.find(a => a.lang === 'ko');
+    if (koAlloc) koAlloc.count += toAdd - total;
+    else allocs.push({ lang: 'ko', count: toAdd - total });
+  }
+
   return allocs;
 }
+
 
 // ── Race condition 방지: 이전 실행 중이면 skip ──
 let commentBotRunning = false;
