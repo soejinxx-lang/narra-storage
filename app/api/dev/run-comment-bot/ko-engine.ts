@@ -177,6 +177,15 @@ async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): P
             const data = await response.json();
             const result = data.choices?.[0]?.message?.content?.trim() || '';
             logLLMCall('grok', 'ko', true, Date.now() - _grokStart);
+            return result;
+        } catch (err) {
+            console.error('[grok] Grok call failed:', err);
+            logLLMCall('grok', 'ko', false, Date.now() - _grokStart, true, String(err));
+            return callAzureGPT(prompt, temperature, maxTokens);
+        }
+    });
+}
+
           // ============================================================
 // 4-Way 댓글 스타일 시스템
 // 결과 기준 비율 역산 (언어 비율과 동일 방식)
@@ -253,7 +262,22 @@ const STYLE_HINTS: Record<StyleCategory, { w: number; hint: string }[]> = {
         { w: 30, hint: `회귀/빙의/하렘 장르 과몰입 반응.
 예: "또 회귀해서 이번 생은 다르게 산다더니... 부모님도 여주도 다 행복하게 해주네 ㅠㅠ 힐링물 인정!"
 "빙의해서 악녀 됐는데 왜 이렇게 착하고 예쁨? 원작 깨부수는 통쾌함 미쳤어요 作家님♡"
-"하렘인데 왜 다들 너무 사랑스럽고 질투 안 나 �// ============================================================
+"하렘인데 왜 다들 너무 사랑스럽고 질투 안 나지? 작가님 하렘 공식 마스터 인정ㅋㅋ"` },
+    ],
+};
+
+// ============================================================
+// 스타일 카테고리 내 hint 선택 (가중치 기반)
+// ============================================================
+function pickHintForStyle(style: StyleCategory): string {
+    const hints = STYLE_HINTS[style];
+    const total = hints.reduce((s, h) => s + h.w, 0);
+    let r = Math.random() * total;
+    for (const { w, hint } of hints) { r -= w; if (r <= 0) return hint; }
+    return hints[hints.length - 1].hint;
+}
+
+// ============================================================
 // 빈 감탄사 필터
 // ============================================================
 function isEmptyExclamation(s: string): boolean {
@@ -265,7 +289,8 @@ function isEmptyExclamation(s: string): boolean {
     return emptyPattern.test(t) || genericPattern.test(t);
 }
 
-�글 단건 생성 (방식 C)
+// ============================================================
+// 댓글 단건 생성 (방식 C)
 // ============================================================
 async function generateSingleComment(
     episodeContent: string,
@@ -320,9 +345,9 @@ ${context}`;
     return raw.replace(/^["""""'']+|["""""'']+$/g, '').trim();
 }
 
-function pickStyleCategory()                {
+function pickStyleCategory(): StyleCategory {
     // 목표 비율 / 생존율 = 생성 비율 (많이 죽는 스타일은 더 많이 생성)
-    const entries = (Object.keys(STYLE_TARGET_RATIO)                   ).map(cat => ({
+    const entries = (Object.keys(STYLE_TARGET_RATIO) as StyleCategory[])                   ).map(cat => ({
         cat,
         genWeight: STYLE_TARGET_RATIO[cat] / STYLE_SURVIVAL_RATE[cat],
     }));
