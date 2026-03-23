@@ -442,79 +442,16 @@ async function generateContextualReply(parentComment: string): Promise<string> {
         - 5~15자 이내 초단문
             - ㅇㅈ, ㄹㅇ, ㅋㅋ, ㅠㅠ 자유
                 - 원댓글 맥락에 맞춰서
-                    - ~다 어미 금지
-                        - JSON 말고 댓글 텍스트만 출력`;
+                    - ~다 어미 금지`;
 
-    // #6: 대댓글도 Grok → Azure fallback 체인으로 통일
     const raw = await callGrokAPI(prompt, 0.9, 100);
     let reply = raw
-        .replace(/^```.*\n ? /i, '').replace(/\n ? ```.*$/i, '')
+        .replace(/^\`\`\`.*\n?/i, '').replace(/\n?\`\`\`.*$/i, '')
         .replace(/^[\"']|[\"']$/g, '')
         .replace(/^원댓글:.*?→\s*반응:\s*/g, '')
         .replace(/^반응:\s*/g, '')
-        .replace(/^[\"']|[\"']$/g, '')
         .trim();
     return reply.length <= 50 ? reply : '';
-}
-
-// ============================================================
-// 유틸
-// ============================================================
-
-function weightedRandom<T>(items: { item: T; weight: number }[]): T {
-    const total = items.reduce((s, i) => s + i.weight, 0);
-    let r = Math.random() * total;
-    for (const { item, weight } of items) {
-        r -= weight;
-        if (r <= 0) return item;
-    }
-    return items[items.length - 1].item;
-}
-
-const KO_NICKNAMES = [
-    '뉴비독자', '정주행중', '밤샘독자', '덕후감성', '소설마니아',
-    '웹소설러', '독서왕', '줄거리충', '감성충만', '원픽독자',
-    '캐릭터빠', '작가님팬', '정독파', '속독왕', '눈팅러',
-    '댓글러', '독서노트', '소설덕', '야간독서', '새벽독자',
-    '1화부터', '정주행완', '후기남김', '리뷰어', '독자의눈',
-    '첫화팬', '최애캐빠', '스압완독', '감동받음', '오열중',
-];
-
-function pickNickname(usedNicknames: Set<string>): string {
-    const available = KO_NICKNAMES.filter(n => !usedNicknames.has(n));
-    const pool = available.length > 0 ? available : KO_NICKNAMES;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    usedNicknames.add(picked);
-    return picked;
-}
-
-// ============================================================
-// trigram 유사도 기반 중복 제거 — 한국어 어절 단위 문제 해결
-// 짧은 댓글: threshold 높임(0.75), 긴 댓글: 낮춤(0.60)
-// ============================================================
-function extractTrigrams(s: string): Set<string> {
-    const clean = s.replace(/[ㅋㅠㅜ!?.,\s]/g, '');
-    const tris = new Set<string>();
-    for (let i = 0; i < clean.length - 2; i++) tris.add(clean.slice(i, i + 3));
-    return tris;
-}
-
-function trigramSim(a: string, b: string): number {
-    const ta = extractTrigrams(a), tb = extractTrigrams(b);
-    if (ta.size === 0 || tb.size === 0) return 0;
-    const intersection = [...ta].filter(t => tb.has(t)).length;
-    return intersection / Math.max(ta.size, tb.size);
-}
-
-function deduplicateComments(comments: string[]): string[] {
-    // 짧은 댓글 false positive 방지: 15자 미만이면 threshold 높임
-    const threshold = (s: string) => s.length < 15 ? 0.75 : 0.60;
-    const passed: string[] = [];
-    for (const c of comments) {
-        const isDup = passed.some(p => trigramSim(c, p) >= threshold(c));
-        if (!isDup) passed.push(c);
-    }
-    return passed;
 }
 
 // ============================================================
@@ -620,6 +557,53 @@ export interface KoreanBotResult {
     detectedTags: string[];
     contentLanguage: string;
     episodeIds: string[];
+}
+
+
+const KO_NICKNAMES = [
+    // === 회귀/빙의 키워드 ===
+    '487회차생존자', '이번엔진짜끝낸다', '7번째회귀는지침',
+    '999회차억까생존자', '이번회차는내가주인공', '회귀권능쿨타임10년',
+    '3회차파티장', '빙의했는데망나니임', '918화까지살아남음',
+    // === 헌터/각성/시스템 ===
+    'F급인데SSS각성함', '시스템이날무시함', 'S급인데인성F임',
+    'SSS급인데취업못함', 'F급인데보스몹임', '헌터아니고먹방러임',
+    '마왕인데편의점알바중', '헌터말고집에서살고싶음', '각성했더니던전이집임',
+    // === 로판 ===
+    '악녀인데돈많음', '계약파혼전문가', '황제폐하저싫어요',
+    '악역남주가날스토킹함', '악녀의흑화는이미완료', '파혼했더니레벨업',
+    '악역인데왜내가더고통받음', '황태자파혼전문변호사', '폐비인데최강임',
+    // === 귀여운척 잔인 ===
+    '헤헤죽여버릴거야', '히히복수시작이야', '빙의했더니고양이였다',
+    '빙의했더니아기였다', '마왕퇴치하고편의점감',
+    // === 영어+한글 혼합 ===
+    'BlackLotus흑련', 'ShadowQueen_검', 'CrimsonDevil짱',
+    'EternalRegressor', 'Obsidian회귀자', 'DarkMatter빙의',
+    // === 자조/밈 ===
+    '냉장고속회귀자', '슬리퍼로세계구함', '시스템창좀꺼줘',
+    '회귀했는데폰없음', '회귀했는데친구없음', '나만레벨업실패함',
+    '복수물인데너무착함', '이번생은조연으로살거임', '마교출신현대인',
+    // === 한자/한글 이름형 ===
+    '백련991', '설화0327', '무월야901', '청명4444', '단목휘19',
+    '흑련027', '홍매화55', '벽천도3', '은하수912',
+];
+
+function weightedRandom<T>(items: { item: T; weight: number }[]): T {
+    const total = items.reduce((s, i) => s + i.weight, 0);
+    let r = Math.random() * total;
+    for (const { item, weight } of items) {
+        r -= weight;
+        if (r <= 0) return item;
+    }
+    return items[items.length - 1].item;
+}
+
+function pickNickname(usedNicknames: Set<string>): string {
+    const available = KO_NICKNAMES.filter(n => !usedNicknames.has(n));
+    const pool = available.length > 0 ? available : KO_NICKNAMES;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    usedNicknames.add(picked);
+    return picked;
 }
 
 export async function runKoreanCommentBot(
