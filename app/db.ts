@@ -523,6 +523,10 @@ export async function initDb() {
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS plan_source TEXT DEFAULT 'system';`);
     await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMP;`);
 
+    // ✅ Gumroad 구독 연동
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS gumroad_product_id TEXT;`);
+    await client.query(`ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS gumroad_subscription_id TEXT;`);
+
     // ✅ Webhook 중복 처리 방지 (idempotency)
     await client.query(`
       CREATE TABLE IF NOT EXISTS processed_webhooks (
