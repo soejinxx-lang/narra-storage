@@ -192,18 +192,12 @@ async function callGrokAPI(prompt: string, temperature = 0.9, maxTokens = 80): P
 // ============================================================
 type StyleCategory = 'yeocheo' | 'namcho' | 'dc' | 'novelpia';
 
+// ⚡ 결과 단계 목표 비율 (생성 단계 아님 — 최종 삽입 시 이 비율로 강제 셀렉션)
 const STYLE_TARGET_RATIO: Record<StyleCategory, number> = {
-    yeocheo:  0.25,  // 여초식 (로판/순애/심쿵)
-    namcho:   0.25,  // 남초식 (사이다/통쾌/먼치킨)
-    dc:       0.30,  // DC식  (날 것/추리/병맛)
-    novelpia: 0.20,  // 노벨피아식 (과몰입/연참/♡)
-};
-// 스타일별 예상 생존율 (sanitizer / judge 통과율 추정)
-const STYLE_SURVIVAL_RATE: Record<StyleCategory, number> = {
-    yeocheo:  0.80,
-    namcho:   0.78,
-    dc:       0.72,
-    novelpia: 0.82,
+    yeocheo:  0.45,  // 여초식 (로판/순애/심쿵) ← 메인
+    namcho:   0.22,  // 남초식 (사이다/통쾌/먼치킨)
+    dc:       0.15,  // DC식  (날 것/추리/병맛)
+    novelpia: 0.18,  // 노벨피아식 (과몰입/연참/♡)
 };
 // 스타일별 힌트 풀
 const STYLE_HINTS: Record<StyleCategory, { w: number; hint: string }[]> = {
@@ -346,15 +340,9 @@ ${context}`;
 }
 
 function pickStyleCategory(): StyleCategory {
-    // 목표 비율 / 생존율 = 생성 비율 (많이 죽는 스타일은 더 많이 생성)
-    const entries = (Object.keys(STYLE_TARGET_RATIO) as StyleCategory[])                   ).map(cat => ({
-        cat,
-        genWeight: STYLE_TARGET_RATIO[cat] / STYLE_SURVIVAL_RATE[cat],
-    }));
-    const total = entries.reduce((s, e) => s + e.genWeight, 0);
-    let r = Math.random() * total;
-    for (const { cat, genWeight } of entries) { r -= genWeight; if (r <= 0) return cat; }
-    return entries[entries.length - 1].cat;
+    // 생성 단계: 균등 분포로 모든 스타일을 충분히 생성 (결과 단계에서 비율 강제)
+    const cats: StyleCategory[] = ['yeocheo', 'namcho', 'dc', 'novelpia'];
+    return cats[Math.floor(Math.random() * cats.length)];
 }
 
 
@@ -379,15 +367,21 @@ function extractSceneCandidates(content: string, n = 6): string[] {
 // 딥컨텍스트 생성 — 개별 생성 방식 (방식 C)
 // concurrency 5, temperature 변주, 빈 감탄사 필터
 // ============================================================
+// 스타일 태그가 붙은 댓글
+interface TaggedComment {
+    text: string;
+    style: StyleCategory;
+}
+
 async function generateDeepContextComments(
     episodeContent: string,
     genreWeights: Record<string, number>,
     count = 15,
     sourceLanguage = 'ko',
-): Promise<{ comments: string[]; midComments: string[]; detectedTags: string[] }> {
+): Promise<{ comments: TaggedComment[]; midComments: TaggedComment[]; detectedTags: string[] }> {
     const primaryGenre = Object.entries(genreWeights).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const temperatures = [0.7, 0.8, 0.9, 1.0, 1.1];
-    const results: string[] = [];
+    const results: TaggedComment[] = [];
 
     // 에피소드를 paragraph 청크로 분할 → 호출마다 다른 청크 배정 (salience 수렴 방지)
     const chunks = extractSceneCandidates(episodeContent, 6);
@@ -397,22 +391,20 @@ async function generateDeepContextComments(
         const chunk = chunks[i % chunks.length];
         const style = pickStyleCategory();
         const temp = temperatures[i % temperatures.length];
-        const result = await generateSingleComment(chunk, primaryGenre, temp, style);
-        if (result) results.push(result);
+        const text = await generateSingleComment(chunk, primaryGenre, temp, style);
+        if (text) results.push({ text, style });
     }
 
     // 빈 감탄사 + 길이 필터
     const filtered = results
-        .filter(c => c.length >= 2 && c.length < 120)
-        .filter(c => !isEmptyExclamation(c));
+        .filter(c => c.text.length >= 2 && c.text.length < 120)
+        .filter(c => !isEmptyExclamation(c.text));
 
-    // #3: mid와 long을 완전히 분리 — filtered에서 mid를 제거해야 두 배열에 중복 삽입 안 됨
-    // mid: 7~18자 짧은 댓글 (삽입 루프에서 midDensityPool로 사용)
-    const midComments = filtered.filter(c => c.length >= 7 && c.length <= 18);
-    // long: 19자 초과 댓글만 deepComments로 사용 (mid와 겹치지 않음)
-    const longComments = filtered.filter(c => c.length > 18);
+    // mid: 7~18자 짧은 댓글 / long: 19자+ 깊은 댓글
+    const midComments = filtered.filter(c => c.text.length >= 7 && c.text.length <= 18);
+    const longComments = filtered.filter(c => c.text.length > 18);
 
-    // tags: 장르 태그 추론 (별도 GPT 호출 없이 genreWeights에서)
+    // tags: 장르 태그 추론
     const tagMap: Record<string, string> = {
         action: 'battle', romance: 'romance', horror: 'betrayal',
         fantasy: 'powerup', 'slice-of-life': 'comedy',
@@ -422,7 +414,9 @@ async function generateDeepContextComments(
         .map(k => tagMap[k])
         .filter(Boolean);
 
-    console.log(`   → [ko] 단건생성: ${results.length}개 생성, ${filtered.length}개 통과 (long:${longComments.length} mid:${midComments.length})`);
+    const styleCounts: Record<string, number> = {};
+    for (const c of [...longComments, ...midComments]) styleCounts[c.style] = (styleCounts[c.style] || 0) + 1;
+    console.log(`   → [ko] 단건생성: ${results.length}개 생성, ${filtered.length}개 통과 (long:${longComments.length} mid:${midComments.length}) 스타일: ${JSON.stringify(styleCounts)}`);
     return { comments: longComments, midComments, detectedTags };
 }
 
@@ -460,11 +454,12 @@ async function generateContextualReply(parentComment: string): Promise<string> {
 // - temperature 0.1 (일관성 확보)
 // - 실패 시 전량 통과 (서비스 안전)
 // ============================================================
-async function judgeComments(comments: string[]): Promise<string[]> {
+async function judgeComments(comments: TaggedComment[]): Promise<TaggedComment[]> {
     if (comments.length < 4) return comments; // 너무 적으면 skip
 
     // 제거 대상 수: 하위 30% (최소 1개)
     const removeCount = Math.max(1, Math.floor(comments.length * 0.3));
+    const texts = comments.map(c => c.text);
 
     const prompt = `너는 한국 웹소설 커뮤니티 댓글 품질 심사관이야.
 아래 댓글 목록 중 가장 어색하거나 공식적인 댓글 ${removeCount}개의 번호를 골라줘.
@@ -482,21 +477,19 @@ async function judgeComments(comments: string[]): Promise<string[]> {
 - 서로 다른 장면이나 감정을 다루는 댓글
 
 [댓글 목록]
-${comments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+${texts.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 제거할 번호만 나열해. 예: 2, 5, 7`;
 
     try {
         const raw = await callAzureGPT(prompt, 0.1, 100);
-        // /\d+/g 로 숫자만 추출 (JSON.parse보다 안정적)
         const removeNums = new Set(
             (raw.match(/\d+/g) || [])
                 .map(Number)
                 .filter(n => n >= 1 && n <= comments.length)
-                .slice(0, removeCount + 2) // 과잉 제거 방지
+                .slice(0, removeCount + 2)
         );
         const result = comments.filter((_, i) => !removeNums.has(i + 1));
-        // 과잉 제거 안전장치: 50% 미만 남으면 원본 반환
         if (result.length < comments.length * 0.5) {
             console.warn(`[ko - engine] Judge over - filtered(${result.length} / ${comments.length}), passing all`);
             return comments;
@@ -638,8 +631,8 @@ export async function runKoreanCommentBot(
     const genreWeights = getGenreWeights(genreData);
 
     // Deep context
-    let deepComments: string[] = [];
-    let midDensityPool: string[] = [];
+    let deepComments: TaggedComment[] = [];
+    let midDensityPool: TaggedComment[] = [];
     let sceneTags: string[] = [];
 
     const contentResult = await db.query(`SELECT content FROM episodes WHERE id = $1`, [episodeId]);
@@ -662,15 +655,54 @@ export async function runKoreanCommentBot(
             }
         }
 
-        // ① 시맨틱 중복 제거 (LLM 호출 없이)
-        deepComments = deduplicateComments(deepComments);
-        midDensityPool = deduplicateComments(midDensityPool);
+        // ① 시맨틱 중복 제거 (text 기준)
+        deepComments = deduplicateTaggedComments(deepComments);
+        midDensityPool = deduplicateTaggedComments(midDensityPool);
 
         // ② LLM-as-Judge — 배치 1회, 하위 30% 제거
         if (deepComments.length >= 4) {
             deepComments = await judgeComments(deepComments);
         }
     }
+
+    // ③ ⚡ 결과 단계 비율 강제 셀렉션 — 스타일별 버킷에서 목표 비율로 추출
+    const allPool = [...deepComments, ...midDensityPool];
+    const styleBuckets: Record<StyleCategory, TaggedComment[]> = {
+        yeocheo: [], namcho: [], dc: [], novelpia: [],
+    };
+    for (const c of allPool) styleBuckets[c.style].push(c);
+
+    // 목표 비율로 셀렉션
+    const selectedComments: TaggedComment[] = [];
+    const styles = Object.keys(STYLE_TARGET_RATIO) as StyleCategory[];
+    for (const style of styles) {
+        const target = Math.round(totalCount * STYLE_TARGET_RATIO[style]);
+        const bucket = styleBuckets[style];
+        // 버킷에서 target개만큼 추출 (부족하면 전량)
+        const take = Math.min(target, bucket.length);
+        for (let j = 0; j < take; j++) selectedComments.push(bucket[j]);
+    }
+
+    // 목표 미달 시 남은 풀에서 추가 충전
+    if (selectedComments.length < totalCount) {
+        const usedTexts = new Set(selectedComments.map(c => c.text));
+        const remaining = allPool.filter(c => !usedTexts.has(c.text));
+        for (const c of remaining) {
+            if (selectedComments.length >= totalCount) break;
+            selectedComments.push(c);
+        }
+    }
+
+    // 셔플 (스타일이 몰리지 않게)
+    for (let i = selectedComments.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [selectedComments[i], selectedComments[j]] = [selectedComments[j], selectedComments[i]];
+    }
+
+    // 비율 로그
+    const finalCounts: Record<string, number> = {};
+    for (const c of selectedComments) finalCounts[c.style] = (finalCounts[c.style] || 0) + 1;
+    console.log(`[ko-engine] ⚡ 결과 비율: ${JSON.stringify(finalCounts)} (total: ${selectedComments.length}/${totalCount})`);
 
     // 닉네임 풀
     const nnResult = await db.query(
@@ -697,25 +729,16 @@ export async function runKoreanCommentBot(
         }).sort((a, b) => a.getTime() - b.getTime());
 
     let totalCommentsPosted = 0;
-    // deepRatio: 에피소드당 1회 고정 (루프마다 재계산하면 의도한 비율 보장 안 됨)
-    const deepRatio = 0.30 + (Math.random() * 0.20 - 0.10); // 20~40%
 
-    for (let i = 0; i < totalCount && totalCommentsPosted < totalCount; i++) {
-        // content 먼저 결정 — sanitize 실패해도 nickname/user 낭비 없음
-        const roll = Math.random();
-        let rawContent: string;
-        if (roll < deepRatio && deepComments.length > 0) rawContent = deepComments.shift()!;
-        else if (roll < deepRatio + 0.40 && midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
-        else if (deepComments.length > 0) rawContent = deepComments.shift()!;
-        else if (midDensityPool.length > 0) rawContent = midDensityPool.shift()!;
-        else break;
+    for (let i = 0; i < selectedComments.length && totalCommentsPosted < totalCount; i++) {
+        const rawContent = selectedComments[i].text;
 
-        // sanitize 먼저 — 실패 시 nickname·user INSERT 없이 skip (닉네임 중복 방지)
+        // sanitize — 실패 시 skip
         const sanitized = sanitizeCommentContent(rawContent);
         if (!sanitized) continue;
         let content = humanize(sanitized);
 
-        // content 검증 통과 후 nickname/user 생성
+        // nickname/user 생성
         const nickname = pickNickname(usedNicknames);
         const username = `bot_ko_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -753,9 +776,21 @@ export async function runKoreanCommentBot(
     console.log(`✅[ko] ${totalCommentsPosted} Korean comments posted`);
     return {
         inserted: totalCommentsPosted,
-        deepContextUsed: deepComments.length === 0 && totalCommentsPosted > 0,
+        deepContextUsed: selectedComments.length > 0 && totalCommentsPosted > 0,
         detectedTags: sceneTags,
         contentLanguage: sourceLanguage,
         episodeIds: [episodeId],
     };
+}
+
+// 스타일 태그 보존 중복 제거
+function deduplicateTaggedComments(comments: TaggedComment[]): TaggedComment[] {
+    const seen = new Set<string>();
+    return comments.filter(c => {
+        // 앞 10자 + 뒤 10자로 유사도 판단
+        const key = c.text.slice(0, 10) + '|' + c.text.slice(-10);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }

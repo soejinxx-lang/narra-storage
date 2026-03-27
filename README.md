@@ -1,6 +1,8 @@
 # ⚙️ NARRA Storage — 백엔드 API + Worker
 
 > 웹소설 플랫폼의 핵심 백엔드 — API 서버, 번역 파이프라인, 댓글봇, 결제 webhook
+>
+> 📚 공통 문서: [docs/](../docs/) | 📜 규칙: [docs/rules.md](../docs/rules.md)
 
 ---
 
@@ -302,3 +304,35 @@ npm run audio-worker
 | 고유명사 파일 저장 | ⚠️ | 로컬 `data/entities/` → Railway 재배포 시 휘발 (DB 마이그레이션 필요) |
 | TTS Audio Worker | ❌ | 현재 미작동 |
 | Railway 타임아웃 | ✅ 해결 | Pipeline을 Worker에 병합하여 HTTP 제거 |
+
+---
+
+## 변경 이력
+
+### 2026-03-27
+- Gumroad Webhook 연동 (`app/api/webhook/gumroad/route.ts`)
+- `user_plans`에 `gumroad_product_id`, `gumroad_subscription_id` 컬럼 추가
+- `processed_webhooks` 테이블 추가 (idempotency)
+
+### 2026-03-16
+- SMS Digest 기능 추가 (`lib/sms-digest.ts`)
+- CoolSMS API 연동 (4시간 간격 상태 알림)
+
+### 2026-03-09
+- LLM 모델 비교 API 추가 (`app/api/dev/compare-models/`)
+- GPT vs Grok 댓글 품질 비교 도구
+
+### 2026-03-05
+- E2E 테스트 결과 API + DB 스키마 추가
+- 댓글봇 deep context 버그 수정
+
+### 2026-02-15
+- 댓글봇 상황 기반 프롬프트 전환 (`comment-bot-v2-situational`)
+- GPT-5 큐레이터, 8단계 파이프라인
+
+### 2026-02-02
+- Azure OpenAI 전환 지원 (`openai_client.py`)
+
+### 2026-02-01
+- 비용 최적화: STAGE 2, 5를 GPT-4o-mini로 변경
+- 조회수 시스템 단순화 (Ghost Pool 제거)
